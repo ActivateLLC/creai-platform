@@ -10,6 +10,7 @@ Platform admins are a separate table, not a flag on a user. A compromised
 customer account must never be one boolean away from reading every tenant.
 """
 
+import json
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -96,6 +97,21 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_seen   TIMESTAMPTZ
 );
+
+-- Work done before there is an account. No org_id by design: a draft belongs to
+-- nobody until it is claimed. Expires, so abandoned drafts do not accumulate.
+CREATE TABLE IF NOT EXISTS drafts (
+  id         BIGSERIAL PRIMARY KEY,
+  token      TEXT UNIQUE NOT NULL,
+  brief      TEXT NOT NULL,
+  answers    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  claimed_at TIMESTAMPTZ,
+  claimed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS drafts_expiry_idx ON drafts(expires_at);
 
 -- ---------------------------------------------------------------- tenant data
 -- Everything below is keyed to org_id. No business table is keyed to a user:
@@ -204,11 +220,25 @@ TENANT_TABLES = (
 )
 
 
+async def _init_conn(c: asyncpg.Connection) -> None:
+    """Let JSONB columns take and return Python dicts.
+
+    Without this asyncpg demands a pre-serialised string, which is easy to get
+    right at one call site and easy to forget at the next. Registering the codec
+    once means every query is consistent.
+    """
+    await c.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads,
+                           schema="pg_catalog")
+    await c.set_type_codec("json", encoder=json.dumps, decoder=json.loads,
+                           schema="pg_catalog")
+
+
 async def connect() -> None:
     global _pool
     if not settings.database_url:
         return
-    _pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=8)
+    _pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=8,
+                                      init=_init_conn)
     async with _pool.acquire() as c:
         await c.execute(SCHEMA)
 
