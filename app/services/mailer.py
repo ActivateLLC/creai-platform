@@ -43,6 +43,22 @@ def send_code(to: str, code: str) -> bool:
     return _send(to, "Your CreAI sign-in code", CODE_BODY.format(code=code))
 
 
+INVITE_BODY = """{org} invited you to their CreAI workspace.
+
+Accept the invitation:
+
+    {site}/invite/{token}
+
+The link expires in seven days. If you weren't expecting this, ignore it —
+nothing happens until you accept.
+"""
+
+
+def send_invite(to: str, org: str, token: str) -> bool:
+    return _send(to, f"You've been invited to {org}",
+                 INVITE_BODY.format(org=org, site=settings.public_url, token=token))
+
+
 def send_domain_live(to: str, domain: str) -> bool:
     return _send(to, f"{domain} is live",
                  f"{domain} now resolves and its certificate is issued.\n\n"
