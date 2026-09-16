@@ -12,7 +12,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin, approvals, auth_routes, dashboard, domains, orgs, projects
+from .api import (admin, approvals, auth_routes, dashboard, domains, drafts,
+                  orgs, projects)
 from .core import db
 from .core.config import settings
 
@@ -37,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 
