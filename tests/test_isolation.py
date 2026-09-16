@@ -34,6 +34,7 @@ async def api():
 
 async def sign_in(api, email: str) -> str:
     r = await api.post("/v1/auth/start", json={"email": email})
+    assert r.status_code == 200, f"sign-in start failed: {r.status_code} {r.text}"
     code = r.json().get("code")
     assert code, "development sign-in must return the code when email is unconfigured"
     r = await api.post("/v1/auth/code", json={"email": email, "code": code})
@@ -51,8 +52,8 @@ def auth(token: str, org: int | None = None) -> dict:
 
 async def test_a_cannot_read_b(api):
     """The whole product risk in one test."""
-    a = await sign_in(api, "alice@tenant-a.test")
-    b = await sign_in(api, "bob@tenant-b.test")
+    a = await sign_in(api, "alice@alpha-co.io")
+    b = await sign_in(api, "bob@beta-co.io")
 
     made = await api.post("/v1/projects", headers=auth(a),
                           json={"name": "Alice's secret launch"})
@@ -69,8 +70,8 @@ async def test_a_cannot_read_b(api):
 
 async def test_org_header_cannot_be_forged(api):
     """Passing someone else's org id must not grant access to it."""
-    a = await sign_in(api, "alice2@tenant-a.test")
-    b = await sign_in(api, "bob2@tenant-b.test")
+    a = await sign_in(api, "alice2@alpha-co.io")
+    b = await sign_in(api, "bob2@beta-co.io")
 
     a_org = (await api.get("/v1/auth/me", headers=auth(a))).json()["active_org"]
     r = await api.get("/v1/dashboard", headers=auth(b, org=a_org))
@@ -78,8 +79,8 @@ async def test_org_header_cannot_be_forged(api):
 
 
 async def test_approval_needs_membership(api):
-    a = await sign_in(api, "alice3@tenant-a.test")
-    b = await sign_in(api, "bob3@tenant-b.test")
+    a = await sign_in(api, "alice3@alpha-co.io")
+    b = await sign_in(api, "bob3@beta-co.io")
 
     made = await api.post("/v1/approvals", headers=auth(a),
                           json={"kind": "post", "payload": {"text": "hello"}})
@@ -91,11 +92,11 @@ async def test_approval_needs_membership(api):
 
 async def test_viewer_cannot_approve(api):
     """Roles are enforced at the route, not assumed by the client."""
-    owner = await sign_in(api, "owner@roles.test")
+    owner = await sign_in(api, "owner@gamma-co.io")
     org = (await api.get("/v1/auth/me", headers=auth(owner))).json()["active_org"]
 
     await api.post("/v1/workspaces/invite", headers=auth(owner),
-                   json={"email": "viewer@roles.test", "role": "viewer"})
+                   json={"email": "viewer@gamma-co.io", "role": "viewer"})
     # Accepting requires the invite token, which is emailed; here we assert the
     # permission table directly instead.
     from app.core.tenancy import CAN
@@ -106,7 +107,7 @@ async def test_viewer_cannot_approve(api):
 
 async def test_admin_is_not_a_user_flag(api):
     """No customer may become a platform admin by any customer-facing route."""
-    u = await sign_in(api, "nosy@tenant-a.test")
+    u = await sign_in(api, "nosy@alpha-co.io")
     me = (await api.get("/v1/auth/me", headers=auth(u))).json()
     assert me["platform_admin"] is None
 
