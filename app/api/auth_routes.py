@@ -1,12 +1,13 @@
 """Sign in, read yourself, switch workspace."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 
 from ..core import tenancy as T
 from ..core.config import settings
 from ..core.db import conn
-from ..services import mailer
+from ..services import mailer, social, vault
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -88,3 +89,45 @@ async def set_surface(body: SurfaceIn, u=Depends(T.current_user)):
     async with conn() as c:
         await c.execute("UPDATE users SET surface=$1 WHERE id=$2", body.surface, u["id"])
     return {"surface": body.surface}
+
+
+# ---------------------------------------------------------------- social sign-in
+
+class HandoffIn(BaseModel):
+    code: str
+
+
+@router.get("/providers")
+async def providers():
+    return {"providers": social.enabled()}
+
+
+@router.get("/{provider}/start", include_in_schema=False)
+async def social_start(provider: str):
+    try:
+        return RedirectResponse(await social.start(provider), status_code=303)
+    except (social.SocialError, vault.VaultError) as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get("/{provider}/callback", include_in_schema=False)
+async def social_callback(provider: str, code: str | None = None, state: str | None = None,
+                          error: str | None = None):
+    base = settings.public_url.rstrip("/")
+    if error or not code or not state:
+        return RedirectResponse(f"{base}/?login=cancelled", status_code=303)
+    try:
+        handoff = await social.finish(provider, code, state)
+    except (social.SocialError, vault.VaultError) as exc:
+        from urllib.parse import quote
+        return RedirectResponse(f"{base}/?login=failed&why={quote(str(exc))}", status_code=303)
+    return RedirectResponse(f"{base}/?login_code={handoff}", status_code=303)
+
+
+@router.post("/handoff")
+async def handoff(body: HandoffIn):
+    try:
+        token = await social.redeem_handoff(body.code)
+    except social.SocialError as exc:
+        raise HTTPException(401, str(exc))
+    return {"token": token, "token_type": "bearer"}

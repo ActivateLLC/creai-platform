@@ -77,7 +77,6 @@ async def redeem_code(email: str, code: str) -> tuple[str, bool]:
     sign-in, a personal workspace they own."""
     email = email.lower().strip()
     h = _hash(f"{email}:{code}")
-    created = False
     async with conn() as c:
         row = await c.fetchrow(
             """SELECT 1 FROM login_codes
@@ -85,33 +84,41 @@ async def redeem_code(email: str, code: str) -> tuple[str, bool]:
         if not row:
             raise HTTPException(401, "that code is wrong or has expired")
         await c.execute("UPDATE login_codes SET used_at=now() WHERE code_hash=$1", h)
+        return await start_session(c, email)
 
-        user = await c.fetchrow(
-            """INSERT INTO users (email) VALUES ($1)
-               ON CONFLICT (email) DO UPDATE SET email=EXCLUDED.email RETURNING *""", email)
 
-        org_id = await c.fetchval(
-            "SELECT org_id FROM memberships WHERE user_id=$1 ORDER BY created_at LIMIT 1",
-            user["id"])
+async def start_session(c, email: str, name: str | None = None) -> tuple[str, bool]:
+    """Find or create the person and their first workspace; open a session.
+    Shared by every way of signing in, so they all land in the same account."""
+    email = email.lower().strip()
+    created = False
+    user = await c.fetchrow(
+        """INSERT INTO users (email, name) VALUES ($1, $2)
+           ON CONFLICT (email) DO UPDATE
+             SET name = COALESCE(users.name, EXCLUDED.name) RETURNING *""", email, name)
 
-        if org_id is None:
-            base = slugify(email.split("@")[0])
-            slug = base
-            while await c.fetchval("SELECT 1 FROM organizations WHERE slug=$1", slug):
-                slug = f"{base}-{secrets.token_hex(2)}"
-            org = await c.fetchrow(
-                "INSERT INTO organizations (name, slug) VALUES ($1,$2) RETURNING *",
-                email.split("@")[0], slug)
-            await c.execute(
-                "INSERT INTO memberships (org_id, user_id, role) VALUES ($1,$2,'owner')",
-                org["id"], user["id"])
-            org_id = org["id"]
-            created = True
+    org_id = await c.fetchval(
+        "SELECT org_id FROM memberships WHERE user_id=$1 ORDER BY created_at LIMIT 1",
+        user["id"])
 
-        token = "creai_s_" + secrets.token_urlsafe(32)
+    if org_id is None:
+        base = slugify(email.split("@")[0])
+        slug = base
+        while await c.fetchval("SELECT 1 FROM organizations WHERE slug=$1", slug):
+            slug = f"{base}-{secrets.token_hex(2)}"
+        org = await c.fetchrow(
+            "INSERT INTO organizations (name, slug) VALUES ($1,$2) RETURNING *",
+            email.split("@")[0], slug)
         await c.execute(
-            "INSERT INTO sessions (token_hash, user_id, org_id) VALUES ($1,$2,$3)",
-            _hash(token), user["id"], org_id)
+            "INSERT INTO memberships (org_id, user_id, role) VALUES ($1,$2,'owner')",
+            org["id"], user["id"])
+        org_id = org["id"]
+        created = True
+
+    token = "creai_s_" + secrets.token_urlsafe(32)
+    await c.execute(
+        "INSERT INTO sessions (token_hash, user_id, org_id) VALUES ($1,$2,$3)",
+        _hash(token), user["id"], org_id)
     return token, created
 
 

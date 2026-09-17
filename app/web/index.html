@@ -78,12 +78,12 @@ header .mark{width:30px;height:30px}
 html[data-theme=terminal] .brand::after{content:"_";animation:blink 1s steps(1) infinite;color:var(--leaf)}
 @keyframes blink{50%{opacity:0}}
 .spacer{flex:1}
-.btn{height:44px;padding:0 18px;border:1px solid var(--hairline);border-radius:var(--radius);background:transparent;font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream);transition:border-color .25s,background .25s,color .25s}
+.btn{white-space:nowrap;height:44px;padding:0 18px;border:1px solid var(--hairline);border-radius:var(--radius);background:transparent;font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream);transition:border-color .25s,background .25s,color .25s}
 .btn:hover{border-color:var(--leaf);color:var(--leaf)}
 .btn.primary{background:var(--leaf);border-color:var(--leaf);color:var(--night)}
 .btn.primary:hover{background:var(--cream);border-color:var(--cream);color:var(--night)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.chipbtn{height:36px;padding:0 12px;border:1px solid var(--hairline);border-radius:var(--radius);background:transparent;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase}
+.chipbtn{white-space:nowrap;height:36px;padding:0 12px;border:1px solid var(--hairline);border-radius:var(--radius);background:transparent;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase}
 .chipbtn .dot{color:var(--leaf);font-size:9px}
 .chipbtn.low .dot{color:var(--ember)}
 .themebtn{height:36px;padding:0 10px;border:1px solid var(--hairline);background:transparent;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cream)}
@@ -217,6 +217,11 @@ input:focus{outline:none;border-color:var(--leaf)}
 .secure{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
 
 .choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.social{display:flex;flex-direction:column;gap:8px}
+.social a{height:48px;display:flex;align-items:center;justify-content:center;gap:12px;border:1px solid var(--hairline);background:#fff;color:#1f1f1f;font:500 15px/1 var(--sans);text-decoration:none;letter-spacing:0;text-transform:none}
+.social a:hover{border-color:var(--leaf)}
+.or{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--hairline)}
 .prov{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:14px}
 .prov .logo{width:44px;height:44px;border:1px solid var(--hairline);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:22px}
 .sites{display:flex;flex-direction:column;border-top:1px solid var(--hairline)}
@@ -230,7 +235,8 @@ input:focus{outline:none;border-color:var(--leaf)}
 @media (max-width:860px){
   header{padding:0 14px;gap:8px}
   .who{display:none}
-  .theme button{padding:0 8px}
+  header .btn{height:36px;padding:0 10px;letter-spacing:.14em}
+  .brand{font-size:22px}
   .m-tabs{display:flex;padding:0 14px;gap:22px}
   .tabs{padding:0 14px;gap:20px;overflow-x:auto}
   .tabs .status{display:none}
@@ -309,8 +315,10 @@ input:focus{outline:none;border-color:var(--leaf)}
 
 <dialog id="dSign">
   <form id="fSign">
-    <h2>Save your work</h2>
-    <p class="muted" id="signWhy">An account keeps this draft and lets you connect a domain and approve posts. We'll email you a six-digit code — no password.</p>
+    <h2 id="signTitle">Save your work</h2>
+    <p class="muted" id="signWhy">Keep your work, connect your site and approve changes. No password needed.</p>
+    <div class="social" id="socialBox"></div>
+    <div class="or" id="orLine" hidden>or use email</div>
     <label for="email">Email</label>
     <input type="email" id="email" required autocomplete="email">
     <div id="codeRow" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -516,12 +524,13 @@ function runAction(a) {
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 
 let pendingAction = null, codeSent = false;
-function openSign(after) {
+function openSign(after, title) {
   pendingAction = after; codeSent = false;
+  $('signTitle').textContent = title || 'Save your work';
   $('codeRow').hidden = true; $('signGo').textContent = 'Email me a code'; $('signErr').textContent = '';
   $('dSign').showModal();
 }
-$('signBtn').onclick = () => { if (S.token) return signOut(); openSign(null); };
+$('signBtn').onclick = () => { if (S.token) return signOut(); openSign(null, 'Sign in to CreAI'); };
 $('fSign').onsubmit = async (e) => {
   e.preventDefault(); $('signErr').textContent = '';
   const email = $('email').value.trim();
@@ -540,6 +549,19 @@ $('fSign').onsubmit = async (e) => {
     if (pendingAction) runAction(pendingAction);
   } catch (err) { $('signErr').textContent = err.message; }
 };
+const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+async function loadProviders() {
+  let list = [];
+  try { list = (await api('/v1/auth/providers')).providers; } catch (_) {}
+  const box = $('socialBox'); box.replaceChildren();
+  for (const p of list) {
+    const a = el('a'); a.href = '/v1/auth/' + p.provider + '/start';
+    if (p.provider === 'google') a.innerHTML = GOOGLE_G;
+    a.append(el('span', null, 'Continue with ' + p.name));
+    box.append(a);
+  }
+  $('orLine').hidden = !list.length;
+}
 function signOut() { S.token = null; S.project = null; try { localStorage.removeItem('creai_token'); } catch (_) {} location.reload(); }
 
 async function afterSignIn(justSigned) {
@@ -1062,7 +1084,18 @@ setTheme(document.documentElement.dataset.theme);
     const h = await api('/health');
     if (!h.configured || !h.configured.agent) setStatus('Agent not switched on yet', 'var(--warn)');
   } catch (_) {}
+  loadProviders();
   const qs = new URLSearchParams(location.search);
+  const loginCode = qs.get('login_code'), loginMsg = qs.get('login');
+  if (loginCode || loginMsg) history.replaceState(null, '', '/');
+  if (loginCode) {
+    try {
+      const r = await api('/v1/auth/handoff', { method: 'POST', body: JSON.stringify({ code: loginCode }) });
+      S.token = r.token; try { localStorage.setItem('creai_token', r.token); } catch (_) {}
+      await afterSignIn(true);
+      return;
+    } catch (e) { S.token = null; }
+  }
   const back = qs.get('topup');
   const cn = qs.get('connect') === 'webflow' ? (qs.get('status') || 'ok') : null;
   if (back || cn) history.replaceState(null, '', '/');
@@ -1080,6 +1113,7 @@ setTheme(document.documentElement.dataset.theme);
   try { const t = await api('/v1/agent/draft'); renderThread(t.messages || []); setHasSite(t.site); }
   catch (_) { renderThread([]); }
   refreshPreview();
+  if (loginMsg === 'failed') addAgent('Sign-in didn\'t finish' + (qs.get('why') ? ': ' + qs.get('why') : '') + '. You can try again or use your email.');
 })();
 })();
 </script>

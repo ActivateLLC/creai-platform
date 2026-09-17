@@ -252,6 +252,27 @@ CREATE TABLE IF NOT EXISTS oauth_states (
   expires_at  TIMESTAMPTZ NOT NULL
 );
 
+-- Social sign-in: which outside account belongs to which person.
+CREATE TABLE IF NOT EXISTS identities (
+  provider    TEXT NOT NULL,
+  subject     TEXT NOT NULL,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (provider, subject)
+);
+
+-- Short-lived sign-in handshakes and one-time handoff codes (no org yet).
+CREATE TABLE IF NOT EXISTS login_states (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,          -- start | handoff
+  provider    TEXT,
+  verifier    TEXT,
+  nonce       TEXT,
+  token_enc   BYTEA,
+  expires_at  TIMESTAMPTZ NOT NULL
+);
+
 -- Our own registration with each provider (platform-level, not per tenant).
 CREATE TABLE IF NOT EXISTS oauth_clients (
   provider      TEXT NOT NULL,
