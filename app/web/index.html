@@ -379,10 +379,24 @@ const STARTERS = [
   'Bookkeeping for small construction companies.'
 ];
 
+// Inside the CreAI mobile app this same page runs from the device, so API calls
+// go to the live server and the draft travels in a header instead of a cookie.
+const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const PLATFORM = NATIVE ? window.Capacitor.getPlatform() : 'web';
+const API_BASE = NATIVE ? 'https://app.creai.dev' : '';
+function draftHeaders(h) {
+  if (NATIVE) { try { const d = localStorage.getItem('creai_draft'); if (d) h['X-Draft-Token'] = d; } catch (_) {} }
+  return h;
+}
+function keepDraft(r) {
+  if (!NATIVE) return;
+  const d = r.headers.get('X-Draft-Token'); if (d) { try { localStorage.setItem('creai_draft', d); } catch (_) {} }
+}
 async function api(path, opts = {}) {
-  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  const headers = draftHeaders(Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}));
   if (S.token) headers.Authorization = 'Bearer ' + S.token;
-  const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+  const r = await fetch(API_BASE + path, Object.assign({ credentials: NATIVE ? 'omit' : 'same-origin' }, opts, { headers }));
+  keepDraft(r);
   const text = await r.text();
   let body; try { body = JSON.parse(text); } catch (_) { body = text; }
   if (!r.ok) { const e = new Error((body && body.detail) || ('Request failed (' + r.status + ')')); e.status = r.status; throw e; }
@@ -466,7 +480,7 @@ async function refreshPreview() {
   const path = S.project ? '/v1/agent/projects/' + S.project.id + '/preview' : '/v1/agent/draft/preview';
   try {
     const headers = S.token && S.project ? { Authorization: 'Bearer ' + S.token } : {};
-    const r = await fetch(path, { credentials: 'same-origin', headers });
+    const r = await fetch(API_BASE + path, { credentials: NATIVE ? 'omit' : 'same-origin', headers: draftHeaders(headers) });
     $('preview').srcdoc = await r.text();
   } catch (_) {}
   $('url').textContent = S.project ? 'preview · ' + S.project.name : 'preview · draft';
@@ -578,12 +592,36 @@ async function loadProviders() {
   try { list = (await api('/v1/auth/providers')).providers; } catch (_) {}
   const box = $('socialBox'); box.replaceChildren();
   for (const p of list) {
-    const a = el('a'); a.href = '/v1/auth/' + p.provider + '/start';
+    const a = el('a'); a.href = API_BASE + '/v1/auth/' + p.provider + '/start' + (NATIVE ? '?client=app' : '');
+    if (NATIVE) a.onclick = (e) => { e.preventDefault(); openExternal(a.href); };
     if (p.provider === 'google') a.innerHTML = GOOGLE_G;
     a.append(el('span', null, 'Continue with ' + p.name));
     box.append(a);
   }
   $('orLine').hidden = !list.length;
+}
+function openExternal(url) {
+  const B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
+  if (B) B.open({ url, presentationStyle: 'popover' }); else window.open(url, '_blank');
+}
+async function finishNativeLogin(url) {
+  let q; try { q = new URL(url).searchParams; } catch (_) { return; }
+  const B = window.Capacitor.Plugins.Browser; if (B) B.close().catch(() => {});
+  if (q.get('login_code')) {
+    try {
+      const r = await api('/v1/auth/handoff', { method: 'POST', body: JSON.stringify({ code: q.get('login_code') }) });
+      S.token = r.token; try { localStorage.setItem('creai_token', r.token); } catch (_) {}
+      if ($('dSign').open) $('dSign').close();
+      await afterSignIn(true);
+    } catch (e) { addAgent('Sign-in didn\'t finish. Please try again.'); }
+  } else if (q.get('login') === 'failed') {
+    addAgent('Sign-in didn\'t finish' + (q.get('why') ? ': ' + q.get('why') : '') + '.');
+  }
+}
+if (NATIVE && window.Capacitor.Plugins.App) {
+  window.Capacitor.Plugins.App.addListener('appUrlOpen', (ev) => {
+    if ((ev.url || '').startsWith('creai://auth')) finishNativeLogin(ev.url);
+  });
 }
 function signOut() { S.token = null; S.project = null; try { localStorage.removeItem('creai_token'); } catch (_) {} location.reload(); }
 
@@ -752,7 +790,7 @@ async function loadConnections() {
         b.disabled = true;
         try {
           if (p.connected) { await api('/v1/connections/webflow', { method: 'DELETE' }); loadConnections(); }
-          else { const r = await api('/v1/connections/webflow/start', { method: 'POST' }); location.href = r.url; }
+          else { const r = await api('/v1/connections/webflow/start', { method: 'POST' }); if (NATIVE) openExternal(r.url); else location.href = r.url; }
         } catch (e) { b.disabled = false; pane.append(el('p', 'err', e.message)); }
       };
       row.append(b);
@@ -848,8 +886,12 @@ async function loadCredits() {
     pane.append(ok); S.justAdded = 0;
   }
   head.append(el('h2', null, b.balance.toLocaleString() + ' credits'),
-    el('p', 'muted', 'Best uses about 20 credits a message; Fast about 4. Bigger packs come with bonus credits.'));
+    el('p', 'muted', 'Best uses about 20 credits a message; Fast about 4.' + (NATIVE ? '' : ' Bigger packs come with bonus credits.')));
   pane.append(head);
+  if (NATIVE) {
+    pane.append(el('p', 'note', 'Your balance is shared across all your devices.'));
+    return;
+  }
   const grid = el('div', 'packs');
   for (const p of b.packs) {
     const card = el('button', 'pack' + (p.id === 'pro' ? ' best' : '')); card.type = 'button';

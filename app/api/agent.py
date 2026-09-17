@@ -18,7 +18,7 @@ from ..core import tenancy as T
 from ..core.config import settings
 from ..core.db import conn, log_event
 from ..services import agent, billing, site, webflow
-from .drafts import COOKIE, DRAFT_TTL, _token
+from .drafts import DRAFT_TTL, _token, draft_token, remember
 
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
 
@@ -70,7 +70,7 @@ async def _run(message: str, answers: dict, **kw):
 # ---------------------------------------------------------------- anonymous
 
 @router.get("/draft")
-async def draft_thread(creai_draft: str | None = Cookie(None)):
+async def draft_thread(creai_draft: str | None = Depends(draft_token)):
     if not creai_draft:
         return _payload({})
     async with conn() as c:
@@ -81,7 +81,7 @@ async def draft_thread(creai_draft: str | None = Cookie(None)):
 
 @router.post("/draft")
 async def draft_say(body: SayIn, request: Request, response: Response,
-                    creai_draft: str | None = Cookie(None)):
+                    creai_draft: str | None = Depends(draft_token)):
     _limit(request.client.host if request.client else "unknown")
     tok = creai_draft
     async with conn() as c:
@@ -97,9 +97,7 @@ async def draft_say(body: SayIn, request: Request, response: Response,
                    RETURNING id, answers""",
                 tok, body.message.strip()[:2000],
                 datetime.now(timezone.utc) + DRAFT_TTL)
-            response.set_cookie(COOKIE, tok, max_age=int(DRAFT_TTL.total_seconds()),
-                                httponly=True, samesite="lax",
-                                secure=settings.env != "development")
+            remember(response, tok)
 
     answers = dict(row["answers"] or {})
     turns = int(answers.get("_turns", 0))
@@ -118,7 +116,7 @@ async def draft_say(body: SayIn, request: Request, response: Response,
 
 
 @router.get("/draft/preview", response_class=HTMLResponse)
-async def draft_preview(creai_draft: str | None = Cookie(None)):
+async def draft_preview(creai_draft: str | None = Depends(draft_token)):
     answers = {}
     if creai_draft:
         async with conn() as c:

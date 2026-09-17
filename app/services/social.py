@@ -64,7 +64,10 @@ def redirect_uri(provider: str) -> str:
     return f"{settings.public_url.rstrip('/')}/v1/auth/{provider}/callback"
 
 
-async def start(provider: str) -> str:
+APP_RETURN = "creai://auth"
+
+
+async def start(provider: str, client: str = "web") -> str:
     p = _conf(provider)
     state, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
     verifier = secrets.token_urlsafe(64)[:96]
@@ -72,9 +75,10 @@ async def start(provider: str) -> str:
     async with conn() as c:
         await c.execute("DELETE FROM login_states WHERE expires_at < now()")
         await c.execute(
-            """INSERT INTO login_states (id, kind, provider, verifier, nonce, expires_at)
-               VALUES ($1,'start',$2,$3,$4,$5)""",
-            state, provider, verifier, nonce, datetime.now(timezone.utc) + START_TTL)
+            """INSERT INTO login_states (id, kind, provider, verifier, nonce, client, expires_at)
+               VALUES ($1,'start',$2,$3,$4,$5,$6)""",
+            state, provider, verifier, nonce, "app" if client == "app" else "web",
+            datetime.now(timezone.utc) + START_TTL)
     return p["authorize"] + "?" + urlencode({
         "client_id": p["id"](), "redirect_uri": redirect_uri(provider),
         "response_type": "code", "scope": p["scope"], "state": state, "nonce": nonce,
@@ -89,6 +93,13 @@ def _claims(id_token: str) -> dict:
         return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     except (IndexError, ValueError):
         raise SocialError("the sign-in response was malformed")
+
+
+async def client_for(state: str | None) -> str:
+    if not state:
+        return "web"
+    async with conn() as c:
+        return (await c.fetchval("SELECT client FROM login_states WHERE id=$1", state)) or "web"
 
 
 async def finish(provider: str, code: str, state: str) -> str:

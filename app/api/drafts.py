@@ -16,10 +16,11 @@ A draft is keyed to a random token held in a cookie, has no org_id, and expires.
 Signing up claims it into the new workspace.
 """
 
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import Header, APIRouter, Cookie, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from ..core import tenancy as T
@@ -54,9 +55,26 @@ def _token() -> str:
     return "d_" + secrets.token_urlsafe(24)
 
 
+def draft_token(creai_draft: str | None = Cookie(None),
+                x_draft_token: str | None = Header(None)) -> str | None:
+    """Browsers carry the draft in a cookie; the mobile app, which can't rely on
+    cookies, sends the same token in a header."""
+    tok = creai_draft or x_draft_token
+    if tok and re.fullmatch(r"d_[A-Za-z0-9_-]{20,64}", tok):
+        return tok
+    return None
+
+
+def remember(response: Response, tok: str) -> None:
+    response.set_cookie(COOKIE, tok, max_age=int(DRAFT_TTL.total_seconds()),
+                        httponly=True, samesite="lax",
+                        secure=settings.env != "development")
+    response.headers["X-Draft-Token"] = tok
+
+
 @router.post("/start")
 async def start(body: StartIn, response: Response,
-                creai_draft: str | None = Cookie(None)):
+                creai_draft: str | None = Depends(draft_token)):
     """No auth. One sentence in, a draft project out."""
     tok = creai_draft or _token()
     async with conn() as c:
@@ -68,15 +86,13 @@ async def start(body: StartIn, response: Response,
             tok, body.brief.strip(), datetime.now(timezone.utc) + DRAFT_TTL)
     # secure only outside development: a Secure cookie is dropped over plain
     # HTTP, which would silently break every local dev session.
-    response.set_cookie(COOKIE, tok, max_age=int(DRAFT_TTL.total_seconds()),
-                        httponly=True, samesite="lax",
-                        secure=settings.env != "development")
+    remember(response, tok)
     return {"draft_id": row["id"], "brief": row["brief"], "answers": row["answers"],
             "signed_in": False}
 
 
 @router.get("")
-async def read(creai_draft: str | None = Cookie(None)):
+async def read(creai_draft: str | None = Depends(draft_token)):
     """What the client calls on load: is there work in progress?"""
     if not creai_draft:
         return {"draft": None}
@@ -91,7 +107,7 @@ async def read(creai_draft: str | None = Cookie(None)):
 
 
 @router.post("/answer")
-async def answer(body: AnswerIn, creai_draft: str | None = Cookie(None)):
+async def answer(body: AnswerIn, creai_draft: str | None = Depends(draft_token)):
     """The narrowing questions, asked beside a result rather than before one.
 
     Same information the old flow demanded up front, gathered when it is
@@ -120,7 +136,7 @@ async def gate(action: str):
 
 @router.post("/claim")
 async def claim(ctx: T.Ctx = Depends(T.current_ctx),
-                creai_draft: str | None = Cookie(None)):
+                creai_draft: str | None = Depends(draft_token)):
     """Called immediately after sign-up. Moves the anonymous work into the
     workspace so nothing done before the wall is lost."""
     if not creai_draft:

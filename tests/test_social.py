@@ -144,3 +144,21 @@ async def test_unconfigured_provider_is_hidden(env):
         assert (await api.get("/v1/auth/facebook/start")).status_code == 404
     finally:
         object.__setattr__(settings, "google_client_id", CID)
+
+
+async def test_mobile_app_sign_in_returns_to_the_app(env):
+    api, g = env
+    r = await api.get("/v1/auth/google/start", params={"client": "app"})
+    q = parse_qs(urlparse(r.headers["location"]).query)
+    code = "c" + secrets.token_hex(4)
+    g.pending[code] = (q["code_challenge"][0], {
+        "iss": "https://accounts.google.com", "aud": CID, "exp": int(time.time()) + 300,
+        "nonce": q["nonce"][0], "sub": secrets.token_hex(8),
+        "email": f"app{secrets.token_hex(3)}@example-shop.io", "email_verified": True})
+    cb = await api.get("/v1/auth/google/callback", params={"code": code, "state": q["state"][0]})
+    loc = cb.headers["location"]
+    assert loc.startswith("creai://auth?login_code=")
+    handoff = parse_qs(urlparse(loc).query)["login_code"][0]
+    assert (await api.post("/v1/auth/handoff", json={"code": handoff})).status_code == 200
+    web = await api.get("/v1/auth/google/callback", params={"error": "access_denied"})
+    assert web.headers["location"].startswith(settings.public_url)

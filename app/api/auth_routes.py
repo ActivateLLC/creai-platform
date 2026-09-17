@@ -103,9 +103,9 @@ async def providers():
 
 
 @router.get("/{provider}/start", include_in_schema=False)
-async def social_start(provider: str):
+async def social_start(provider: str, client: str = "web"):
     try:
-        return RedirectResponse(await social.start(provider), status_code=303)
+        return RedirectResponse(await social.start(provider, client), status_code=303)
     except (social.SocialError, vault.VaultError) as exc:
         raise HTTPException(404, str(exc))
 
@@ -113,15 +113,17 @@ async def social_start(provider: str):
 @router.get("/{provider}/callback", include_in_schema=False)
 async def social_callback(provider: str, code: str | None = None, state: str | None = None,
                           error: str | None = None):
-    base = settings.public_url.rstrip("/")
+    from urllib.parse import quote
+    app = await social.client_for(state) == "app"
+    # the mobile app gets control back through its own link; browsers return to the web app
+    base = social.APP_RETURN if app else settings.public_url.rstrip("/") + "/"
     if error or not code or not state:
-        return RedirectResponse(f"{base}/?login=cancelled", status_code=303)
+        return RedirectResponse(f"{base}?login=cancelled", status_code=303)
     try:
         handoff = await social.finish(provider, code, state)
     except (social.SocialError, vault.VaultError) as exc:
-        from urllib.parse import quote
-        return RedirectResponse(f"{base}/?login=failed&why={quote(str(exc))}", status_code=303)
-    return RedirectResponse(f"{base}/?login_code={handoff}", status_code=303)
+        return RedirectResponse(f"{base}?login=failed&why={quote(str(exc))}", status_code=303)
+    return RedirectResponse(f"{base}?login_code={handoff}", status_code=303)
 
 
 @router.post("/handoff")

@@ -229,3 +229,21 @@ async def test_production_says_when_email_cannot_be_sent(api, monkeypatch):
         assert "code" not in r.text
     finally:
         object.__setattr__(settings, "env", "development")
+
+
+async def test_mobile_app_keeps_its_draft_by_header(api, monkeypatch):
+    monkeypatch.setattr(agent, "_call", FakeModel([text("Hi.")], [text("Still here.")]))
+    first = await api.post("/v1/agent/draft", json={"message": "a bakery"})
+    tok = first.headers["x-draft-token"]
+    assert tok.startswith("d_")
+    api.cookies.clear()
+    again = await api.post("/v1/agent/draft", json={"message": "more"}, headers={"X-Draft-Token": tok})
+    assert len(again.json()["messages"]) == 4
+    assert (await api.get("/v1/agent/draft", headers={"X-Draft-Token": "../../etc"})).json()["messages"] == []
+    pre = await api.options("/v1/agent/draft", headers={
+        "Origin": "capacitor://localhost", "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,x-draft-token"})
+    assert pre.headers.get("access-control-allow-origin") == "capacitor://localhost"
+    evil = await api.options("/v1/agent/draft", headers={
+        "Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
+    assert evil.headers.get("access-control-allow-origin") is None

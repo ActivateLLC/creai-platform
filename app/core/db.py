@@ -270,8 +270,10 @@ CREATE TABLE IF NOT EXISTS login_states (
   verifier    TEXT,
   nonce       TEXT,
   token_enc   BYTEA,
+  client      TEXT,
   expires_at  TIMESTAMPTZ NOT NULL
 );
+ALTER TABLE login_states ADD COLUMN IF NOT EXISTS client TEXT;
 
 -- Our own registration with each provider (platform-level, not per tenant).
 CREATE TABLE IF NOT EXISTS oauth_clients (

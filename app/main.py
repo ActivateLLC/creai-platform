@@ -34,10 +34,13 @@ app = FastAPI(title="CreAI Platform", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.public_url, "http://localhost:3000"],
+    # the web app, local dev, and the CreAI mobile app (Capacitor on iOS / Android)
+    allow_origins=[settings.public_url, "http://localhost:3000",
+                   "capacitor://localhost", "https://localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Draft-Token"],
 )
 
 for r in (agent.router, billing.router, connections.router, marketing.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
