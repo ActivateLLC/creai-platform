@@ -71,6 +71,7 @@ DEFAULT = {
     "theme": "",
     "motion": "subtle",
     "hero_image": "",
+    "hero_video": "",
     "sections": [],
     "contact": {},
 }
@@ -91,9 +92,22 @@ def _image(v) -> str:
     except ValueError:
         return ""
     host = (p.hostname or "").lower()
+    from . import assets
+    if assets.is_our_url(url):
+        return url
+    from ..core.config import settings
+    if host == (urlparse(settings.public_url).hostname or "").lower():
+        return ""                        # on our own host, only /f/ file links
     if p.scheme != "https" or not any(host == h or host.endswith("." + h) for h in IMAGE_HOSTS):
         return ""
     return url
+
+
+def _video(v) -> str:
+    """Videos only from the person's own uploads."""
+    from . import assets
+    url = _text(v, 600)
+    return url if assets.is_our_url(url) else ""
 
 
 def _items(raw, fields: dict) -> list[dict]:
@@ -148,6 +162,8 @@ def merge(current: dict | None, patch: dict) -> dict:
         site["motion"] = patch["motion"]
     if "hero_image" in patch:
         site["hero_image"] = _image(patch["hero_image"])
+    if "hero_video" in patch:
+        site["hero_video"] = _video(patch["hero_video"])
     if isinstance(patch.get("palette"), dict):
         pal = dict(site["palette"])
         for k in ("bg", "ink", "accent"):
@@ -385,8 +401,14 @@ def render(site: dict | None) -> str:
         '<p class="hint">Describe your business and the page fills in here.</p>'
 
     headline = s["headline"] or name
-    visual = (f'<img class="art" src="{e(s["hero_image"], quote=True)}" alt="">'
-              if s["hero_image"] else _art(s, pal))
+    if s["hero_video"]:
+        poster = f' poster="{e(s["hero_image"], quote=True)}"' if s["hero_image"] else ""
+        visual = (f'<video class="art" src="{e(s["hero_video"], quote=True)}"{poster} autoplay muted loop '
+                  f'playsinline preload="metadata" aria-hidden="true"></video>')
+    elif s["hero_image"]:
+        visual = f'<img class="art" src="{e(s["hero_image"], quote=True)}" alt="">'
+    else:
+        visual = _art(s, pal)
     cta = f'<a class="btn" href="#contact">{e(s["cta"])}</a>'
     sub = f'<p class="sub">{e(s["subline"])}</p>' if s["subline"] else ""
     h1 = f'<h1 aria-label="{e(headline, quote=True)}"><span aria-hidden="true">{_words(headline)}</span></h1>'
@@ -402,7 +424,10 @@ def render(site: dict | None) -> str:
                 f'{tile3}<div class="tile t4">{cta}</div>')
     elif layout == "poster":
         hero = f'{h1}<div class="poster-foot">{sub}{cta}</div>'
-        if s["hero_image"]:
+        if s["hero_video"]:
+            hero = (f'<video class="poster-video" src="{e(s["hero_video"], quote=True)}" autoplay muted loop '
+                    f'playsinline aria-hidden="true"></video>') + hero
+        if s["hero_image"] and not s["hero_video"]:
             from urllib.parse import quote
             safe = quote(s["hero_image"], safe=":/?&=%.-_~")
             poster_bg = (f'.hero.poster{{background:linear-gradient(100deg,var(--accent) 38%,'
@@ -472,6 +497,8 @@ border-bottom:1px solid currentColor;padding-bottom:14px;margin-bottom:36px}}
 .hero.poster{{background:var(--accent);color:var(--on);min-height:82vh;display:flex;flex-direction:column;justify-content:space-between}}
 .hero.poster h1{{font-size:clamp(52px,9.5vw,150px);max-width:14ch;text-transform:uppercase;line-height:.9}}
 .hero.poster .btn{{background:var(--on);color:var(--accent)}}
+.hero.poster{{position:relative;isolation:isolate}}
+.poster-video{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:.35;mix-blend-mode:luminosity}}
 .poster-foot{{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}}
 .marquee{{overflow:hidden;background:var(--ink);color:var(--bg);white-space:nowrap;padding:14px 0;
 font:{t['dw']} 22px var(--display);text-transform:{t['case']}}}

@@ -324,6 +324,27 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Files people upload: photos, videos (with extracted stills as children) and PDFs.
+CREATE TABLE IF NOT EXISTS assets (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+  parent_id   BIGINT REFERENCES assets(id) ON DELETE CASCADE,
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  kind        TEXT NOT NULL,                  -- image | video | pdf
+  mime        TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  size        BIGINT NOT NULL,
+  width       INTEGER,
+  height      INTEGER,
+  duration    REAL,
+  key         TEXT NOT NULL UNIQUE,
+  token       TEXT NOT NULL UNIQUE,
+  status      TEXT NOT NULL DEFAULT 'pending', -- pending | ready | deleted
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS assets_org_idx ON assets(org_id, status, id DESC);
+
 -- Launch readiness: the person's decisions on checklist items, and the agent's ideas.
 CREATE TABLE IF NOT EXISTS readiness_decisions (
   org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -431,7 +452,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
 )
 
 

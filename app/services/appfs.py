@@ -266,7 +266,7 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     const t = href.length > 1 && document.getElementById(decodeURIComponent(href.slice(1)));
     if (t) t.scrollIntoView({ behavior: 'smooth' });
-  } else if (/^https:\/\//.test(href)) {
+  } else if (/^https:[/][/]/.test(href)) {
     e.preventDefault(); window.open(href, '_blank', 'noopener');
   } else {
     e.preventDefault();
@@ -289,7 +289,7 @@ def preview(app_files: dict[str, str], site: dict, app_token: str, api_base: str
              .replace("__TOKEN__", json.dumps(app_token))
     csp = ("default-src 'none'; script-src 'unsafe-inline' blob: https://esm.sh; "
            "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-           f"img-src data: blob: https:; connect-src {api_base.rstrip('/')} https://esm.sh; "
+           f"img-src data: blob: https:; media-src blob: https:; connect-src {api_base.rstrip('/')} https://esm.sh; "
            "form-action 'none'; base-uri 'none'")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

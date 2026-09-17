@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
-                  domains, drafts, marketing, orgs, projects, channels, appdata, apps, sites, plans, readiness)
+                  domains, drafts, marketing, orgs, projects, channels, appdata, apps, sites, plans, readiness, assets)
 from .core import db
 from .services import social_publish
 from .core.config import settings
@@ -54,6 +54,15 @@ async def _stripe_self_check():
         log.error("stripe portal configuration failed: %s", exc)
 
 
+async def _assets_setup():
+    from .services import assets as asset_svc
+    try:
+        await asset_svc.ensure_cors()
+        logging.getLogger("creai.assets").info("upload bucket ready")
+    except Exception as exc:
+        logging.getLogger("creai.assets").error("upload bucket CORS failed: %s", exc)
+
+
 async def _renewals():
     from .services import registrar
     log = logging.getLogger("creai.renewals")
@@ -77,6 +86,8 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(social_publish.sweeper()))
     if settings.env != "development":
         tasks.append(asyncio.create_task(_renewals()))
+        if not settings.missing_for("uploads"):
+            tasks.append(asyncio.create_task(_assets_setup()))
         if not settings.missing_for("billing"):
             tasks.append(asyncio.create_task(_stripe_self_check()))
         elif settings.stripe_key or settings.stripe_publishable_key:
@@ -135,7 +146,7 @@ class AppDataCORS:
 app.add_middleware(AppDataCORS)
 app.add_middleware(sites.CustomDomains)
 
-for r in (appdata.router, apps.router, sites.router, plans.router, readiness.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (appdata.router, apps.router, sites.router, plans.router, readiness.router, assets.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 

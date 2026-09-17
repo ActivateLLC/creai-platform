@@ -8,3 +8,4 @@ python-multipart==0.0.20
 pytest==8.3.4
 pytest-asyncio==0.25.0
 cryptography==46.0.6
+boto3==1.40.30

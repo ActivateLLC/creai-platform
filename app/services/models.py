@@ -125,16 +125,26 @@ def to_openai(messages: list, tools: list, system: str) -> tuple[list, list]:
                 out["tool_calls"] = calls
             msgs.append(out)
         else:
-            texts = []
+            parts = []
             for b in content:
                 if b.get("type") == "tool_result":
                     c = b.get("content")
                     msgs.append({"role": "tool", "tool_call_id": b["tool_use_id"],
                                  "content": c if isinstance(c, str) else json.dumps(c)})
                 elif b.get("type") == "text":
-                    texts.append(b.get("text", ""))
-            if texts:
-                msgs.append({"role": "user", "content": "\n".join(texts)})
+                    parts.append({"type": "text", "text": b.get("text", "")})
+                elif b.get("type") == "image" and (b.get("source") or {}).get("type") == "base64":
+                    src = b["source"]
+                    parts.append({"type": "image_url", "image_url": {
+                        "url": f"data:{src['media_type']};base64,{src['data']}"}})
+                elif b.get("type") == "document":
+                    parts.append({"type": "text", "text": f"[A PDF named {b.get('title', 'document')} was attached "
+                                                          "but this model can't read PDFs.]"})
+            if parts:
+                if all(p["type"] == "text" for p in parts):
+                    msgs.append({"role": "user", "content": "\n".join(p["text"] for p in parts)})
+                else:
+                    msgs.append({"role": "user", "content": parts})
     fns = [{"type": "function", "function": {
         "name": t["name"], "description": t.get("description", ""),
         "parameters": t.get("input_schema") or {"type": "object", "properties": {}}}}

@@ -33,6 +33,7 @@ class SayIn(BaseModel):
     message: str = Field(min_length=1, max_length=agent.MAX_USER_CHARS)
     mode: str = Field("best", pattern="^(best|fast)$")
     intent: str = Field("build", pattern="^(build|chat|plan)$")
+    asset_ids: list[int] = Field(default_factory=list, max_length=8)
     timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+){0,2}$")
 
 
@@ -86,6 +87,8 @@ async def draft_thread(creai_draft: str | None = Depends(draft_token)):
 async def draft_say(body: SayIn, request: Request, response: Response,
                     creai_draft: str | None = Depends(draft_token)):
     _limit(request.client.host if request.client else "unknown")
+    if body.asset_ids:
+        raise HTTPException(401, "Sign in to attach photos, videos or files.")
     tok = creai_draft
     async with conn() as c:
         row = None
@@ -228,6 +231,10 @@ async def project_say(project_id: int, body: SayIn,
                                 st["auto_publish"], queue_approval)
 
     app_ctx = (project_id, ctx.org_id) if p_path(p) == "app" else None
+    attachments = None
+    if body.asset_ids:
+        from ..services import assets as asset_svc
+        attachments = await asset_svc.context(ctx.org_id, body.asset_ids)
 
     class Ideas:
         """Improvement ideas for this project's launch checklist."""
@@ -263,6 +270,7 @@ async def project_say(project_id: int, body: SayIn,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
                       intent=body.intent, bridge=bridge, app=app_ctx, drafts=Drafts(),
                       ideas=None if answers.get("source") or p_path(p) == "market" else Ideas(),
+                      attachments=attachments,
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls,
@@ -306,6 +314,6 @@ def _preview_headers() -> dict:
     # Rendered sites carry no script; this makes that a rule, not a habit.
     return {"Content-Security-Policy": "default-src 'none'; script-src 'none'; "
                                        "style-src 'unsafe-inline' https://fonts.googleapis.com; "
-                                       "font-src https://fonts.gstatic.com; img-src data: https:; "
+                                       "font-src https://fonts.gstatic.com; img-src data: https:; media-src https:; "
                                        "frame-ancestors 'self'",
             "Cache-Control": "no-store"}

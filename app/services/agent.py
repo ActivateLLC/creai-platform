@@ -63,6 +63,10 @@ sells and who buys it; two different businesses should never look alike. Use the
 that tell this business's story (steps for a process, stats only with real numbers the person \
 gave, gallery with generated images). Write specific, concrete copy in the owner's voice; avoid \
 stock phrases such as elevate, unlock, seamless, one-stop, welcome to.
+- When the person attaches photos, videos or PDFs, look at them closely and use them: their own \
+photos beat generated ones (hero_image, gallery items), a video can be the hero (hero_video), and \
+menus, price lists or brochures are the source of truth for services and prices. Describe only what \
+you can actually see, and ask before using a photo that shows people's faces prominently.
 - update_site returns a quality list. If it is not empty, fix every item with another \
 update_site call before replying.
 - Style: plain, specific and calm. Short replies — two or three sentences. No \
@@ -133,8 +137,11 @@ TOOL_UPDATE_SITE = {
                        "description": "none; subtle (gentle entrances); lively (staggered reveals, "
                                       "ticker); cinematic (word-by-word headline, scroll depth, grain)."},
             "hero_image": {"type": "string",
-                           "description": "URL of an image made with generate_image. Leave empty for "
-                                          "generative artwork from the palette."},
+                           "description": "URL of an image made with generate_image or a photo the person "
+                                          "attached. Leave empty for generative artwork from the palette."},
+            "hero_video": {"type": "string",
+                           "description": "URL of a video the person attached, shown muted and looping in "
+                                          "the hero. Set to empty to remove."},
             "palette": {
                 "type": "object",
                 "properties": {k: {"type": "string", "description": "#RRGGBB"}
@@ -380,7 +387,10 @@ def visible(thread: list) -> list:
     for m in thread:
         c = m["content"]
         if isinstance(c, str):
-            out.append({"role": m["role"], "text": c})
+            item = {"role": m["role"], "text": c}
+            if m.get("assets"):
+                item["assets"] = m["assets"]
+            out.append(item)
         else:
             text = " ".join(b.get("text", "") for b in c if b.get("type") == "text").strip()
             if text and m["role"] == "assistant":
@@ -463,7 +473,8 @@ page: ignore the update_site instructions above and never call update_site.
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
               bridge=None, marketing: bool = False, marketing_only: bool = False,
-              app: tuple | None = None, tz: str | None = None, drafts=None, ideas=None) -> Turn:
+              app: tuple | None = None, tz: str | None = None, drafts=None, ideas=None,
+              attachments: tuple | None = None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -543,10 +554,17 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             system += "\nDrafted posts not yet out (use revise_post with these ids): " + json.dumps(
                 [{k: (v[:160] if k == "text" else v) for k, v in d.items()} for d in waiting])[:4000]
 
-    turn.thread.append({"role": "user", "content": text[:MAX_USER_CHARS]})
+    blocks, note, record = attachments or ([], "", [])
+    typed = text[:MAX_USER_CHARS]
+    if blocks or note:
+        turn.thread.append({"role": "user", "content": blocks + [{"type": "text", "text": (note + "\n\n" + typed).strip()}]})
+    else:
+        turn.thread.append({"role": "user", "content": typed})
+    user_at = len(turn.thread) - 1
 
     for _ in range(APP_MAX_STEPS if app is not None else MAX_STEPS):
-        out = await _call(turn.thread, tools, system, model, 16000 if app is not None else 2048)
+        out = await _call([{"role": m["role"], "content": m["content"]} for m in turn.thread],
+                          tools, system, model, 16000 if app is not None else 2048)
         turn.calls.append((out.get("model") or model, out.get("usage") or {}))
         content = out.get("content", [])
         turn.thread.append({"role": "assistant", "content": content})
@@ -567,6 +585,11 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if intent == "plan" and turn.reply:
         turn.actions.append({"kind": "build_plan", "label": "Build this plan"})
     turn.answers["site"] = turn.site
+    # The saved conversation keeps what was typed and which files were attached — never file bytes.
+    saved = {"role": "user", "content": typed}
+    if record:
+        saved["assets"] = record
+    turn.thread[user_at] = saved
     turn.answers["_thread"] = trim(turn.thread)
     return turn
 
