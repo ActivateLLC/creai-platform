@@ -211,10 +211,79 @@ dialog form{display:flex;flex-direction:column;gap:14px;margin:0}
 label{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream-soft)}
 input[type=email],input[type=text]{height:46px;padding:0 12px;border:1px solid var(--hairline);border-radius:0;background:var(--deep);color:var(--cream);font-size:16px}
 input:focus{outline:none;border-color:var(--leaf)}
-#payBox{min-height:120px}
-.paysum{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
-.paysum strong{font-family:var(--display);font-weight:400;font-size:32px}
+/* ---- checkout sheet */
+dialog.sheet{border:0;padding:0;background:transparent;width:min(460px,94vw);max-width:94vw;overflow:visible;color:var(--cream)}
+dialog.sheet::backdrop{background:rgba(4,5,7,.55);backdrop-filter:blur(14px) saturate(120%);-webkit-backdrop-filter:blur(14px) saturate(120%);animation:fadeIn .35s var(--ease) both}
+dialog.sheet.closing::backdrop{animation:fadeOut .28s ease both}
+.sheet-in{position:relative;border-radius:22px;padding:22px 22px 18px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 92%,var(--cream) 8%),var(--surface) 38%);
+  border:1px solid var(--hairline);
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.7),0 1px 0 color-mix(in srgb,var(--cream) 10%,transparent) inset;
+  animation:sheetPop .5s cubic-bezier(.16,1,.3,1) both}
+dialog.sheet.closing .sheet-in{animation:sheetOut .26s cubic-bezier(.4,0,1,1) both}
+@keyframes sheetPop{from{opacity:0;transform:translateY(14px) scale(.965)}to{opacity:1;transform:none}}
+@keyframes sheetOut{to{opacity:0;transform:translateY(10px) scale(.98)}}
+@keyframes fadeIn{from{opacity:0}}@keyframes fadeOut{to{opacity:0}}
+.grab{display:none;width:38px;height:5px;border-radius:99px;background:var(--hairline);margin:-8px auto 14px}
+@media (max-width:640px){
+  dialog.sheet{width:100vw;max-width:100vw;margin:auto 0 0;max-height:94vh}
+  .sheet-in{border-radius:26px 26px 0 0;border-bottom:0;padding:20px 18px calc(18px + env(safe-area-inset-bottom));animation-name:sheetUp;animation-duration:.55s}
+  dialog.sheet.closing .sheet-in{animation-name:sheetDown}
+  .grab{display:block}
+  @keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+  @keyframes sheetDown{to{transform:translateY(100%)}}
+}
+.sheet-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--cream-soft)}
+.sheet-head h2{margin:8px 0 0;font:400 30px/1.05 var(--display);letter-spacing:-.01em}
+.xbtn{width:36px;height:36px;border-radius:50%;border:1px solid var(--hairline);background:color-mix(in srgb,var(--cream) 5%,transparent);color:var(--cream-soft);display:grid;place-items:center;transition:background .2s,transform .2s,color .2s}
+.xbtn:hover{background:color-mix(in srgb,var(--cream) 12%,transparent);color:var(--cream);transform:rotate(90deg)}
+.order{margin:18px 0 16px;padding:16px 18px;border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:color-mix(in srgb,var(--leaf) 9%,transparent);border:1px solid color-mix(in srgb,var(--leaf) 26%,transparent)}
+.order .n{font:600 22px/1.1 var(--sans);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.order .n small{display:block;font:500 12px/1.4 var(--sans);color:var(--cream-soft);letter-spacing:0;margin-top:2px}
+.order .amt{font:400 38px/1 var(--display)}
+.bonus{display:inline-flex;align-items:center;height:20px;margin-left:8px;padding:0 8px;border-radius:99px;font:600 11px/1 var(--sans);letter-spacing:.02em;vertical-align:3px;background:color-mix(in srgb,var(--leaf) 22%,transparent);color:var(--leaf);border:1px solid color-mix(in srgb,var(--leaf) 45%,transparent)}
+#payBox{min-height:150px;transition:height .3s var(--ease);color-scheme:dark}
+#payBox iframe{color-scheme:dark;background:transparent!important}
+html[data-theme=day] #payBox,html[data-theme=day] #payBox iframe{color-scheme:light}
+.skel{display:grid;gap:10px}
+.skel i{display:block;height:52px;border-radius:12px;background:linear-gradient(90deg,color-mix(in srgb,var(--cream) 5%,transparent) 0%,color-mix(in srgb,var(--cream) 11%,transparent) 50%,color-mix(in srgb,var(--cream) 5%,transparent) 100%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+.skel i:nth-child(2){height:44px;width:70%}
+@keyframes shimmer{to{background-position:-200% 0}}
+.paybtn{position:relative;width:100%;height:54px;margin-top:16px;border:0;border-radius:14px;overflow:hidden;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--leaf) 88%,#fff 12%),var(--leaf));color:var(--night);
+  font:600 16px/1 var(--sans);letter-spacing:.01em;box-shadow:0 10px 30px -12px var(--leaf),0 1px 0 rgba(255,255,255,.25) inset;
+  transition:transform .18s var(--ease),box-shadow .25s,opacity .2s}
+.paybtn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 16px 36px -14px var(--leaf),0 1px 0 rgba(255,255,255,.25) inset}
+.paybtn:active:not(:disabled){transform:scale(.985)}
+.paybtn:disabled{opacity:.55;cursor:default}
+.paybtn::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.35) 50%,transparent 70%);transform:translateX(-120%);transition:transform .9s var(--ease)}
+.paybtn:hover:not(:disabled)::after{transform:translateX(120%)}
+.paybtn .spin{display:none;width:18px;height:18px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite;margin-right:10px;vertical-align:-3px}
+.paybtn.busy .spin{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.payerr{margin:10px 2px 0;font-size:14px;color:var(--rust);min-height:0}
+.payerr:empty{display:none}
+.done{text-align:center;padding:18px 4px 6px}
+.done svg{width:78px;height:78px;margin:6px auto 10px;display:block}
+.done circle{stroke:var(--leaf);stroke-width:3;fill:none;stroke-dasharray:226;stroke-dashoffset:226;animation:draw .7s cubic-bezier(.65,0,.35,1) forwards}
+.done path{stroke:var(--leaf);stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:draw .45s .55s cubic-bezier(.65,0,.35,1) forwards}
+.done .ring{fill:color-mix(in srgb,var(--leaf) 12%,transparent);transform-origin:center;animation:pulse .9s .9s ease-out both}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes pulse{from{transform:scale(.6);opacity:.9}to{transform:scale(1.35);opacity:0}}
+.done h3{margin:4px 0 4px;font:400 30px/1.1 var(--display)}
+.done p{margin:0 0 16px;color:var(--cream-soft)}
+.done .big{font:600 44px/1 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--leaf);margin:6px 0 2px}
+html[data-theme=terminal] .sheet-in{border-radius:8px}
+html[data-theme=terminal] .paybtn,html[data-theme=terminal] .order{border-radius:6px}
+html[data-theme=terminal] .paybtn{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:13px}
+html[data-theme=day] .sheet-in{background:#fff;box-shadow:0 40px 90px -30px rgba(20,23,26,.35)}
+html[data-theme=day] .paybtn{color:#fff}
+@media (prefers-reduced-motion:reduce){.sheet-in,dialog.sheet::backdrop,.skel i,.paybtn::after,.done *{animation:none!important;transition:none!important}.done circle,.done path{stroke-dashoffset:0}}
 .secure{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.sheet .secure{justify-content:center;margin-top:12px;font:500 12px/1.4 var(--sans);letter-spacing:0;text-transform:none;color:var(--cream-soft)}
 
 .choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
 .social{display:flex;flex-direction:column;gap:8px}
@@ -338,15 +407,28 @@ input:focus{outline:none;border-color:var(--leaf)}
   </form>
 </dialog>
 
-<dialog id="dPay">
-  <form id="fPay">
-    <div class="row" style="justify-content:space-between"><h2 id="payTitle">Top up</h2><button class="icon" type="button" data-close aria-label="Close">✕</button></div>
-    <div class="paysum"><span id="paySum" class="muted"></span><strong id="payAmt"></strong></div>
-    <div id="payBox"><p class="muted">Loading secure payment…</p></div>
-    <p class="err" id="payErr" style="margin:0"></p>
-    <button class="btn primary" id="payGo" type="submit" disabled>Pay</button>
-    <div class="secure"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Encrypted checkout · Card, Apple Pay, Google Pay or Klarna</div>
-  </form>
+<dialog id="dPay" class="sheet" aria-labelledby="payTitle">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <form id="fPay">
+      <div class="sheet-head">
+        <div><div class="eyebrow">Top up credits</div><h2 id="payTitle">Top up</h2></div>
+        <button class="xbtn" type="button" id="payClose" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="order"><div class="n"><span id="payCredits">0</span> credits<span id="payBonus"></span><small id="paySum"></small></div><div class="amt" id="payAmt"></div></div>
+      <div id="payBox"></div>
+      <p class="payerr" id="payErr"></p>
+      <button class="paybtn" id="payGo" type="submit" disabled><span class="spin" aria-hidden="true"></span><span id="payLabel">Pay</span></button>
+      <div class="secure row"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secured by Stripe · Apple Pay, Google Pay, card or Klarna</div>
+    </form>
+    <div id="payDone" class="done" hidden>
+      <svg viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="36"/><circle cx="40" cy="40" r="36"/><path d="M25 41l10 10 20-22"/></svg>
+      <h3>Payment complete</h3>
+      <div class="big" id="doneCredits">+0</div>
+      <p id="doneNote">Adding your credits…</p>
+      <button class="paybtn" type="button" id="doneGo">Keep building</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="dGrow">
@@ -1409,25 +1491,73 @@ function loadPayJs() {
   return payJs;
 }
 function appearance() {
+  const css = getComputedStyle(document.documentElement);
+  const v = n => css.getPropertyValue(n).trim();
   const th = document.documentElement.dataset.theme;
-  const c = th === 'terminal' ? { p: '#39ff88', bg: '#030805', t: '#b8ffcf', t2: '#5fd48a', line: 'rgba(57,255,136,.3)', f: 'IBM Plex Mono, monospace', base: 'night' }
-          : th === 'day' ? { p: '#2c8168', bg: '#ffffff', t: '#14171a', t2: '#555a60', line: 'rgba(20,23,26,.16)', f: 'Space Grotesk, system-ui, sans-serif', base: 'stripe' }
-          : { p: '#3da183', bg: '#0a0c0e', t: '#f2efe8', t2: '#b9b4a8', line: 'rgba(242,239,232,.14)', f: 'Space Grotesk, system-ui, sans-serif', base: 'night' };
-  return { theme: c.base, variables: { colorPrimary: c.p, colorBackground: c.bg, colorText: c.t, colorTextSecondary: c.t2,
-      colorDanger: '#e2725b', colorSuccess: c.p, fontFamily: c.f, borderRadius: '0px', spacingUnit: '4px', fontSizeBase: '15px' },
-    rules: { '.Input': { border: '1px solid ' + c.line, boxShadow: 'none' }, '.Input:focus': { border: '1px solid ' + c.p, boxShadow: 'none' },
-      '.Tab': { border: '1px solid ' + c.line, backgroundColor: c.bg }, '.Tab--selected': { borderColor: c.p },
-      '.AccordionItem': { border: '1px solid ' + c.line, boxShadow: 'none' },
-      '.Label': { color: c.t2, fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: '11px' } } };
+  const term = th === 'terminal', day = th === 'day';
+  const p = v('--leaf'), t = v('--cream'), t2 = v('--cream-soft'), line = v('--hairline');
+  const bg = day ? '#ffffff' : term ? '#06110a' : '#1c2126';
+  const selBg = day ? '#eef6f2' : term ? '#0b2414' : '#1f2e2a';
+  return {
+    theme: day ? 'stripe' : 'night',
+    labels: 'floating',
+    variables: {
+      colorPrimary: p, colorBackground: bg, colorText: t, colorTextSecondary: t2, colorTextPlaceholder: t2,
+      colorDanger: v('--rust'), colorSuccess: p, colorIcon: t2, colorIconTabSelected: p,
+      fontFamily: term ? 'IBM Plex Mono, monospace' : 'Space Grotesk, system-ui, sans-serif',
+      fontSizeBase: '15px', fontWeightMedium: '500', spacingUnit: '4px', gridRowSpacing: '12px',
+      borderRadius: term ? '6px' : '12px', focusBoxShadow: '0 0 0 3px ' + p + '40', focusOutline: 'none'
+    },
+    rules: {
+      '.Tab': { border: '1px solid ' + line, boxShadow: 'none', padding: '12px 14px', transition: 'border-color .2s, background-color .2s, box-shadow .2s' },
+      '.Tab:hover': { borderColor: t2, color: t },
+      '.Tab--selected, .Tab--selected:hover, .Tab--selected:focus': { backgroundColor: selBg, borderColor: p, boxShadow: '0 0 0 1px ' + p + ', 0 10px 24px -14px ' + p, color: t },
+      '.TabIcon--selected': { fill: p, color: p },
+      '.TabLabel--selected': { color: t },
+      '.TabLabel': { fontWeight: '500' },
+      '.Input': { border: '1px solid ' + line, boxShadow: 'none', padding: '12px 14px', transition: 'border-color .2s, box-shadow .2s' },
+      '.Input:hover': { borderColor: t2 },
+      '.Input:focus': { borderColor: p, boxShadow: '0 0 0 3px ' + p + '33' },
+      '.Input--invalid': { borderColor: v('--rust'), boxShadow: 'none' },
+      '.Label': { color: t2, fontWeight: '500' },
+      '.Block': { border: '1px solid ' + line, boxShadow: 'none' },
+      '.PickerItem': { border: '1px solid ' + line, boxShadow: 'none' }
+    }
+  };
 }
+function countUp(node, to, { prefix = '', dur = 0.9 } = {}) {
+  if (!window.gsap || reduced) { node.textContent = prefix + to.toLocaleString(); return; }
+  const o = { v: 0 };
+  gsap.to(o, { v: to, duration: dur, ease: 'power3.out', onUpdate: () => { node.textContent = prefix + Math.round(o.v).toLocaleString(); } });
+}
+function closeSheet(d) {
+  if (!d.open || d.classList.contains('closing')) return;
+  if (reduced) { d.close(); return; }
+  d.classList.add('closing');
+  setTimeout(() => { d.classList.remove('closing'); d.close(); }, 280);
+}
+function payBusy(on, label) {
+  $('payGo').classList.toggle('busy', on);
+  $('payGo').disabled = on;
+  if (label) $('payLabel').textContent = label;
+}
+$('payClose').onclick = () => closeSheet($('dPay'));
+$('doneGo').onclick = () => closeSheet($('dPay'));
+$('dPay').addEventListener('cancel', (e) => { e.preventDefault(); closeSheet($('dPay')); });
+$('dPay').addEventListener('click', (e) => { if (e.target === $('dPay')) closeSheet($('dPay')); });
 async function openPay(pack) {
   paying = pack;
-  $('payTitle').textContent = pack.name + ' top-up';
-  $('paySum').textContent = pack.credits.toLocaleString() + ' credits' + (pack.bonus ? ' (+' + pack.bonus + '% bonus)' : '');
+  $('fPay').hidden = false; $('payDone').hidden = true;
+  $('payTitle').textContent = pack.name;
+  $('payBonus').replaceChildren(pack.bonus ? el('span', 'bonus', '+' + pack.bonus + '% bonus') : '');
+  $('paySum').textContent = pack.bonus ? 'Includes bonus credits' : 'Never expire while your account is open';
   $('payAmt').textContent = pack.price;
-  $('payErr').textContent = ''; $('payGo').disabled = true; $('payGo').textContent = 'Pay ' + pack.price;
-  $('payBox').replaceChildren(el('p', 'muted', 'Loading secure payment…'));
+  $('payErr').textContent = '';
+  payBusy(false, 'Pay ' + pack.price); $('payGo').disabled = true;
+  const sk = el('div', 'skel'); sk.append(el('i'), el('i'), el('i'));
+  $('payBox').replaceChildren(sk);
   $('dPay').showModal();
+  countUp($('payCredits'), pack.credits);
   try {
     const [intent] = await Promise.all([
       api('/v1/billing/pay', { method: 'POST', body: JSON.stringify({ pack: pack.id }) }),
@@ -1436,41 +1566,64 @@ async function openPay(pack) {
     stripeObj = window.Stripe(intent.publishable_key);
     elements = stripeObj.elements({ clientSecret: intent.client_secret, appearance: appearance(),
       fonts: [{ cssSrc: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap' }] });
-    const holder = el('div'); $('payBox').replaceChildren(holder);
+    const holder = el('div'); holder.style.opacity = '0';
     const pe = elements.create('payment', {
-      layout: { type: 'accordion', defaultCollapsed: false, radios: true, spacedAccordionItems: true },
+      layout: { type: 'tabs', defaultCollapsed: false },
       business: { name: 'CreAI' },
       wallets: { applePay: 'auto', googlePay: 'auto' },
       terms: { card: 'never' }
     });
+    $('payBox').append(holder);
     pe.mount(holder);
-    pe.on('ready', () => { $('payGo').disabled = false; });
+    pe.on('ready', () => {
+      sk.remove(); holder.style.transition = 'opacity .35s var(--ease)'; holder.style.opacity = '1';
+      $('payGo').disabled = false;
+    });
+    pe.on('change', (ev) => {
+      const w = ev.value && ev.value.type;
+      $('payLabel').textContent = w === 'apple_pay' ? 'Pay with Apple Pay' : w === 'google_pay' ? 'Pay with Google Pay'
+        : w === 'klarna' ? 'Continue with Klarna' : 'Pay ' + pack.price;
+    });
   } catch (e) { $('payBox').replaceChildren(); $('payErr').textContent = e.message; }
 }
 $('fPay').onsubmit = async (ev) => {
   ev.preventDefault();
   if (!stripeObj || !elements) return;
-  $('payGo').disabled = true; $('payGo').textContent = 'Processing…'; $('payErr').textContent = '';
+  const label = $('payLabel').textContent;
+  payBusy(true, 'Processing…'); $('payErr').textContent = '';
   const { error, paymentIntent } = await stripeObj.confirmPayment({
     elements, redirect: 'if_required',
     confirmParams: { return_url: location.origin + '/?topup=done' }
   });
   if (error) {
     $('payErr').textContent = error.message || 'Payment did not go through.';
-    $('payGo').disabled = false; $('payGo').textContent = 'Pay ' + paying.price;
+    payBusy(false, label);
+    if (window.gsap && !reduced) gsap.fromTo($('fPay'), { x: -6 }, { x: 0, duration: .45, ease: 'elastic.out(1,.35)' });
     return;
   }
-  if (paymentIntent && paymentIntent.status === 'succeeded') { $('dPay').close(); awaitCredit(); }
-  else if (paymentIntent && paymentIntent.status === 'processing') { $('dPay').close(); addAgent('Payment is processing. Your credits appear as soon as it clears.'); awaitCredit(); }
+  if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')) {
+    showPaid(paymentIntent.status === 'processing');
+    awaitCredit(true);
+  }
 };
-async function awaitCredit() {
+function showPaid(processing) {
+  $('fPay').hidden = true;
+  const d = $('payDone'); d.hidden = false;
+  d.querySelector('h3').textContent = processing ? 'Payment processing' : 'Payment complete';
+  $('doneNote').textContent = processing ? 'Your credits appear as soon as it clears.' : 'Adding your credits…';
+  countUp($('doneCredits'), paying.credits, { prefix: '+', dur: 1.2 });
+  // re-trigger the draw animation
+  const svg = d.querySelector('svg'); const copy = svg.cloneNode(true); svg.replaceWith(copy);
+}
+async function awaitCredit(inSheet) {
   const before = S.balance || 0;
   for (let i = 0; i < 20; i++) {
     await new Promise(r => setTimeout(r, 1500));
     let b; try { b = await api('/v1/billing'); } catch (_) { continue; }
     if (b.balance > before) {
       S.justAdded = b.balance - before;
-      setBalance(b.balance); loadCredits();
+      if (inSheet && $('dPay').open) $('doneNote').textContent = 'Added. Your balance is ' + b.balance.toLocaleString() + ' credits.';
+      setBalance(b.balance); loadCredits(); creditNotice();
       addAgent('Thanks — ' + (b.balance - before).toLocaleString() + ' credits added. Let\'s keep building.'); scroll();
       return;
     }
