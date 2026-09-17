@@ -91,7 +91,13 @@ html[data-theme=terminal] .brand::after{content:"_";animation:blink 1s steps(1) 
 .intent{position:relative;flex-shrink:0}
 .intentbtn{height:44px;padding:0 10px;border:1px solid var(--hairline);background:transparent;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cream)}
 .intentbtn:hover{border-color:var(--leaf)}
-.menu{position:absolute;right:0;bottom:52px;width:280px;border:1px solid var(--hairline);background:var(--surface);box-shadow:0 24px 60px -20px rgba(0,0,0,.6);z-index:20;padding:6px}
+.menu{position:absolute;right:0;bottom:52px;width:280px;max-width:calc(100vw - 24px);border:1px solid var(--hairline);background:var(--surface);box-shadow:0 24px 60px -20px rgba(0,0,0,.6);z-index:40;padding:6px}
+@media (max-width:860px){
+  /* on a phone the menu sits above the composer, inside the screen, never off the edge */
+  .menu{position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom));width:auto;max-width:none;
+    max-height:min(58vh,420px);overflow-y:auto;overscroll-behavior:contain;border-radius:16px;
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.65)}
+}
 .menu button{width:100%;display:grid;grid-template-columns:1fr 18px;gap:2px 8px;padding:12px;border:0;background:none;text-align:left}
 .menu button:hover{background:rgba(127,127,127,.08)}
 .menu strong{font-weight:500;font-size:15px}
