@@ -223,9 +223,30 @@ async def project_say(project_id: int, body: SayIn,
                                 st["auto_publish"], queue_approval)
 
     app_ctx = (project_id, ctx.org_id) if p_path(p) == "app" else None
+
+    class Drafts:
+        """This project's drafted posts, bound before the model runs."""
+        async def list(self):
+            from ..services import posts as post_svc
+            return await post_svc.pending(ctx.org_id, project_id)
+
+        async def update(self, post_id, **changes):
+            from ..services import posts as post_svc
+            from ..services import social_publish
+            await social_publish.cancel(post_id, ctx.org_id)
+            return await post_svc.update(ctx.org_id, post_id, project_id=project_id, editor="CreAI", **changes)
+
+        async def discard(self, post_id):
+            async with conn() as c:
+                row = await c.fetchrow(
+                    """UPDATE approvals SET state='discarded', decided_at=now(), decided_by=$4
+                       WHERE id=$1 AND org_id=$2 AND project_id=$3 AND kind='post'
+                         AND state IN ('pending','held','failed') RETURNING id""",
+                    post_id, ctx.org_id, project_id, ctx.user_id)
+            return row is not None
     turn = await _run(body.message, answers, project=True, tz=body.timezone,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
-                      intent=body.intent, bridge=bridge, app=app_ctx,
+                      intent=body.intent, bridge=bridge, app=app_ctx, drafts=Drafts(),
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls,

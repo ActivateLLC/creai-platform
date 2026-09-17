@@ -81,6 +81,13 @@ of exactly what you would change and why, in plain language, then ask whether to
 Numbered lines are allowed in this mode.
 """
 
+MARKET_ALSO = """
+Marketing is switched on for this project, but the site is still being built. Keep
+working on the site whenever the person asks about it. Only read their brand or draft
+posts when they ask for marketing or posts. When they ask to change drafted posts, use
+revise_post on the ids listed below rather than drafting new ones.
+"""
+
 MARKET_EXTRA = """
 This project is about MARKETING the person's business. Their website is the source of
 truth for what they sell and how they sound. If there is no brand kit yet, call
@@ -165,6 +172,20 @@ TOOL_GENERATE_IMAGE = {
         "prompt": {"type": "string"},
         "shape": {"type": "string", "enum": ["square", "portrait", "landscape"]}},
         "required": ["prompt"]},
+}
+
+TOOL_REVISE_POST = {
+    "name": "revise_post",
+    "description": "Change a drafted post that hasn't gone out: its text, time, link or picture, "
+                   "or discard it. The person approves it again afterwards.",
+    "input_schema": {"type": "object", "properties": {
+        "id": {"type": "integer"},
+        "text": {"type": "string"},
+        "scheduled_for": {"type": "string", "description": "ISO 8601 with offset"},
+        "link": {"type": "string"},
+        "image_prompt": {"type": "string", "description": "Describe a new picture to replace the current one"},
+        "discard": {"type": "boolean"}},
+        "required": ["id"]},
 }
 
 TOOL_SAVE_ANSWER = {
@@ -322,6 +343,7 @@ class Turn:
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
     tz: str | None = None
+    drafts: object = None
 
 
 def trim(thread: list) -> list:
@@ -421,7 +443,7 @@ page: ignore the update_site instructions above and never call update_site.
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
               bridge=None, marketing: bool = False, marketing_only: bool = False,
-              app: tuple | None = None, tz: str | None = None) -> Turn:
+              app: tuple | None = None, tz: str | None = None, drafts=None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -446,7 +468,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if bridge is not None:
         system += EDIT_EXTRA + bridge.prompt()
     if marketing:
-        system += MARKET_EXTRA
+        system += MARKET_EXTRA if marketing_only or bridge is not None else MARKET_ALSO
     brand_tools = [TOOL_READ_WEBSITE, TOOL_SAVE_BRAND]
     if app is not None:
         system += APP_EXTRA
@@ -458,16 +480,22 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         tools = list(TOOL_DEFS) + [TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
+            if drafts is not None:
+                tools.append(TOOL_REVISE_POST)
             system += PROJECT_EXTRA
     elif intent == "build" and marketing_only:
         tools = [TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
+            if drafts is not None:
+                tools.append(TOOL_REVISE_POST)
             system += PROJECT_EXTRA
     elif intent == "build":
         tools = [TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if project and queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
+            if drafts is not None:
+                tools.append(TOOL_REVISE_POST)
             system += PROJECT_EXTRA
     else:
         # Chat and Plan never touch the site: they get no editing tools at all.
@@ -481,6 +509,12 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     system += "\nCurrent date and time (UTC): " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     system += ("\nCurrent site spec: " + json.dumps(turn.site)
                + "\nKnown facts: " + json.dumps(facts))
+    turn.drafts = drafts
+    if drafts is not None and TOOL_REVISE_POST in tools:
+        waiting = await drafts.list()
+        if waiting:
+            system += "\nDrafted posts not yet out (use revise_post with these ids): " + json.dumps(
+                [{k: (v[:160] if k == "text" else v) for k, v in d.items()} for d in waiting])[:4000]
 
     turn.thread.append({"role": "user", "content": text[:MAX_USER_CHARS]})
 
@@ -526,6 +560,42 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             layout, theme = site_spec.design_of(turn.site)
             return {"ok": True, "site": turn.site, "design": {"layout": layout, "theme": theme},
                     "quality": site_spec.critique(turn.site)}
+
+        if name == "revise_post":
+            if turn.drafts is None:
+                return {"ok": False, "error": "posts can't be changed here"}
+            from datetime import datetime
+            from . import posts as post_svc
+            pid = int(args.get("id") or 0)
+            if args.get("discard"):
+                ok = await turn.drafts.discard(pid)
+                if ok:
+                    turn.log.append(f"discarded post {pid}")
+                return {"ok": ok}
+            image_url = None
+            if args.get("image_prompt"):
+                from . import images
+                if images.configured():
+                    try:
+                        image_url = await images.generate(str(args["image_prompt"]), "square")
+                        turn.calls.append((images.media_key(), {"images": 1}))
+                    except images.ImageError as exc:
+                        return {"ok": False, "error": f"couldn't make the new picture: {exc}"}
+            when = None
+            if args.get("scheduled_for"):
+                iso = _when(args["scheduled_for"], turn.tz)
+                if not iso:
+                    return {"ok": False, "error": "scheduled_for must be in the next year"}
+                when = datetime.fromisoformat(iso)
+            try:
+                out = await turn.drafts.update(pid, text=args.get("text"), scheduled_for=when,
+                                               link=args.get("link"), image_url=image_url)
+            except post_svc.PostError as exc:
+                return {"ok": False, "error": str(exc)}
+            turn.log.append(f"revised post {pid}")
+            turn.actions.append({"kind": "review_posts", "label": "Review drafts"}) \
+                if not any(a.get("kind") == "review_posts" for a in turn.actions) else None
+            return {"ok": True, **out}
 
         if name == "generate_image":
             from . import images

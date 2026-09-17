@@ -938,6 +938,11 @@ async function loadCalendar(pane) {
       if (p.delivery.upgrade && !NATIVE) { const g = el('button', 'btn primary', 'See Growth'); g.type = 'button'; g.onclick = openPlans; c.append(g); }
     }
     else if (p.delivery && p.delivery.channel) c.append(el('p', 'note', 'Going out on ' + p.delivery.channel + '.'));
+    if (['held', 'failed'].includes(p.state)) {
+      const ed = el('button', 'btn', 'Edit'); ed.type = 'button';
+      ed.onclick = () => postEditor({ id: p.id, payload: { text: p.text, link: p.link, network: p.network }, scheduled_for: p.scheduled_for }, c);
+      c.append(ed);
+    }
     const pull = el('button', 'btn', 'Cancel post'); pull.type = 'button';
     pull.onclick = async () => { pull.disabled = true; await api('/v1/approvals/' + p.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
     c.append(pull); pane.append(c);
@@ -948,12 +953,8 @@ async function loadPosts() {
   const pane = $('pPosts'); pane.replaceChildren();
   const head = el('div'); head.style.marginBottom = '16px';
   head.append(el('h2', null, 'Waiting for your OK'), el('p', 'muted', 'Anything public or permanent waits here, and your post calendar lives here too.'));
-  if (S.project && S.project.path !== 'market' && !S.project.marketing) {
-    const add = el('button', 'btn', 'Add marketing to this project'); add.type = 'button';
-    add.onclick = () => enableMarketing().catch(e => addAgent(e.message));
-    head.append(add);
-  }
   pane.append(head);
+  const offerMarketing = S.project && S.project.path !== 'market' && S.project.path !== 'app' && !S.project.marketing;
   let rows = [];
   try { rows = await api('/v1/approvals?state=pending'); } catch (_) {}
   rows = rows.filter(r => r.kind === 'post' || r.kind === 'webflow_action');
@@ -988,14 +989,27 @@ async function loadPosts() {
     if (pic) { const im = el('img'); im.src = pic.url; im.alt = ''; im.loading = 'lazy'; im.style.cssText = 'width:100%;max-width:420px;aspect-ratio:1;object-fit:cover;border:1px solid var(--hairline)'; c.append(im); }
     c.append(el('div', null, p.text || ''));
     if (p.link) { const l = el('a', 'mono', p.link); l.href = p.link; l.target = '_blank'; l.rel = 'noopener'; l.style.color = 'var(--leaf)'; c.append(l); }
+    if (p.edited_by) c.append(el('p', 'note', 'Edited by ' + p.edited_by));
     const acts = el('div', 'row');
     const ok = el('button', 'btn primary', 'Approve'); ok.type = 'button';
-    const no = el('button', 'btn', 'Discard'); no.type = 'button';
+    const ed = el('button', 'btn', 'Edit'); ed.type = 'button';
+    const ask = el('button', 'btn', 'Ask CreAI to change'); ask.type = 'button';
+    const no = el('button', 'btn ghost', 'Discard'); no.type = 'button';
     ok.onclick = async () => { await api('/v1/approvals/' + r.id + '/approve', { method: 'POST' }).catch(() => {}); loadPosts(); };
+    ed.onclick = () => postEditor(r, c);
+    ask.onclick = () => askToChange(r.id, p.network);
     no.onclick = async () => { await api('/v1/approvals/' + r.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
-    acts.append(ok, no); c.append(acts); pane.append(c);
+    acts.append(ok, ed, ask, no); c.append(acts); pane.append(c);
   }
   await loadCalendar(pane);
+  if (offerMarketing) {
+    const m = el('div', 'card');
+    m.append(el('p', 'label', 'Marketing (optional)'),
+      el('p', 'note', 'When your site is ready, CreAI can learn your brand from it and draft posts for you to review. Turning this on doesn\u2019t start anything by itself, and you can keep building your site.'));
+    const add = el('button', 'btn', 'Turn on marketing'); add.type = 'button';
+    add.onclick = () => enableMarketing().catch(e => addAgent(e.message));
+    m.append(add); pane.append(m);
+  }
 }
 
 $('pubBtn').onclick = async () => {
@@ -1023,8 +1037,45 @@ $('fGrow').onsubmit = async (e) => {
 async function enableMarketing() {
   if (!S.project) return;
   await api('/v1/marketing/enable', { method: 'POST', body: JSON.stringify({ project_id: S.project.id }) });
-  S.project.marketing = true; setMobile('chat');
-  send('Learn my brand from my site and plan my next two weeks of posts.', 'build');
+  S.project.marketing = true;
+  addTool('marketing switched on');
+  addAgent('Marketing is on. Keep building your site as long as you like. When you\u2019re ready, send the message below (or write your own) and I\u2019ll draft posts for you to review and edit.');
+  setMobile('chat');
+  $('input').value = 'Learn my brand from my site and plan my next two weeks of posts.';
+  $('input').focus();
+  loadPosts();
+}
+function askToChange(id, network) {
+  showMobileChat();
+  $('input').value = 'Change the ' + (NETWORKS[network] || network || '') + ' post #' + id + ': ';
+  $('input').focus();
+}
+function showMobileChat() { try { setMobile('chat'); } catch (_) {} }
+function postEditor(r, card) {
+  const p = r.payload || {};
+  const box = el('form', 'formgrid'); box.style.gridTemplateColumns = '1fr';
+  const tl = el('label', null, 'Text'); const ta = el('textarea'); ta.value = p.text || ''; ta.rows = 6;
+  ta.style.cssText = 'width:100%;box-sizing:border-box;padding:12px;font:inherit;font-size:16px;border:1px solid var(--hairline);background:transparent;color:inherit';
+  tl.append(ta);
+  const wl = el('label', null, 'When'); const wi = el('input'); wi.type = 'datetime-local';
+  if (r.scheduled_for) { const d = new Date(r.scheduled_for); wi.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  wl.append(wi);
+  const ll = el('label', null, 'Link (optional)'); const li = el('input'); li.type = 'url'; li.value = p.link || ''; li.placeholder = 'https://';
+  ll.append(li);
+  const row = el('div', 'row');
+  const save = el('button', 'btn primary', 'Save changes'); save.type = 'submit';
+  const cancel = el('button', 'btn', 'Cancel'); cancel.type = 'button'; cancel.onclick = () => loadPosts();
+  row.append(save, cancel);
+  const msg = el('p', 'note', '');
+  box.append(tl, wl, ll, row, msg);
+  box.onsubmit = async (e) => {
+    e.preventDefault(); save.disabled = true;
+    const body = { text: ta.value, link: li.value };
+    if (wi.value) body.scheduled_for = new Date(wi.value).toISOString();
+    try { await api('/v1/approvals/' + r.id, { method: 'PATCH', body: JSON.stringify(body) }); addTool('edited post #' + r.id); loadPosts(); }
+    catch (err) { msg.textContent = err.message; save.disabled = false; }
+  };
+  card.replaceChildren(box); ta.focus();
 }
 
 // ------------------------------------------------------------ connections

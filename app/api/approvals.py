@@ -11,6 +11,9 @@ from pydantic import BaseModel
 
 from ..core import tenancy as T
 from ..core.db import conn, log_event
+from datetime import datetime
+
+from ..services import posts as post_svc
 from ..services import social_publish, webflow
 
 router = APIRouter(prefix="/v1/approvals", tags=["approvals"])
@@ -55,6 +58,34 @@ async def draft(body: DraftIn, ctx: T.Ctx = Depends(T.requires("write"))):
                VALUES ($1,$2,$3,$4,$5) RETURNING id""",
             ctx.org_id, body.project_id, body.kind, body.payload, body.scheduled_for)
     return {"id": row["id"], "state": "pending"}
+
+
+class PostEdit(BaseModel):
+    text: str | None = None
+    scheduled_for: str | None = None
+    link: str | None = None
+    remove_image: bool = False
+
+
+@router.patch("/{approval_id}")
+async def edit_post(approval_id: int, body: PostEdit, ctx: T.Ctx = Depends(T.requires("write"))):
+    """Change a drafted post before it goes out. An edited post needs approving again."""
+    when = None
+    if body.scheduled_for:
+        from ..services.agent import _when
+        iso = _when(body.scheduled_for)
+        if not iso:
+            raise HTTPException(400, "pick a time in the next year")
+        when = datetime.fromisoformat(iso)
+    await social_publish.cancel(approval_id, ctx.org_id)
+    try:
+        out = await post_svc.update(ctx.org_id, approval_id, text=body.text, scheduled_for=when,
+                                    link=body.link, image_url="" if body.remove_image else None)
+    except post_svc.PostError as exc:
+        code = 404 if "no such" in str(exc) else 409 if "gone out" in str(exc) else 400
+        raise HTTPException(code, str(exc))
+    await log_event(ctx.org_id, "post.edited", "", None, ctx.user_id)
+    return out
 
 
 @router.post("/{approval_id}/approve")

@@ -2,6 +2,7 @@
 website reader that refuses to be pointed at internal addresses."""
 
 import asyncio
+import json
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -134,7 +135,8 @@ async def test_marketing_can_be_added_to_any_project_and_is_private(api, monkeyp
     model = FakeModel([text("Ready to market.")])
     monkeypatch.setattr(agent, "_call", model)
     await api.post(f"/v1/agent/projects/{pid}", headers=auth(a), json={"message": "market it"})
-    assert "MARKETING" in model.calls[0]["system"] and "update_site" in model.calls[0]["tools"]
+    assert "Marketing is switched on" in model.calls[0]["system"] and "update_site" in model.calls[0]["tools"]
+    assert "revise_post" in model.calls[0]["tools"]
     assert (await api.get(f"/v1/marketing/calendar?project_id={pid}", headers=auth(b))).json()["posts"] == []
     assert (await api.post("/v1/marketing/start", headers=auth(a), json={"website": "not a url"})).status_code == 400
     assert (await api.post("/v1/marketing/start", headers=auth(a), json={"website": "javascript:alert(1)"})).status_code == 400
@@ -173,3 +175,57 @@ async def test_drafted_posts_get_images_and_are_billed(api, monkeypatch):
         assert before - after >= 3                                 # one image at $0.01 × 3 markup
     finally:
         object.__setattr__(settings, "hf_token", "")
+
+
+async def test_people_and_the_agent_can_revise_drafted_posts(api, monkeypatch):
+    from app.services import agent as agent_mod
+    tok = await sign_in(api, f"rv{secrets.token_hex(3)}@example-shop.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    pid = (await api.post("/v1/projects", headers=auth(tok), json={"name": "Shop"})).json()["id"]
+    await api.post("/v1/marketing/enable", headers=auth(tok), json={"project_id": pid})
+    async with db.conn() as c:
+        ids = [await c.fetchval(
+            """INSERT INTO approvals (org_id, project_id, kind, payload, scheduled_for)
+               VALUES ($1,$2,'post',$3, now() + interval '2 days') RETURNING id""",
+            org, pid, {"network": "instagram", "text": f"Draft {i}",
+                       "media": [{"type": "image", "url": "https://v3.fal.media/x.jpg"}]}) for i in range(3)]
+
+    # the person edits text, link and time
+    r = await api.patch(f"/v1/approvals/{ids[0]}", headers=auth(tok),
+                        json={"text": "Better words", "link": "https://shine.example/book",
+                              "scheduled_for": "2099-01-01T09:00:00"})
+    assert r.status_code == 400                                         # too far out
+    r = await api.patch(f"/v1/approvals/{ids[0]}", headers=auth(tok),
+                        json={"text": "Better words", "link": "https://shine.example/book"})
+    assert r.status_code == 200 and r.json()["text"] == "Better words"
+    assert (await api.patch(f"/v1/approvals/{ids[0]}", headers=auth(tok), json={"link": "javascript:x"})).status_code == 400
+    assert (await api.patch(f"/v1/approvals/{ids[0]}", headers=auth(tok), json={"text": "  "})).status_code == 400
+
+    # approving then editing sends it back for approval
+    async with db.conn() as c:
+        await c.execute("UPDATE approvals SET state='held' WHERE id=$1", ids[1])
+    r = await api.patch(f"/v1/approvals/{ids[1]}", headers=auth(tok), json={"remove_image": True})
+    assert r.json()["state"] == "pending"
+    # posts that already went out can't be edited; nor can another workspace's
+    async with db.conn() as c:
+        await c.execute("UPDATE approvals SET state='scheduled' WHERE id=$1", ids[2])
+    assert (await api.patch(f"/v1/approvals/{ids[2]}", headers=auth(tok), json={"text": "x"})).status_code == 409
+    other = await sign_in(api, f"ot{secrets.token_hex(3)}@example-shop.io")
+    assert (await api.patch(f"/v1/approvals/{ids[0]}", headers=auth(other), json={"text": "hijack"})).status_code == 404
+
+    # the agent sees the drafts and revises one on request
+    model = FakeModel([tool("revise_post", {"id": ids[0], "text": "Agent rewrite"}),
+                       tool("revise_post", {"id": ids[2], "text": "no"}),
+                       tool("revise_post", {"id": ids[1], "discard": True})],
+                      [text("Done.")])
+    monkeypatch.setattr(agent_mod, "_call", model)
+    out = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok),
+                          json={"message": "Make the first post punchier and drop the second"})).json()
+    assert str(ids[0]) in model.calls[0]["system"] and "Better words" in model.calls[0]["system"]
+    results = [json.loads(b["content"]) for b in model.calls[1]["messages"][-1]["content"]]
+    assert results[0]["ok"] and not results[1]["ok"] and results[2]["ok"]
+    assert "revised post" in " ".join(out["log"])
+    async with db.conn() as c:
+        rows = {r["id"]: r for r in await c.fetch("SELECT id, state, payload FROM approvals WHERE id = ANY($1::bigint[])", ids)}
+    assert rows[ids[0]]["payload"]["text"] == "Agent rewrite" and rows[ids[0]]["payload"]["edited_by"] == "CreAI"
+    assert rows[ids[1]]["state"] == "discarded" and rows[ids[2]]["state"] == "scheduled"
