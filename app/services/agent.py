@@ -252,15 +252,25 @@ TOOL_DRAFT_POSTS = {
 }
 
 
-def _when(value) -> str | None:
-    """A sane future time within a year, or None."""
+def _zone(tz: str | None):
+    from datetime import timezone
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        return ZoneInfo(tz) if tz else timezone.utc
+    except (ZoneInfoNotFoundError, ValueError):
+        return timezone.utc
+
+
+def _when(value, tz: str | None = None) -> str | None:
+    """A sane future time within a year, or None. Times without an offset are read
+    in the person's own timezone."""
     from datetime import datetime, timedelta, timezone
     try:
         dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=_zone(tz))
     now = datetime.now(timezone.utc)
     return dt.isoformat() if now < dt < now + timedelta(days=366) else None
 
@@ -311,6 +321,7 @@ class Turn:
     posts: list = field(default_factory=list)
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
+    tz: str | None = None
 
 
 def trim(thread: list) -> list:
@@ -410,7 +421,7 @@ page: ignore the update_site instructions above and never call update_site.
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
               bridge=None, marketing: bool = False, marketing_only: bool = False,
-              app: tuple | None = None) -> Turn:
+              app: tuple | None = None, tz: str | None = None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -424,7 +435,14 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
                 thread=trim(list(answers.get("_thread") or [])))
 
     intent = intent if intent in INTENTS else "build"
+    turn.tz = tz
     system = SYSTEM
+    if tz:
+        from datetime import datetime
+        local = datetime.now(_zone(tz))
+        system += (f"\nThe person's timezone is {tz}; it is now {local:%A %d %B %Y, %H:%M} there "
+                   f"(UTC{local:%z}). Plan and describe times in their local time, and give every "
+                   f"scheduled_for with that offset.\n")
     if bridge is not None:
         system += EDIT_EXTRA + bridge.prompt()
     if marketing:
@@ -573,7 +591,7 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
                                   "text": str(p["text"])[:2200],
                                   "when": str(p.get("when", ""))[:60],
                                   "link": str(p.get("link", ""))[:300],
-                                  "scheduled_for": _when(p.get("scheduled_for")),
+                                  "scheduled_for": _when(p.get("scheduled_for"), turn.tz),
                                   "image_prompt": str(p.get("image_prompt", ""))[:1500],
                                   "image_shape": p.get("image_shape") if p.get("image_shape") in
                                   ("square", "portrait", "landscape") else "square"})

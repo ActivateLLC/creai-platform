@@ -308,3 +308,43 @@ async def test_update_site_returns_quality_to_the_agent(api, monkeypatch):
 def s_layouts():
     from app.services import site
     return site.LAYOUTS
+
+
+async def test_timezone_reaches_agent_and_schedules(api, monkeypatch):
+    model = FakeModel([text("ok")])
+    monkeypatch.setattr(agent, "_call", model)
+    r = await api.post("/v1/agent/draft", json={"message": "hi", "timezone": "America/Chicago"})
+    assert r.status_code == 200
+    assert "America/Chicago" in model.calls[0]["system"]
+    bad = await api.post("/v1/agent/draft", json={"message": "hi", "timezone": "x; DROP TABLE"})
+    assert bad.status_code == 422
+    from datetime import datetime, timedelta
+    naive = (datetime.now() + timedelta(days=3)).replace(hour=9, minute=0, second=0, microsecond=0)
+    when = agent._when(naive.isoformat(), "America/Chicago")
+    assert when.endswith(("-05:00", "-06:00"))
+    assert agent._when(naive.isoformat(), "Not/AZone").endswith("+00:00")
+
+
+def test_site_preview_and_app_do_not_navigate_to_the_platform():
+    from app.services import appfs
+    page = appfs.preview({"app.js": "x"}, {}, "tok", "https://app.creai.dev")
+    assert "a[href]" in page and "preventDefault" in page
+
+
+async def test_platform_page_refuses_frames(api):
+    r = await api.get("/")
+    assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in r.headers["content-security-policy"]
+
+
+async def test_balance_never_goes_negative(api, monkeypatch):
+    from app.services import billing
+    from tests.test_isolation import auth, sign_in
+    tok = await sign_in(api, f"neg{secrets.token_hex(3)}@example-shop.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await billing.ensure_signup_grant(org)
+    have = await billing.balance(org)
+    big = [("claude-fable-5-1", {"input_tokens": 400_000, "output_tokens": 60_000})]   # far more than 150 credits
+    spent, left = await billing.charge_usage(org, None, None, big, kind="best:site")
+    assert spent == have and left == 0
+    spent, left = await billing.charge_usage(org, None, None, big, kind="best:site")
+    assert spent == 0 and left == 0

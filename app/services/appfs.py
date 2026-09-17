@@ -257,6 +257,21 @@ function load(path) {
   urls[path] = URL.createObjectURL(new Blob([src + '\\n//# sourceURL=' + path], { type: 'text/javascript' }));
   return urls[path];
 }
+// In-page links stay in the app; anything else opens outside the preview.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a || e.defaultPrevented) return;
+  const href = a.getAttribute('href') || '';
+  if (href.startsWith('#')) {
+    e.preventDefault();
+    const t = href.length > 1 && document.getElementById(decodeURIComponent(href.slice(1)));
+    if (t) t.scrollIntoView({ behavior: 'smooth' });
+  } else if (/^https:\/\//.test(href)) {
+    e.preventDefault(); window.open(href, '_blank', 'noopener');
+  } else {
+    e.preventDefault();
+  }
+});
 for (const [p, css] of Object.entries(files)) if (p.endsWith('.css')) {
   const s = document.createElement('style'); s.textContent = css; document.head.append(s);
 }

@@ -31,6 +31,7 @@ class SayIn(BaseModel):
     message: str = Field(min_length=1, max_length=agent.MAX_USER_CHARS)
     mode: str = Field("best", pattern="^(best|fast)$")
     intent: str = Field("build", pattern="^(build|chat|plan)$")
+    timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+){0,2}$")
 
 
 def _model(mode: str, intent: str = "build") -> str:
@@ -106,7 +107,7 @@ async def draft_say(body: SayIn, request: Request, response: Response,
                                  "keep building — your draft is saved and you get "
                                  f"{billing.SIGNUP_CREDITS} free credits.")
 
-    turn = await _run(body.message, answers, model=_model(body.mode, body.intent),
+    turn = await _run(body.message, answers, model=_model(body.mode, body.intent), tz=body.timezone,
                       intent=body.intent)
     turn.answers["_turns"] = turns + 1
     async with conn() as c:
@@ -222,7 +223,7 @@ async def project_say(project_id: int, body: SayIn,
                                 st["auto_publish"], queue_approval)
 
     app_ctx = (project_id, ctx.org_id) if p_path(p) == "app" else None
-    turn = await _run(body.message, answers, project=True,
+    turn = await _run(body.message, answers, project=True, tz=body.timezone,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
                       intent=body.intent, bridge=bridge, app=app_ctx,
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",

@@ -123,7 +123,10 @@ WEB = Path(__file__).parent / "web"
 
 @app.get("/", include_in_schema=False)
 async def index():
-    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+    # CreAI never runs inside a frame: not a preview, not anyone else's page.
+    return FileResponse(WEB / "index.html", headers={
+        "Cache-Control": "no-cache", "X-Frame-Options": "DENY",
+        "Content-Security-Policy": "frame-ancestors 'none'"})
 
 
 @app.get("/logo-mark.png", include_in_schema=False)

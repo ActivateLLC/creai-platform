@@ -144,9 +144,30 @@ async def charge_usage(org_id: int, actor_id: int, project_id: int,
     A waived turn is still recorded, at zero, so the owner can see what CreAI
     absorbed and why (for example: fixing an error the AI introduced)."""
     credits, cost = credits_for(calls)
+    if credits and not waived:
+        have = await balance(org_id)
+        if credits > max(have, 0):
+            # A message can cost more than was left. Take what's there and absorb the
+            # rest, so a balance never goes negative.
+            detail_absorbed = credits - max(have, 0)
+            credits = max(have, 0)
+            if not credits:
+                async with conn() as c:
+                    await c.execute(
+                        """INSERT INTO credit_ledger (org_id, delta, reason, detail, actor_id)
+                           VALUES ($1, 0, 'waived', $2, $3)""",
+                        org_id, {"project_id": project_id, "credits": detail_absorbed, "kind": kind,
+                                 "waived": "the rest of a message that ran past your balance"}, actor_id)
+                return 0, await balance(org_id)
+        else:
+            detail_absorbed = 0
+    else:
+        detail_absorbed = 0
     if credits:
         detail = {"project_id": project_id, "cost_usd": round(cost, 6), "kind": kind,
                   "credits": credits, "models": sorted({m for m, _ in calls})}
+        if detail_absorbed:
+            detail["absorbed"] = detail_absorbed
         if waived:
             detail["waived"] = waived
         async with conn() as c:

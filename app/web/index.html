@@ -477,6 +477,7 @@ function renderActions(actions) {
 }
 
 function isExternal() { return !!(S.project && (S.project.source === 'webflow' || S.project.path === 'market')); }
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (_) { return null; } })();
 async function refreshPreview() {
   const fr = $('preview');
   if (isExternal()) {
@@ -499,7 +500,11 @@ async function refreshPreview() {
   try {
     const headers = S.token && S.project ? { Authorization: 'Bearer ' + S.token } : {};
     const r = await fetch(API_BASE + path, { credentials: NATIVE ? 'omit' : 'same-origin', headers: draftHeaders(headers) });
-    $('preview').srcdoc = await r.text();
+    let html = await r.text();
+    // A preview is built from text, so links resolve against CreAI's own address.
+    // Pin them to the preview itself so "#contact" scrolls instead of loading CreAI.
+    if (!isApp) html = html.replace(/<head([^>]*)>/i, '<head$1><base href="about:srcdoc">');
+    $('preview').srcdoc = html;
   } catch (_) {}
   $('url').textContent = S.project ? (isApp ? 'app · ' : 'preview · ') + S.project.name : 'preview · draft';
 }
@@ -518,7 +523,7 @@ async function send(text, intentOverride) {
   $('thread').append(w); scroll();
   try {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
-    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent }) });
+    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent, timezone: TZ }) });
     if (out.credits) setBalance(out.credits.balance);
     if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else setHasSite(out.site);
     refreshEstimate();
