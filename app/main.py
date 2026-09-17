@@ -66,6 +66,12 @@ async def index():
     return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/logo-mark.png", include_in_schema=False)
+async def logo_mark():
+    return FileResponse(WEB / "logo-mark.png", media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/logo.svg", include_in_schema=False)
 async def logo():
     return FileResponse(WEB / "logo.svg", media_type="image/svg+xml",
