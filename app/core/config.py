@@ -86,7 +86,7 @@ class Settings:
             "registrar": bool(self.cloudflare_token and self.cloudflare_account_id),
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
-            "billing": self.stripe_keys_ok(),
+            "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,
         }
 
     def stripe_keys_ok(self) -> bool:
@@ -99,5 +99,8 @@ class Settings:
     def missing_for(self, capability: str) -> bool:
         return not self.configured.get(capability, False)
 
+
+# Set when Stripe refuses the key (401). Billing then reads as off until a restart with a good key.
+STRIPE_REJECTED = False
 
 settings = Settings()

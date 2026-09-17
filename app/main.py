@@ -36,6 +36,11 @@ async def _stripe_self_check():
         log.info("stripe prices ready: %s", ", ".join(ids))
     except Exception as exc:
         log.error("stripe price check failed: %s", exc)
+        if "Invalid API Key" in str(exc) or "expired" in str(exc).lower():
+            from .core import config
+            config.STRIPE_REJECTED = True
+            log.error("stripe rejected the key; billing is switched off until it is replaced")
+            return
     try:
         out = await billing.register_domain(urlparse(settings.public_url).hostname)
         log.info("stripe wallet domain: %s", out)
