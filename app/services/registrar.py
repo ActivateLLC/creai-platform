@@ -152,4 +152,9 @@ async def renewal_sweep() -> dict:
         else:
             await log_event(d["org_id"], "domain.renewal_unpaid", d["name"])
             short += 1
+        try:
+            from . import credit_alerts
+            await credit_alerts.check(d["org_id"])
+        except Exception:
+            pass
     return {"charged": charged, "short": short}

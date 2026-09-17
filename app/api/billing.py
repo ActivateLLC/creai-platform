@@ -108,6 +108,15 @@ async def estimate(mode: str = "best", kind: str = "site", ctx: T.Ctx = Depends(
     return await billing.estimate(ctx.org_id, mode, kind)
 
 
+@router.get("/status")
+async def credit_status(mode: str = "best", kind: str = "site", ctx: T.Ctx = Depends(T.current_ctx)):
+    from ..services import credit_alerts
+    if mode not in ("best", "fast") or kind not in ("site", "app", "chat", "market"):
+        raise HTTPException(400, "unknown mode or kind")
+    await billing.ensure_signup_grant(ctx.org_id)
+    return await credit_alerts.status(ctx.org_id, mode, kind) | {"can_buy": ctx.may("billing")}
+
+
 @router.get("/cap")
 async def get_cap(ctx: T.Ctx = Depends(T.current_ctx)):
     return await billing.cap_status(ctx.org_id)

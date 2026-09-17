@@ -524,7 +524,7 @@ async function send(text, intentOverride) {
   try {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
     const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent, timezone: TZ }) });
-    if (out.credits) setBalance(out.credits.balance);
+    if (out.credits) { setBalance(out.credits.balance); creditNotice(out.credits.status); }
     if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else setHasSite(out.site);
     refreshEstimate();
     w.remove();
@@ -538,8 +538,10 @@ async function send(text, intentOverride) {
   } catch (e) {
     w.remove();
     $('thread').append(el('div', 'err msg', e.message));
+    // Nothing typed is lost: put the message back so it can be sent after topping up.
+    if ((e.status === 402 || e.status === 429 || e.status >= 500) && !$('input').value) { $('input').value = text; autosize(); }
     if (e.status === 402 && !S.token) renderActions([{ kind: 'sign_in', label: 'Create free account' }]);
-    else if (e.status === 402) renderActions([{ kind: 'top_up', label: 'Top up credits' }]);
+    else if (e.status === 402) creditNotice(null, true);
     else if (e.status === 429 && !S.token) renderActions([{ kind: 'sign_in', label: 'Create an account' }]);
   } finally {
     S.busy = false; $('send').disabled = false; scroll();
@@ -694,6 +696,7 @@ async function afterSignIn(justSigned) {
     pid = p.id;
   }
   await openProject(pid);
+  creditNotice();
   if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
   $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tConnect').hidden = false; $('credBtn').hidden = false;
   refreshPreview(); loadPosts(); loadDomains(); loadCredits();
@@ -1216,6 +1219,37 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleMenu
 setMode(S.mode); setIntent('build');
 
 // ------------------------------------------------------------ credits
+// One notice at a time, only when it matters.
+async function creditNotice(st, force) {
+  if (!S.token) return;
+  if (!st) { try { st = await api('/v1/billing/status?mode=' + (S.intent === 'chat' ? 'fast' : S.mode) + '&kind=' + estimateKind()); } catch (_) { return; } }
+  document.querySelectorAll('.creditnote').forEach(n => n.remove());
+  if (typeof st.balance === 'number') setBalance(st.balance);
+  if (st.state === 'ok' && !force) return;
+  const out = st.state === 'out' || force;
+  const card = el('div', 'card creditnote');
+  card.style.borderColor = out ? 'var(--ember, var(--err))' : 'var(--warn)';
+  const refill = st.refill_at ? 'Your ' + st.refill_credits.toLocaleString() + ' plan credits refill on ' + new Date(st.refill_at).toLocaleDateString() + '. ' : '';
+  card.append(el('strong', null, out ? 'You\u2019re out of credits' : (st.messages_left <= 1 ? 'About one message left' : 'About ' + st.messages_left + ' messages left')),
+    el('p', 'note', (out ? 'New messages are paused. Everything you\u2019ve built is saved and published sites stay up. ' : st.balance.toLocaleString() + ' credits left; the next message usually takes ' + st.next_message.low + '\u2013' + st.next_message.high + '. ') + refill));
+  const row = el('div', 'row');
+  if (NATIVE) row.append(el('span', 'note', 'Top up or change plans at app.creai.dev.'));
+  else {
+    const top = el('button', 'btn primary', 'Top up credits'); top.type = 'button';
+    top.onclick = () => { showPane('credits'); loadCredits(); try { setMobile('work'); } catch (_) {} };
+    row.append(top);
+    if (st.plan === 'free') { const pl = el('button', 'btn', 'See plans'); pl.type = 'button'; pl.onclick = () => { openPlans(); try { setMobile('work'); } catch (_) {} }; row.append(pl); }
+    if (!out && S.mode === 'best') {
+      const fast = el('button', 'btn ghost', 'Switch to Fast'); fast.type = 'button';
+      fast.onclick = () => { setMode('fast'); card.remove(); };
+      row.append(fast);
+    }
+  }
+  card.append(row); $('thread').append(card); scroll();
+}
+function estimateKind() {
+  return S.intent === 'chat' ? 'chat' : S.project && S.project.path === 'app' ? 'app' : S.project && S.project.path === 'market' ? 'market' : 'site';
+}
 function setBalance(n) {
   const from = S.balance == null ? n : S.balance;
   S.balance = n;

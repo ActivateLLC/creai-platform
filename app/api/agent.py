@@ -8,6 +8,7 @@ scoped to a project the caller's workspace owns, and can also queue post drafts.
 
 import time
 from collections import defaultdict, deque
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -20,6 +21,7 @@ from ..core.db import conn, log_event
 from ..services import agent, appfs, billing, site, webflow
 from .drafts import DRAFT_TTL, _token, draft_token, remember
 
+log = logging.getLogger("creai.agent")
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
 
 DRAFT_TURN_CAP = 5               # free messages before an account is needed
@@ -184,8 +186,11 @@ async def project_say(project_id: int, body: SayIn,
 
     have = await billing.balance(ctx.org_id)
     if not waived and have < billing.MIN_TO_START[tier]:
+        from ..services import credit_alerts
+        st = await credit_alerts.status(ctx.org_id, tier, kind)
+        refill = (f" Your plan credits refill on {st['refill_at'][:10]}." if st["refill_at"] else "")
         raise HTTPException(402, "You're out of credits. Top up to keep building — "
-                                 "everything you've made is saved.")
+                                 "everything you've made is saved." + refill)
     cap = await billing.cap_status(ctx.org_id)
     if not waived and cap["monthly_cap"] is not None:
         est = await billing.estimate(ctx.org_id, tier, kind)
@@ -261,8 +266,14 @@ async def project_say(project_id: int, body: SayIn,
     if turn.posts:
         await log_event(ctx.org_id, "agent.posts_drafted", str(len(turn.posts)),
                         project_id, ctx.user_id)
+    from ..services import credit_alerts
+    try:
+        await credit_alerts.check(ctx.org_id)
+    except Exception:                                  # an email problem never fails a turn
+        log.exception("credit alert check failed")
+    status = await credit_alerts.status(ctx.org_id, tier, kind)
     return _payload(turn.answers, turn.actions, turn.log, turn.posts) | {
-        "credits": {"spent": spent, "balance": left, "waived": bool(waived)}}
+        "credits": {"spent": spent, "balance": left, "waived": bool(waived), "status": status}}
 
 
 @router.get("/projects/{project_id}/preview", response_class=HTMLResponse)

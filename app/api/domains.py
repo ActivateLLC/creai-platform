@@ -187,6 +187,11 @@ async def purchase(body: PurchaseIn, ctx: T.Ctx = Depends(T.requires("billing"))
         raise HTTPException(502, f"{exc}.{back}")
 
     await _quote_state(q["id"], "bought")
+    try:
+        from ..services import credit_alerts
+        await credit_alerts.check(ctx.org_id)
+    except Exception:
+        pass
     if body.contact:
         await _save_contact(ctx.org_id, contact)
     async with conn() as c:
