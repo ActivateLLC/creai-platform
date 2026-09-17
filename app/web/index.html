@@ -109,7 +109,7 @@ html[data-theme=terminal] .brand::after{content:"_";animation:blink 1s steps(1) 
 .tabs,.m-tabs{display:flex;align-items:stretch;gap:26px;padding:0 24px;border-bottom:1px solid var(--hairline);background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .tab{position:relative;height:52px;padding:0;border:0;background:none;font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--cream-soft);display:flex;align-items:center;gap:10px;white-space:nowrap;transition:color .25s}
 .tab::before{content:attr(data-n);color:var(--leaf)}
-.tab::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--leaf);transform:scaleX(0);transform-origin:left;transition:transform .45s var(--ease)}
+.tab::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--leaf);transform:scaleX(0);transform-origin:left;transition:transform .45s var(--ease)}
 .tab:hover{color:var(--cream)}
 .tab[aria-selected=true]{color:var(--cream)}
 .tab[aria-selected=true]::after{transform:scaleX(1)}
@@ -307,7 +307,12 @@ html[data-theme=day] .paybtn{color:#fff}
   header .btn{height:36px;padding:0 10px;letter-spacing:.14em}
   .brand{font-size:22px}
   .m-tabs{display:flex;padding:0 14px;gap:22px}
-  .tabs{padding:0 14px;gap:20px;overflow-x:auto}
+  .tabs{padding:0 14px;gap:20px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior:contain;
+    scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 28px),transparent);
+            mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 28px),transparent)}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs .tab{scroll-snap-align:start;flex-shrink:0}
   .tabs .status{display:none}
   main{flex-direction:column}
   #chat{width:auto;border-right:0;flex:1;min-height:0}
@@ -1635,6 +1640,7 @@ async function awaitCredit(inSheet) {
 function showPane(which) {
   for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tConnect', 'pConnect', 'connect']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
+    if (k === which) $(t).scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'nearest', inline: 'nearest' });
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
   }
   setMobile('work');
