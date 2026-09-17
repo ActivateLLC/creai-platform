@@ -8,6 +8,7 @@ scoped to a project the caller's workspace owns, and can also queue post drafts.
 
 import time
 from collections import defaultdict, deque
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -236,6 +237,30 @@ async def project_say(project_id: int, body: SayIn,
         from ..services import assets as asset_svc
         attachments = await asset_svc.context(ctx.org_id, body.asset_ids)
 
+    class Reviewer:
+        """Renders what was just built, runs it, and asks a fresh model what's wrong."""
+        kind = "app" if p_path(p) == "app" else "site"
+
+        async def __call__(self, turn):
+            from ..services import appfs, review, site as site_spec
+            if not review.configured():
+                return None
+            spec = turn.site or (turn.answers or {}).get("site") or {}   # what was just built, not what's stored
+            brief = json.dumps({"asked_for": body.message[:400],
+                                "business": spec.get("business"), "headline": spec.get("headline")})
+            if self.kind == "app":
+                files = await appfs.files(project_id, ctx.org_id)
+                if not files:
+                    return None
+                html = appfs.preview(files, spec, appfs.token(project_id, ctx.org_id), settings.public_url)
+            else:
+                html = site_spec.render(spec)
+            return await review.safe_review(self.kind, html, brief)
+
+        def instruction(self, found):
+            from ..services import review
+            return review.as_instruction(found, self.kind)
+
     class Ideas:
         """Improvement ideas for this project's launch checklist."""
         async def add(self, items):
@@ -271,6 +296,7 @@ async def project_say(project_id: int, body: SayIn,
                       intent=body.intent, bridge=bridge, app=app_ctx, drafts=Drafts(),
                       ideas=None if answers.get("source") or p_path(p) == "market" else Ideas(),
                       attachments=attachments,
+                      reviewer=None if answers.get("source") or p_path(p) == "market" else Reviewer(),
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls,
@@ -292,7 +318,8 @@ async def project_say(project_id: int, body: SayIn,
         log.exception("credit alert check failed")
     status = await credit_alerts.status(ctx.org_id, tier, kind)
     return _payload(turn.answers, turn.actions, turn.log, turn.posts) | {
-        "credits": {"spent": spent, "balance": left, "waived": bool(waived), "status": status}}
+        "credits": {"spent": spent, "balance": left, "waived": bool(waived), "status": status},
+        "review": turn.review}
 
 
 @router.get("/projects/{project_id}/preview", response_class=HTMLResponse)

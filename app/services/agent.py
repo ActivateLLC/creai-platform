@@ -390,7 +390,10 @@ class Turn:
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
     app_checked: bool = False
+    reviewed: bool = False
+    review: dict | None = None
     site_issues: list = field(default_factory=list)
+    site_changed: bool = False
     nudges: int = 0
     tz: str | None = None
     drafts: object = None
@@ -521,7 +524,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
               bridge=None, marketing: bool = False, marketing_only: bool = False,
               app: tuple | None = None, tz: str | None = None, drafts=None, ideas=None,
-              attachments: tuple | None = None) -> Turn:
+              attachments: tuple | None = None, reviewer=None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -624,6 +627,22 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             elif app is None and turn.site_issues:
                 unfinished = ("Before you reply: the quality check still lists issues: "
                               + " ".join(turn.site_issues[:4]) + " Fix them with update_site.")
+            # A second pair of eyes on the finished build, once per turn.
+            if reviewer is not None and not unfinished and not turn.reviewed and intent == "build" \
+                    and (turn.app_changed or turn.site_changed):
+                turn.reviewed = True
+                found = await reviewer(turn)
+                if found and found.get("findings"):
+                    turn.review = found
+                    turn.log.append("reviewed on phone and desktop · "
+                                    + (f"{found['blockers']} to fix" if found["blockers"] else "looks good"))
+                    if found["verdict"] == "fix_first":
+                        turn.thread[-1]["internal"] = True
+                        turn.thread.append({"role": "user", "internal": True,
+                                            "content": reviewer.instruction(found)})
+                        continue
+                elif found:
+                    turn.log.append("reviewed on phone and desktop · looks good")
             if unfinished and turn.nudges < 2:
                 turn.nudges += 1
                 turn.thread[-1]["internal"] = True       # the premature reply isn't shown
@@ -664,6 +683,7 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
 
         if name == "update_site":
             turn.site = site_spec.merge(turn.site, args)
+            turn.site_changed = True
             changed = ", ".join(k for k in args) or "nothing"
             turn.log.append(f"updated site · {changed}")
             layout, theme = site_spec.design_of(turn.site)

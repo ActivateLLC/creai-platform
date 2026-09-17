@@ -75,6 +75,10 @@ class Settings:
     agent_fast_model: str = _req("AGENT_FAST_MODEL", "claude-sonnet-5")  # "Fast"
 
     # payments — in-app panel on Stripe Elements (cards, Apple Pay, Google Pay, Klarna)
+    # the renderer service (screenshots and app smoke tests)
+    render_url: str = _req("RENDER_URL", "")
+    render_token: str = _token("RENDER_TOKEN")
+
     # file uploads — Railway Bucket (S3-compatible)
     assets_bucket: str = _token("ASSETS_BUCKET")
     assets_key_id: str = _token("ASSETS_ACCESS_KEY_ID")
@@ -95,6 +99,7 @@ class Settings:
             "deploy": bool(self.railway_token),
             "email": bool(self.resend_key),
             "publishing": bool(self.postiz_url and self.postiz_key),
+            "review": bool(self.render_url and self.render_token),
             "uploads": bool(self.assets_bucket and self.assets_key_id and self.assets_secret and self.assets_endpoint),
             "registrar": bool(self.cloudflare_token and self.cloudflare_account_id),
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
