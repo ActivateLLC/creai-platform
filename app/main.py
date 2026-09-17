@@ -9,6 +9,7 @@ made reliable, the product's whole wedge does not hold.
 import asyncio
 
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -158,7 +159,8 @@ async def health():
     A deployment missing its DNS credential is not healthy in any useful sense,
     and finding that out here beats finding it out mid-launch.
     """
-    return {"ok": True, "env": settings.env, "configured": settings.configured}
+    version = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("RAILWAY_DEPLOYMENT_ID") or "dev")[:12]
+    return {"ok": True, "env": settings.env, "version": version, "configured": settings.configured}
 
 
 # ---------------------------------------------------------------- the app itself

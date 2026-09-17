@@ -302,6 +302,8 @@ html[data-theme=day] .lib .acts2 button.go{color:#fff}
   display:flex;align-items:center;gap:10px;padding:10px 16px 10px 12px;border-radius:99px;background:var(--cream);color:var(--night);
   font:600 14px/1.2 var(--sans);box-shadow:0 18px 40px -16px rgba(0,0,0,.6);animation:toastIn .45s cubic-bezier(.16,1,.3,1) both}
 .rtoast.out{animation:toastOut .3s ease both}
+.rtoast.update{padding:8px 8px 8px 16px;white-space:nowrap;bottom:calc(120px + env(safe-area-inset-bottom));max-width:calc(100vw - 24px)}
+.rtoast.update button{height:32px;padding:0 14px;border-radius:99px;border:0;background:var(--leaf);color:var(--night);font:600 13px var(--sans);margin-left:6px}
 .rtoast svg{width:20px;height:20px;flex:none;color:var(--leaf-deep)}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,16px) scale(.96)}}
 @keyframes toastOut{to{opacity:0;transform:translate(-50%,10px)}}
@@ -408,7 +410,7 @@ dialog.sheet.closing .sheet-in{animation:sheetOut .26s cubic-bezier(.4,0,1,1) bo
 .order .n{font:600 22px/1.1 var(--sans);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
 .order .n small{display:block;font:500 12px/1.4 var(--sans);color:var(--cream-soft);letter-spacing:0;margin-top:2px}
 .order .amt{font:400 38px/1 var(--display)}
-.bonus{display:inline-flex;align-items:center;height:20px;margin-left:8px;padding:0 8px;border-radius:99px;font:600 11px/1 var(--sans);letter-spacing:.02em;vertical-align:3px;background:color-mix(in srgb,var(--leaf) 22%,transparent);color:var(--leaf);border:1px solid color-mix(in srgb,var(--leaf) 45%,transparent)}
+.bonuspill{display:inline-flex;align-items:center;height:20px;margin-left:8px;padding:0 8px;border-radius:99px;font:600 11px/1 var(--sans);letter-spacing:.02em;vertical-align:3px;background:color-mix(in srgb,var(--leaf) 22%,transparent);color:var(--leaf);border:1px solid color-mix(in srgb,var(--leaf) 45%,transparent)}
 #payBox{min-height:150px;transition:height .3s var(--ease);color-scheme:dark}
 #payBox iframe{color-scheme:dark;background:transparent!important}
 html[data-theme=day] #payBox,html[data-theme=day] #payBox iframe{color-scheme:light}
@@ -1647,10 +1649,17 @@ async function planCard() {
 const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment', waived: 'On us', domain: 'Domain', plan: 'Plan credits' };
 async function loadCredits() {
   if (!S.token) return;
-  let b;
-  try { b = await api('/v1/billing'); } catch (_) { return; }
+  const target = $('pCredits');
+  if (!target.childElementCount) {
+    const sk = el('div', 'skel'); sk.style.maxWidth = '520px'; sk.append(el('i'), el('i'), el('i'));
+    target.replaceChildren(sk);
+  }
+  let b, plan, cap;
+  try {
+    [b, plan, cap] = await Promise.all([api('/v1/billing'), planCard(), api('/v1/billing/cap').catch(() => null)]);
+  } catch (_) { return; }
   setBalance(b.balance);
-  const pane = $('pCredits'); pane.replaceChildren();
+  const pane = document.createDocumentFragment();
   const head = el('div'); head.style.marginBottom = '16px';
   if (S.justAdded) {
     const ok = el('div', 'card'); ok.style.borderColor = 'var(--ok)';
@@ -1660,10 +1669,10 @@ async function loadCredits() {
   head.append(el('h2', null, b.balance.toLocaleString() + ' credits'),
     el('p', 'muted', 'Best uses about 20 credits a message; Fast about 4.' + (NATIVE ? '' : ' Bigger packs come with bonus credits.')));
   pane.append(head);
-  pane.append(await planCard());
+  pane.append(plan);
   const capCard = el('div', 'card');
   capCard.append(el('p', 'label', 'Monthly limit'));
-  api('/v1/billing/cap').then(cap => {
+  if (cap) (() => {
     const used = el('p', 'note', cap.used_this_month.toLocaleString() + ' credits used this month' +
       (cap.monthly_cap ? ' of your ' + cap.monthly_cap.toLocaleString() + ' limit.' : '. No limit set.'));
     const row = el('div', 'row');
@@ -1676,10 +1685,11 @@ async function loadCredits() {
     };
     row.append(inp, save);
     capCard.append(used, row, el('p', 'note', 'CreAI stops before a message would go over it. Fixing errors in apps CreAI built is free (up to three tries per error).'));
-  }).catch(() => {});
+  })();
   pane.append(capCard);
   if (NATIVE) {
     pane.append(el('p', 'note', 'Your balance is shared across all your devices.'));
+    target.replaceChildren(pane);
     return;
   }
   const grid = el('div', 'packs');
@@ -1705,6 +1715,7 @@ async function loadCredits() {
     }
     pane.append(led);
   }
+  target.replaceChildren(pane);
 }
 
 // In-app payment panel. Card data goes from this page straight to the
@@ -1754,6 +1765,30 @@ function appearance() {
     }
   };
 }
+// ------------------------------------------------------------ new version available
+const APP_VERSION = { loaded: null, shown: false };
+async function checkVersion() {
+  if (NATIVE || APP_VERSION.shown) return;
+  let v;
+  try { v = (await fetch('/health', { cache: 'no-store' }).then(r => r.json())).version; } catch (_) { return; }
+  if (!v) return;
+  if (!APP_VERSION.loaded) { APP_VERSION.loaded = v; return; }
+  if (v === APP_VERSION.loaded) return;
+  APP_VERSION.shown = true;
+  const t = el('div', 'rtoast update'); t.setAttribute('role', 'status');
+  t.append('A newer version of CreAI is ready.');
+  const go = el('button', null, 'Refresh'); go.type = 'button';
+  go.onclick = () => {
+    // keep anything typed so a refresh never loses it
+    try { if ($('input').value) sessionStorage.setItem('creai_unsent', $('input').value); } catch (_) {}
+    location.reload();
+  };
+  t.append(go);
+  document.body.append(t);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
+setInterval(checkVersion, 5 * 60 * 1000);
+
 // ------------------------------------------------------------ attachments
 const ATT = [];
 let uploadsOn = false;
@@ -2245,7 +2280,7 @@ async function openPay(pack) {
   paying = pack;
   $('fPay').hidden = false; $('payDone').hidden = true;
   $('payTitle').textContent = pack.name;
-  $('payBonus').replaceChildren(pack.bonus ? el('span', 'bonus', '+' + pack.bonus + '% bonus') : '');
+  $('payBonus').replaceChildren(pack.bonus ? el('span', 'bonuspill', '+' + pack.bonus + '% bonus') : '');
   $('paySum').textContent = pack.bonus ? 'Includes bonus credits' : 'Never expire while your account is open';
   $('payAmt').textContent = pack.price;
   $('payErr').textContent = '';
@@ -2328,10 +2363,23 @@ async function awaitCredit(inSheet) {
 }
 
 // ------------------------------------------------------------ tabs
+// Slide the tab strip so the chosen tab sits in the middle and the next one is in view.
+function revealTab(tab) {
+  const strip = tab.parentElement;
+  if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+  const next = tab.nextElementSibling && !tab.nextElementSibling.hidden ? tab.nextElementSibling : null;
+  let left = tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2;
+  if (next) {
+    const needed = next.offsetLeft + next.offsetWidth + 16 - strip.clientWidth;
+    left = Math.max(left, Math.min(needed, tab.offsetLeft - 16));
+  }
+  left = Math.max(0, Math.min(left, strip.scrollWidth - strip.clientWidth));
+  strip.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' });
+}
 function showPane(which) {
   for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
-    if (k === which) $(t).scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'nearest', inline: 'nearest' });
+    if (k === which) revealTab($(t));
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
   }
   setMobile('work');
@@ -2513,6 +2561,8 @@ setTheme(document.documentElement.dataset.theme);
   } catch (_) {}
   loadProviders();
   checkUploads();
+  checkVersion();
+  try { const u = sessionStorage.getItem('creai_unsent'); if (u) { $('input').value = u; sessionStorage.removeItem('creai_unsent'); } } catch (_) {}
   const qs = new URLSearchParams(location.search);
   const loginCode = qs.get('login_code'), loginMsg = qs.get('login');
   if (loginCode || loginMsg) history.replaceState(null, '', '/');
