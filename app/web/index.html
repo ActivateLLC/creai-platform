@@ -474,7 +474,7 @@ html[data-theme=day] .paybtn{color:#fff}
   header .btn{height:36px;padding:0 10px;letter-spacing:.14em}
   .brand{font-size:22px}
   .m-tabs{display:flex;padding:0 14px;gap:22px}
-  .tabs{padding:0 14px;gap:20px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior:contain;
+  .tabs{padding:0 30px 0 14px;gap:20px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior:contain;
     scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch;
     -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 28px),transparent);
             mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 28px),transparent)}
@@ -2363,17 +2363,23 @@ async function awaitCredit(inSheet) {
 }
 
 // ------------------------------------------------------------ tabs
-// Slide the tab strip so the chosen tab sits in the middle and the next one is in view.
+// Slide the strip so the chosen tab moves left and the next one comes into view,
+// so moving forward keeps revealing what's next instead of hiding it off-screen.
 function revealTab(tab) {
   const strip = tab.parentElement;
   if (!strip || strip.scrollWidth <= strip.clientWidth) return;
-  const next = tab.nextElementSibling && !tab.nextElementSibling.hidden ? tab.nextElementSibling : null;
-  let left = tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2;
+  const pad = 14;
+  const tabs = [...strip.children].filter(t => !t.hidden);
+  const next = tabs[tabs.indexOf(tab) + 1];
+  let left = tab.offsetLeft - pad;                                  // bring it to the left edge
   if (next) {
-    const needed = next.offsetLeft + next.offsetWidth + 16 - strip.clientWidth;
-    left = Math.max(left, Math.min(needed, tab.offsetLeft - 16));
+    const needed = next.offsetLeft + next.offsetWidth + pad - strip.clientWidth;
+    if (needed > left) left = needed;                               // ...but never hide the next one
+  } else {
+    left = strip.scrollWidth - strip.clientWidth;                   // last tab: show the end
   }
   left = Math.max(0, Math.min(left, strip.scrollWidth - strip.clientWidth));
+  if (Math.abs(left - strip.scrollLeft) < 4) return;
   strip.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' });
 }
 function showPane(which) {
