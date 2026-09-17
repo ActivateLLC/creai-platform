@@ -371,6 +371,7 @@ def render(site: dict | None) -> str:
     s = merge(site, {})
     e = html.escape
     layout, theme_name = design_of(s)
+    poster_bg = ""
     t = THEMES[theme_name]
     pal = s["palette"]
     on_accent = "#141414" if _lum(pal["accent"]) > 0.4 else "#FFFFFF"
@@ -401,6 +402,12 @@ def render(site: dict | None) -> str:
                 f'{tile3}<div class="tile t4">{cta}</div>')
     elif layout == "poster":
         hero = f'{h1}<div class="poster-foot">{sub}{cta}</div>'
+        if s["hero_image"]:
+            from urllib.parse import quote
+            safe = quote(s["hero_image"], safe=":/?&=%.-_~")
+            poster_bg = (f'.hero.poster{{background:linear-gradient(100deg,var(--accent) 38%,'
+                         f'color-mix(in srgb,var(--accent) 35%,transparent) 75%),'
+                         f'url("{safe}") right center/cover no-repeat}}')
     elif layout == "editorial":
         hero = (f'<div class="kicker">{e(c.get("area", "")) or e(s["tone"])}</div>{h1}'
                 f'<div class="ed-row">{sub}{cta}</div><div class="hero-visual wide">{visual}</div>')
@@ -555,7 +562,7 @@ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
 <meta name="description" content="{e(s['subline'][:155], quote=True)}">
 <meta name="generator" content="CreAI · {layout} · {theme_name} · {motion}">
 {_fonts(t)}
-<style>{css}</style></head><body>
+<style>{css}{poster_bg}</style></head><body>
 <nav class="nav"><span>{e(name)}</span><a href="#contact">{e(s['cta'])}</a></nav>
 <header class="hero {layout}">{hero}</header>
 {marquee}
