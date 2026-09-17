@@ -199,6 +199,11 @@ TOOL_DRAFT_POSTS = {
                         "scheduled_for": {"type": "string",
                                           "description": "ISO 8601 date-time with timezone offset"},
                         "link": {"type": "string", "description": "Page on their site this post points to"},
+                        "image_prompt": {"type": "string",
+                                         "description": "A picture for the post, described for an image "
+                                                        "generator: subject, setting, light, style. Required "
+                                                        "for Instagram. No text, logos or real people's faces."},
+                        "image_shape": {"type": "string", "enum": ["square", "portrait", "landscape"]},
                     },
                     "required": ["network", "text"],
                 },
@@ -262,24 +267,17 @@ def visible(thread: list) -> list:
 
 
 async def _call(messages: list, tools: list, system: str, model: str) -> dict:
-    if not settings.anthropic_key:
-        raise AgentUnavailable("the agent is not configured on this deployment")
-    body = {"model": model, "max_tokens": 2048,
-            # automatic prompt caching: repeated prefixes bill at the cache rate
-            "cache_control": {"type": "ephemeral"},
-            "system": system, "messages": messages}
-    if tools:
-        body["tools"] = tools
-    async with httpx.AsyncClient(timeout=90) as x:
-        r = await x.post(API, headers={
-            "x-api-key": settings.anthropic_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }, json=body)
-    if r.status_code != 200:
-        log.warning("agent model call failed: %s %s", r.status_code, r.text[:300])
+    from . import models
+    try:
+        return await models.complete(model, messages, tools, system)
+    except models.ModelUnavailable as exc:
+        log.warning("agent model call failed: %s", exc)
+        if not any(models.configured(k) for k in models.REGISTRY):
+            raise AgentUnavailable("the agent is not configured on this deployment")
         raise AgentUnavailable("The assistant is temporarily unavailable. Please try again in a moment.")
-    return r.json()
+    except models.ModelRejected as exc:
+        log.error("model rejected request: %s", exc)
+        raise AgentUnavailable("The assistant hit a problem with this request. Please try rephrasing.")
 
 
 EDIT_EXTRA = """
@@ -432,7 +430,19 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None) -> 
                                   "text": str(p["text"])[:2200],
                                   "when": str(p.get("when", ""))[:60],
                                   "link": str(p.get("link", ""))[:300],
-                                  "scheduled_for": _when(p.get("scheduled_for"))})
+                                  "scheduled_for": _when(p.get("scheduled_for")),
+                                  "image_prompt": str(p.get("image_prompt", ""))[:1500],
+                                  "image_shape": p.get("image_shape") if p.get("image_shape") in
+                                  ("square", "portrait", "landscape") else "square"})
+            from . import images
+            wanted = [(i, x["image_prompt"], x["image_shape"]) for i, x in enumerate(posts) if x["image_prompt"]]
+            if wanted and images.configured():
+                made = await images.generate_many(wanted)
+                for i, url in made.items():
+                    posts[i]["media"] = [{"type": "image", "url": url}]
+                if made:
+                    turn.calls.append((images.media_key(), {"images": len(made)}))
+                    turn.log.append(f"created {len(made)} image{'s' if len(made) != 1 else ''}")
             ids = await queue_posts(posts)
             turn.posts.extend(ids)
             turn.log.append(f"drafted {len(ids)} posts for approval")

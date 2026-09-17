@@ -145,7 +145,9 @@ async def deliver(approval_id: int) -> str:
             return "skipped"
         p = row["payload"] or {}
         network = p.get("network", "")
-        if network in NEEDS_MEDIA and not p.get("media"):
+        has_image = any(x.get("type") == "image" for x in p.get("media") or [])
+        needs = NEEDS_MEDIA.get(network)
+        if needs and not (network == "instagram" and has_image):
             await _mark(c, approval_id, "held",
                         {"reason": f"{network.replace('_', ' ').title()} posts need {NEEDS_MEDIA[network]}."})
             return "held"
@@ -157,6 +159,19 @@ async def deliver(approval_id: int) -> str:
                         {"reason": f"Connect {network.replace('_', ' ').title()} to publish this."})
             return "held"
 
+    uploaded = []
+    for item in (p.get("media") or [])[:4]:
+        if item.get("type") != "image" or not str(item.get("url", "")).startswith("https://"):
+            continue
+        try:
+            up = await _call("POST", "/upload-from-url", json={"url": item["url"]})
+            uploaded.append({"id": up["id"], "path": up["path"]})
+        except (PostizError, httpx.HTTPError, KeyError) as exc:
+            async with conn() as c:
+                await _mark(c, approval_id, "failed", {"reason": "The image couldn't be attached.",
+                                                       "detail": str(exc)[:300]})
+            return "failed"
+
     now = datetime.now(timezone.utc)
     when = row["scheduled_for"] if row["scheduled_for"] and row["scheduled_for"] > now + timedelta(minutes=2) else None
     body = {
@@ -166,7 +181,7 @@ async def deliver(approval_id: int) -> str:
         "tags": [],
         "posts": [{
             "integration": {"id": ch["postiz_id"]},
-            "value": [{"content": _content(network, p.get("text", ""), p.get("link", "")), "image": []}],
+            "value": [{"content": _content(network, p.get("text", ""), p.get("link", "")), "image": uploaded}],
             "settings": _settings(network, ch["identifier"], p.get("link", "")),
         }],
     }

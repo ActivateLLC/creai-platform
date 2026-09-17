@@ -66,8 +66,11 @@ class BillingError(RuntimeError):
 
 def usage_cost(model: str, usage: dict) -> float:
     """Dollars for one API call, from the usage block the API returned."""
-    i, o, w, r = PRICES.get(model, _FALLBACK)
+    from . import models
     u = usage or {}
+    if model in models.MEDIA:
+        return float(models.MEDIA[model]["usd"]) * int(u.get("images") or u.get("videos") or 1)
+    i, o, w, r = models.price(model) or PRICES.get(model, _FALLBACK)
     return (int(u.get("input_tokens") or 0) * i
             + int(u.get("output_tokens") or 0) * o
             + int(u.get("cache_creation_input_tokens") or 0) * w

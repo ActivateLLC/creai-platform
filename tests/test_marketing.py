@@ -138,3 +138,38 @@ async def test_marketing_can_be_added_to_any_project_and_is_private(api, monkeyp
     assert (await api.get(f"/v1/marketing/calendar?project_id={pid}", headers=auth(b))).json()["posts"] == []
     assert (await api.post("/v1/marketing/start", headers=auth(a), json={"website": "not a url"})).status_code == 400
     assert (await api.post("/v1/marketing/start", headers=auth(a), json={"website": "javascript:alert(1)"})).status_code == 400
+
+
+async def test_drafted_posts_get_images_and_are_billed(api, monkeypatch):
+    from app.services import images
+    object.__setattr__(settings, "hf_token", "hf_test")
+    made = []
+
+    async def fake_generate(prompt, shape="square"):
+        made.append((prompt, shape))
+        if "fail" in prompt:
+            raise images.ImageError("nope")
+        return f"https://v3.fal.media/files/{len(made)}.jpeg"
+    monkeypatch.setattr(images, "generate", fake_generate)
+    try:
+        tok = await sign_in(api, f"i{secrets.token_hex(3)}@test-shop.com")
+        pid = (await api.post("/v1/projects", headers=auth(tok), json={"name": "Shop"})).json()["id"]
+        await api.post("/v1/marketing/enable", headers=auth(tok), json={"project_id": pid})
+        before = (await api.get("/v1/billing", headers=auth(tok))).json()["balance"]
+        monkeypatch.setattr(agent, "_call", FakeModel(
+            [tool("draft_posts", {"posts": [
+                {"network": "instagram", "text": "A", "image_prompt": "Shiny SUV at dusk", "image_shape": "portrait"},
+                {"network": "facebook", "text": "B"},
+                {"network": "instagram", "text": "C", "image_prompt": "this will fail"}]})],
+            [text("Drafted.")]))
+        out = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "posts"})).json()
+        assert "created 1 image" in " ".join(out["log"])
+        queue = sorted((await api.get("/v1/approvals", headers=auth(tok))).json(), key=lambda q: q["id"])
+        media = [q["payload"].get("media") for q in queue]
+        assert media[0] == [{"type": "image", "url": "https://v3.fal.media/files/1.jpeg"}]
+        assert media[1] is None and media[2] is None
+        assert ("Shiny SUV at dusk", "portrait") in made
+        after = (await api.get("/v1/billing", headers=auth(tok))).json()["balance"]
+        assert before - after >= 3                                 # one image at $0.01 × 3 markup
+    finally:
+        object.__setattr__(settings, "hf_token", "")

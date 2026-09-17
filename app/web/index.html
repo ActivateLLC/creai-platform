@@ -699,7 +699,9 @@ async function loadCalendar(pane) {
     const top = el('div', 'row'); top.append(el('strong', null, (NETWORKS[p.network] || p.network || 'Post') + ' · ' + when));
     const [label, color] = STATE_LABEL[p.state] || [p.state, 'var(--dim)'];
     const tag = el('span', 'tag', label); tag.style.color = color; tag.style.marginLeft = 'auto'; top.append(tag);
-    c.append(top, el('div', null, p.text || ''));
+    c.append(top);
+    if (p.image) { const im = el('img'); im.src = p.image; im.alt = ''; im.loading = 'lazy'; im.style.cssText = 'width:120px;aspect-ratio:1;object-fit:cover;border:1px solid var(--hairline)'; c.append(im); }
+    c.append(el('div', null, p.text || ''));
     if (p.delivery && p.delivery.reason) c.append(el('p', 'note', p.delivery.reason));
     else if (p.delivery && p.delivery.channel) c.append(el('p', 'note', 'Going out on ' + p.delivery.channel + '.'));
     const pull = el('button', 'btn', 'Cancel post'); pull.type = 'button';
@@ -747,7 +749,10 @@ async function loadPosts() {
     const whenTxt = r.scheduled_for ? new Date(r.scheduled_for).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : (p.when || 'Not scheduled');
     const top = el('div', 'row'); top.append(el('strong', null, (NETWORKS[p.network] || p.network || 'Post') + ' · ' + whenTxt));
     const tag = el('span', 'tag', 'Draft'); tag.style.color = 'var(--warn)'; tag.style.marginLeft = 'auto'; top.append(tag);
-    c.append(top, el('div', null, p.text || ''));
+    c.append(top);
+    const pic = (p.media || []).find(m => m.type === 'image');
+    if (pic) { const im = el('img'); im.src = pic.url; im.alt = ''; im.loading = 'lazy'; im.style.cssText = 'width:100%;max-width:420px;aspect-ratio:1;object-fit:cover;border:1px solid var(--hairline)'; c.append(im); }
+    c.append(el('div', null, p.text || ''));
     if (p.link) { const l = el('a', 'mono', p.link); l.href = p.link; l.target = '_blank'; l.rel = 'noopener'; l.style.color = 'var(--leaf)'; c.append(l); }
     const acts = el('div', 'row');
     const ok = el('button', 'btn primary', 'Approve'); ok.type = 'button';

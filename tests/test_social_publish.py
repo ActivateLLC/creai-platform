@@ -26,7 +26,7 @@ pytestmark = pytest.mark.asyncio
 class FakePostiz:
     def __init__(self):
         self.integrations = []
-        self.created, self.deleted = [], []
+        self.created, self.deleted, self.uploads = [], [], []
         self.fail = False
 
     def __call__(self, req):
@@ -41,6 +41,10 @@ class FakePostiz:
             self.created.append(body)
             return httpx.Response(200, json=[{"postId": f"p{len(self.created)}",
                                               "integration": body["posts"][0]["integration"]["id"]}])
+        if path == "/upload-from-url":
+            url = json.loads(req.content)["url"]
+            self.uploads.append(url)
+            return httpx.Response(200, json={"id": f"up{len(self.uploads)}", "path": "https://postiz.example/u/1.jpeg"})
         if path.startswith("/posts/") and req.method == "DELETE":
             self.deleted.append(path.rsplit("/", 1)[1])
             return httpx.Response(200, json={})
@@ -184,3 +188,18 @@ async def test_platform_errors_are_recorded(env):
     assert (await state_of(p))[1]["reason"] == "The platform didn't accept this post."
     with pytest.raises(sp.PostizError):
         await sp.assign("int-missing", org)
+
+
+async def test_instagram_goes_out_with_its_generated_image(env):
+    api, fake = env
+    tok, org, pid = await workspace(api)
+    fake.integrations = [{"id": "int-ig", "identifier": "instagram", "name": "@shine", "picture": "", "disabled": False}]
+    await sp.assign("int-ig", org)
+    ig = await draft_post(org, pid, "instagram", "Fresh detail", media=[{"type": "image", "url": "https://v3.fal.media/files/abc.jpeg"}])
+    assert (await api.post(f"/v1/approvals/{ig}/approve", headers=auth(tok))).json()["state"] == "scheduled"
+    assert fake.uploads == ["https://v3.fal.media/files/abc.jpeg"]
+    post = fake.created[-1]["posts"][0]
+    assert post["value"][0]["image"] == [{"id": "up1", "path": "https://postiz.example/u/1.jpeg"}]
+    assert post["settings"]["__type"] == "instagram"
+    cal = (await api.get(f"/v1/marketing/calendar?project_id={pid}", headers=auth(tok))).json()["posts"]
+    assert cal[0]["image"] == "https://v3.fal.media/files/abc.jpeg"

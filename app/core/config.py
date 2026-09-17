@@ -51,6 +51,13 @@ class Settings:
     google_client_id: str = _req("GOOGLE_CLIENT_ID", "")
     google_client_secret: str = _req("GOOGLE_CLIENT_SECRET", "")
 
+    # other model providers
+    meta_api_key: str = os.getenv("META_API_KEY") or os.getenv("MODEL_API_KEY", "")
+    meta_api_base: str = os.getenv("META_API_BASE", "https://api.meta.ai/v1")
+    hf_token: str = os.getenv("HF_TOKEN", "")
+    image_model: str = os.getenv("IMAGE_MODEL", "Tongyi-MAI/Z-Image-Turbo")
+    image_provider: str = os.getenv("IMAGE_PROVIDER", "fal-ai")
+
     # social publishing — CreAI's self-hosted Postiz
     postiz_url: str = _req("POSTIZ_URL",
                            "https://postiz-v2113-production-ed5a.up.railway.app/api/public/v1")
