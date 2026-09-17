@@ -228,8 +228,15 @@ async def _call(messages: list, tools: list, system: str, model: str) -> dict:
     return r.json()
 
 
+EDIT_EXTRA = """
+This project is the person's EXISTING website on another platform, not a CreAI-generated
+page: ignore the update_site instructions above and never call update_site.
+"""
+
+
 async def run(text: str, answers: dict | None, *, project: bool = False,
-              queue_posts=None, model: str | None = None, intent: str = "build") -> Turn:
+              queue_posts=None, model: str | None = None, intent: str = "build",
+              bridge=None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -244,7 +251,15 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
 
     intent = intent if intent in INTENTS else "build"
     system = SYSTEM
-    if intent == "build":
+    if bridge is not None:
+        system += EDIT_EXTRA + bridge.prompt()
+    if intent == "build" and bridge is not None:
+        from .webflow import TOOL_DEFS
+        tools = list(TOOL_DEFS) + [TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+        if queue_posts is not None:
+            tools.append(TOOL_DRAFT_POSTS)
+            system += PROJECT_EXTRA
+    elif intent == "build":
         tools = [TOOL_UPDATE_SITE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
         if project and queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
@@ -271,7 +286,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             break
         results = []
         for u in uses:
-            result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts)
+            result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts, bridge)
             results.append({"type": "tool_result", "tool_use_id": u["id"],
                             "content": json.dumps(result)})
         turn.thread.append({"role": "user", "content": results})
@@ -285,8 +300,13 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     return turn
 
 
-async def _tool(turn: Turn, name: str, args: dict, queue_posts) -> dict:
+async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None) -> dict:
     try:
+        if name.startswith("webflow_") and bridge is not None:
+            return await bridge.handle(name, args, turn)
+        if bridge is not None and name == "update_site":
+            return {"ok": False, "error": "this is an existing Webflow site; use the webflow_* tools"}
+
         if name == "update_site":
             turn.site = site_spec.merge(turn.site, args)
             changed = ", ".join(k for k in args) or "nothing"

@@ -7,7 +7,7 @@ from ..core import tenancy as T
 from ..core.db import conn, log_event
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
-PATHS = {"launch", "market", "domain", "company"}
+PATHS = {"launch", "market", "domain", "company", "edit"}
 
 
 class ProjectIn(BaseModel):

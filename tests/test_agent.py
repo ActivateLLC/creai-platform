@@ -39,8 +39,9 @@ class FakeModel:
         self.calls = []
 
     async def __call__(self, messages, tools, system, model):
+        import json as _json
         self.calls.append({"tools": [t["name"] for t in tools], "system": system,
-                           "messages": messages, "model": model})
+                           "messages": _json.loads(_json.dumps(messages)), "model": model})
         return {"content": self.steps.pop(0), "model": model,
                 "usage": {"input_tokens": 3000, "output_tokens": 500}}
 

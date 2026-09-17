@@ -14,8 +14,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import (admin, agent, approvals, auth_routes, billing, dashboard, domains,
-                  drafts, orgs, projects)
+from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
+                  domains, drafts, orgs, projects)
 from .core import db
 from .core.config import settings
 
@@ -40,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (agent.router, billing.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (agent.router, billing.router, connections.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from ..core import tenancy as T
 from ..core.config import settings
 from ..core.db import conn, log_event
-from ..services import agent, billing, site
+from ..services import agent, billing, site, webflow
 from .drafts import COOKIE, DRAFT_TTL, _token
 
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
@@ -63,6 +63,8 @@ async def _run(message: str, answers: dict, **kw):
         return await agent.run(message, answers, **kw)
     except agent.AgentUnavailable as exc:
         raise HTTPException(503, str(exc))
+    except webflow.WebflowError as exc:
+        raise HTTPException(409, str(exc))
 
 
 # ---------------------------------------------------------------- anonymous
@@ -141,7 +143,9 @@ async def _project(c, project_id: int, org_id: int):
 async def project_thread(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
     async with conn() as c:
         p = await _project(c, project_id, ctx.org_id)
-    return _payload(p["answers"] or {}) | {"project": {"id": p["id"], "name": p["name"]}}
+    a = p["answers"] or {}
+    return _payload(a) | {"project": {"id": p["id"], "name": p["name"],
+                                      "source": a.get("source"), "site": a.get("site")}}
 
 
 @router.post("/projects/{project_id}")
@@ -168,9 +172,25 @@ async def project_say(project_id: int, body: SayIn,
                     ctx.org_id, project_id, post))
         return ids
 
-    turn = await _run(body.message, p["answers"] or {}, project=True,
+    answers = p["answers"] or {}
+    bridge = None
+    if answers.get("source") == webflow.PROVIDER:
+        st = await webflow.status(ctx.org_id)
+        if not st["connected"]:
+            raise HTTPException(409, "Webflow isn't connected for this workspace — reconnect to keep editing.")
+
+        async def queue_approval(payload: dict) -> int:
+            async with conn() as c:
+                return await c.fetchval(
+                    """INSERT INTO approvals (org_id, project_id, kind, payload)
+                       VALUES ($1,$2,'webflow_action',$3) RETURNING id""",
+                    ctx.org_id, project_id, payload)
+        bridge = webflow.Bridge(ctx.org_id, project_id, answers.get("site") or {},
+                                st["auto_publish"], queue_approval)
+
+    turn = await _run(body.message, answers, project=True,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
-                      intent=body.intent)
+                      intent=body.intent, bridge=bridge)
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls)
     async with conn() as c:
         await c.execute(

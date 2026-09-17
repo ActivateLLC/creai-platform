@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from ..core import tenancy as T
 from ..core.db import conn, log_event
+from ..services import webflow
 
 router = APIRouter(prefix="/v1/approvals", tags=["approvals"])
 KINDS = {"post", "dns_change", "filing"}
@@ -64,6 +65,24 @@ async def approve(approval_id: int, ctx: T.Ctx = Depends(T.requires("approve")))
     if not row:
         raise HTTPException(404, "nothing pending with that id")
     await log_event(ctx.org_id, f"{row['kind']}.approved", "", row["project_id"], ctx.user_id)
+    if row["kind"] == "webflow_action":
+        # A change to the customer's own site: the person is waiting on it, so
+        # it runs now, once, and the outcome is recorded either way.
+        try:
+            result = await webflow.run_approved(ctx.org_id, row["payload"])
+        except webflow.WebflowError as exc:
+            async with conn() as c:
+                await c.execute("UPDATE approvals SET state='failed' WHERE id=$1 AND org_id=$2",
+                                approval_id, ctx.org_id)
+            raise HTTPException(409, str(exc))
+        failed = result.startswith("ERROR")
+        async with conn() as c:
+            await c.execute(
+                """UPDATE approvals SET state=$3, executed_at=now()
+                   WHERE id=$1 AND org_id=$2""",
+                approval_id, ctx.org_id, "failed" if failed else "done")
+        return {"id": approval_id, "state": "failed" if failed else "done",
+                "result": result[:2000]}
     # A worker executes approved rows. Approving records a decision; it does not
     # perform the action inline, so a slow provider can never make the user's
     # click hang or double-fire.

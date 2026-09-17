@@ -216,6 +216,15 @@ input:focus{outline:none;border-color:var(--leaf)}
 .paysum strong{font-family:var(--display);font-weight:400;font-size:32px}
 .secure{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
 
+.choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.prov{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:14px}
+.prov .logo{width:44px;height:44px;border:1px solid var(--hairline);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:22px}
+.sites{display:flex;flex-direction:column;border-top:1px solid var(--hairline)}
+.siteRow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--hairline)}
+.siteRow .grow{flex:1;min-width:0}
+.switch{display:flex;align-items:center;gap:10px;font-size:14px}
+.switch input{width:18px;height:18px;accent-color:var(--leaf)}
+.note{font-size:13px;color:var(--cream-soft);line-height:1.5}
 .m-tabs{display:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:860px){
@@ -283,16 +292,18 @@ input:focus{outline:none;border-color:var(--leaf)}
   <section id="work" aria-label="Workspace">
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tSite" aria-selected="true" type="button" data-n="01">Preview</button>
-      <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden data-n="02">Posts</button>
+      <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden data-n="02">Review</button>
       <button class="tab" role="tab" id="tDomain" aria-selected="false" type="button" hidden data-n="03">Domain</button>
       <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden data-n="04">Credits</button>
+      <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden data-n="05">Connect</button>
       <span class="status label"><span class="dot" id="sDot" style="color:var(--dim)"></span><span id="sText">Draft · not published</span></span>
     </div>
-    <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><iframe id="preview" title="Site preview" sandbox></iframe>
+    <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><iframe id="preview" title="Site preview" sandbox=""></iframe>
       <div class="stage" id="stage"><canvas id="lens" aria-hidden="true"></canvas><p class="label"><b>00</b> · Your site appears here</p><h2>Say it. We build it.</h2><p class="muted" style="max-width:34ch;margin:0">Describe your business in the chat. Every answer re-renders this page, live.</p></div></div></div>
     <div class="pane" id="pPosts" hidden></div>
     <div class="pane" id="pDomain" hidden></div>
     <div class="pane" id="pCredits" hidden></div>
+    <div class="pane" id="pConnect" hidden></div>
   </section>
 </main>
 
@@ -378,12 +389,23 @@ function renderThread(messages) {
     const h1 = el('h1');
     for (const w of ['Say', 'it.']) h1.append(el('span', null, w));
     h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it, or tap the mic and say it.'));
+    if (!S.project || S.project.source !== 'webflow') {
+      const ch = el('div', 'choices');
+      const edit = el('button', 'btn', 'Edit my existing site'); edit.type = 'button';
+      edit.onclick = () => runAction({ kind: 'connect', label: 'Connect your site' });
+      ch.append(edit); h.append(ch);
+    } else {
+      h.querySelector('p:last-child').textContent = 'Editing ' + (S.project.site?.name || 'your Webflow site') + '. Tell me what to change — copy, SEO, CMS, pages or layout.';
+    }
     $('thread').append(h);
     if (window.gsap && !reduced) gsap.from(h1.children, { opacity: 0, y: '0.3em', filter: 'blur(8px)', duration: 1, stagger: .18, ease: 'power3.out', clearProps: 'filter' });
   }
   for (const m of messages) (m.role === 'user' ? addUser : addAgent)(m.text);
   $('starters').replaceChildren();
-  if (!messages.length) STARTERS.forEach((s, i) => {
+  const starters = S.project && S.project.source === 'webflow'
+    ? ['Audit my SEO titles and descriptions and fix the weak ones.', 'Rewrite my homepage hero to be clearer.', 'Add alt text to images that are missing it.']
+    : STARTERS;
+  if (!messages.length) starters.forEach((s, i) => {
     const c = el('button', 'chip'); c.type = 'button';
     c.append(el('i', null, String(i + 1).padStart(2, '0')), el('span', null, s));
     c.onclick = () => send(s); $('starters').append(enter(c, .5 + i * .08));
@@ -401,7 +423,20 @@ function renderActions(actions) {
   $('thread').append(enter(row));
 }
 
+function isExternal() { return !!(S.project && S.project.source === 'webflow'); }
 async function refreshPreview() {
+  const fr = $('preview');
+  if (isExternal()) {
+    const site = S.project.site || {};
+    $('stage').hidden = true;
+    fr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
+    fr.removeAttribute('srcdoc');
+    const want = site.staging_url || 'about:blank';
+    if (fr.getAttribute('src') !== want) fr.setAttribute('src', want); else fr.contentWindow?.location.replace(want);
+    $('url').textContent = (site.staging_url || 'staging').replace('https://', '') + ' · staging';
+    return;
+  }
+  if (fr.getAttribute('src')) { fr.removeAttribute('src'); fr.setAttribute('sandbox', ''); }
   const path = S.project ? '/v1/agent/projects/' + S.project.id + '/preview' : '/v1/agent/draft/preview';
   try {
     const headers = S.token && S.project ? { Authorization: 'Bearer ' + S.token } : {};
@@ -472,6 +507,7 @@ if (SR) {
 // ------------------------------------------------------------ actions
 function runAction(a) {
   if (a.kind === 'build_plan') return send('Build the plan you just proposed.', 'build');
+  if (a.kind === 'connect' && S.token) { showPane('connect'); return loadConnections(); }
   if (a.kind === 'sign_in' || !S.token) return openSign(a.kind === 'sign_in' ? null : a);
   if (a.kind === 'connect_domain') { $('dname').value = a.domain || ''; $('domErr').textContent = ''; $('dDomain').showModal(); }
   if (a.kind === 'review_posts') { showPane('posts'); loadPosts(); }
@@ -517,11 +553,9 @@ async function afterSignIn(justSigned) {
     const p = await api('/v1/projects', { method: 'POST', body: JSON.stringify({ name: 'My business', path: 'launch' }) });
     pid = p.id;
   }
-  const t = await api('/v1/agent/projects/' + pid);
-  S.project = t.project;
-  renderThread(t.messages); setHasSite(t.site);
+  await openProject(pid);
   if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
-  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('credBtn').hidden = false;
+  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tConnect').hidden = false; $('credBtn').hidden = false;
   refreshPreview(); loadPosts(); loadDomains(); loadCredits();
 }
 
@@ -572,12 +606,30 @@ async function loadPosts() {
   if (!S.token) return;
   const pane = $('pPosts'); pane.replaceChildren();
   const head = el('div'); head.style.marginBottom = '16px';
-  head.append(el('h2', null, 'Posts waiting for you'), el('p', 'muted', 'Drafted from your site. Nothing posts until you approve it — ask the agent for more.'));
+  head.append(el('h2', null, 'Waiting for your OK'), el('p', 'muted', 'Anything public or permanent waits here. Everything else just happens.'));
   pane.append(head);
   let rows = [];
   try { rows = await api('/v1/approvals?state=pending'); } catch (_) {}
+  rows = rows.filter(r => r.kind === 'post' || r.kind === 'webflow_action');
+  if (!rows.length) pane.append(el('p', 'muted', 'Nothing waiting. Live publishes, deletions and new posts show up here for your OK.'));
+  for (const r of rows.filter(r => r.kind === 'webflow_action')) {
+    const p = r.payload || {}, c = el('div', 'card');
+    const top = el('div', 'row'); top.append(el('strong', null, p.summary || 'Change to your Webflow site'));
+    const tag = el('span', 'tag', 'Needs OK'); tag.style.color = 'var(--warn)'; tag.style.marginLeft = 'auto'; top.append(tag);
+    c.append(top, el('p', 'note', 'On ' + ((p.site && p.site.name) || 'your Webflow site') + '. Nothing happens until you approve.'));
+    const acts = el('div', 'row');
+    const ok = el('button', 'btn primary', 'Approve'); ok.type = 'button';
+    const no = el('button', 'btn', 'Discard'); no.type = 'button';
+    ok.onclick = async () => {
+      ok.disabled = true; ok.textContent = 'Working…';
+      try { await api('/v1/approvals/' + r.id + '/approve', { method: 'POST' }); addTool('approved · ' + (p.summary || 'change')); refreshPreview(); }
+      catch (e) { addAgent('That didn\'t go through: ' + e.message); }
+      loadPosts();
+    };
+    no.onclick = async () => { await api('/v1/approvals/' + r.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
+    acts.append(ok, no); c.append(acts); pane.append(c);
+  }
   rows = rows.filter(r => r.kind === 'post');
-  if (!rows.length) pane.append(el('p', 'muted', 'No drafts waiting. Try asking: “Draft a week of Instagram posts.”'));
   for (const r of rows) {
     const p = r.payload || {}, c = el('div', 'card');
     const top = el('div', 'row'); top.append(el('strong', null, (p.network || 'post') + (p.when ? ' · ' + p.when : '')));
@@ -592,6 +644,81 @@ async function loadPosts() {
   }
 }
 
+// ------------------------------------------------------------ connections
+async function openProject(pid) {
+  const t = await api('/v1/agent/projects/' + pid);
+  S.project = t.project;
+  renderThread(t.messages);
+  if (isExternal()) { $('stage').hidden = true; setStatus('Webflow · edits staged', 'var(--leaf)'); }
+  else { setHasSite(t.site); setStatus('Draft · not published', 'var(--dim)'); }
+  setIntent(S.intent);
+  refreshPreview();
+}
+async function loadConnections() {
+  if (!S.token) return;
+  const pane = $('pConnect'); pane.replaceChildren();
+  const head = el('div'); head.style.marginBottom = '16px';
+  head.append(el('h2', null, 'Edit a site you already have'),
+    el('p', 'muted', 'Connect your platform once. CreAI edits pages, copy, SEO, CMS and layout; anything public or permanent waits for your OK.'));
+  pane.append(head);
+  let list = [];
+  try { list = await api('/v1/connections'); } catch (e) { pane.append(el('p', 'err', e.message)); return; }
+  for (const p of list) {
+    const card = el('div', 'card');
+    const row = el('div', 'prov');
+    const logo = el('div', 'logo', p.name[0]);
+    const info = el('div'); info.append(el('strong', null, p.name),
+      el('div', 'note', !p.available ? 'Coming soon' : p.connected ? 'Connected' : p.status === 'expired' ? 'Connection expired — reconnect' : 'Not connected'));
+    row.append(logo, info);
+    if (p.available) {
+      const b = el('button', 'btn' + (p.connected ? '' : ' primary'), p.connected ? 'Disconnect' : (p.status === 'expired' ? 'Reconnect' : 'Connect ' + p.name));
+      b.type = 'button';
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          if (p.connected) { await api('/v1/connections/webflow', { method: 'DELETE' }); loadConnections(); }
+          else { const r = await api('/v1/connections/webflow/start', { method: 'POST' }); location.href = r.url; }
+        } catch (e) { b.disabled = false; pane.append(el('p', 'err', e.message)); }
+      };
+      row.append(b);
+    }
+    card.append(row);
+    if (p.provider === 'webflow' && p.connected) {
+      const sites = el('div', 'sites'); sites.append(el('p', 'label', 'Your sites'));
+      card.append(sites);
+      api('/v1/connections/webflow/sites').then(r => {
+        if (!r.sites.length) sites.append(el('p', 'note', 'No sites found in the connected workspace.'));
+        for (const s of r.sites) {
+          const sr = el('div', 'siteRow');
+          const g = el('div', 'grow'); g.append(el('strong', null, s.name || s.short_name), el('div', 'mono', (s.short_name || '') + '.webflow.io'));
+          const go = el('button', 'btn primary', p.site && p.site.id === s.id ? 'Open' : 'Edit this site'); go.type = 'button';
+          go.onclick = async () => {
+            go.disabled = true;
+            try {
+              const sel = await api('/v1/connections/webflow/select', { method: 'POST', body: JSON.stringify({ site_id: s.id }) });
+              await openProject(sel.project_id);
+              showPane('site'); setMobile('chat');
+              addAgent('Connected to ' + (s.name || 'your site') + '. What should we change first?');
+            } catch (e) { go.disabled = false; sites.append(el('p', 'err', e.message)); }
+          };
+          sr.append(g, go); sites.append(sr);
+        }
+      }).catch(e => sites.append(el('p', 'err', e.message)));
+      const sw = el('label', 'switch');
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!p.auto_publish;
+      cb.onchange = async () => { try { await api('/v1/connections/webflow/settings', { method: 'POST', body: JSON.stringify({ auto_publish: cb.checked }) }); } catch (e) { cb.checked = !cb.checked; } };
+      sw.append(cb, el('span', null, 'Publish to my live domain without asking'));
+      card.append(sw, el('p', 'note', 'Deletions always ask. Staging previews on webflow.io never do.'));
+      if (p.site && p.site.designer_url) {
+        const d = el('a', 'btn', 'Open in Webflow Designer'); d.href = p.site.designer_url; d.target = '_blank'; d.rel = 'noopener';
+        d.style.display = 'inline-flex'; d.style.alignItems = 'center'; d.style.textDecoration = 'none';
+        card.append(d, el('p', 'note', 'For layout and visual edits, keep the Designer open and launch “Webflow MCP Bridge App” from its Apps panel (press E).'));
+      }
+    }
+    pane.append(card);
+  }
+}
+
 // ------------------------------------------------------------ modes
 const PLACEHOLDER = { build: 'Describe your business…', chat: 'Ask anything…', plan: 'What should we plan?' };
 function setMode(m) {
@@ -603,7 +730,7 @@ function setIntent(i) {
   S.intent = i;
   document.querySelectorAll('#intentMenu [data-intent]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.intent === i)));
   $('intentName').textContent = i.charAt(0).toUpperCase() + i.slice(1);
-  $('input').placeholder = PLACEHOLDER[i];
+  $('input').placeholder = (i === 'build' && S.project && S.project.source === 'webflow') ? 'What should we change?' : PLACEHOLDER[i];
 }
 function toggleMenu(open) {
   const m = $('intentMenu'), want = open ?? m.hidden;
@@ -756,7 +883,7 @@ async function awaitCredit() {
 
 // ------------------------------------------------------------ tabs
 function showPane(which) {
-  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits']]) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tConnect', 'pConnect', 'connect']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
   }
@@ -766,6 +893,7 @@ $('tSite').onclick = () => showPane('site');
 $('tPosts').onclick = () => { showPane('posts'); loadPosts(); };
 $('tDomain').onclick = () => { showPane('domain'); loadDomains(); };
 $('tCredits').onclick = () => { showPane('credits'); loadCredits(); };
+$('tConnect').onclick = () => { showPane('connect'); loadConnections(); };
 $('credBtn').onclick = () => { showPane('credits'); loadCredits(); };
 function setMobile(m) { document.body.dataset.m = m; $('mChat').setAttribute('aria-selected', String(m === 'chat')); $('mWork').setAttribute('aria-selected', String(m === 'work')); }
 $('mChat').onclick = () => setMobile('chat');
@@ -934,12 +1062,18 @@ setTheme(document.documentElement.dataset.theme);
     const h = await api('/health');
     if (!h.configured || !h.configured.agent) setStatus('Agent not switched on yet', 'var(--warn)');
   } catch (_) {}
-  const back = new URLSearchParams(location.search).get('topup');
-  if (back) history.replaceState(null, '', '/');
+  const qs = new URLSearchParams(location.search);
+  const back = qs.get('topup');
+  const cn = qs.get('connect') === 'webflow' ? (qs.get('status') || 'ok') : null;
+  if (back || cn) history.replaceState(null, '', '/');
   if (S.token) {
     try {
       await afterSignIn(false);
       if (back === 'done') { showPane('credits'); awaitCredit(); }
+      if (cn) {
+        showPane('connect'); loadConnections();
+        addAgent(cn === 'ok' ? 'Webflow is connected. Pick the site you want to work on.' : cn === 'cancelled' ? 'No problem — Webflow wasn\'t connected.' : 'Webflow didn\'t finish connecting. Please try again.');
+      }
       return;
     } catch (_) {}
   }

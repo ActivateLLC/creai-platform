@@ -225,13 +225,49 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS credit_ledger_org_idx ON credit_ledger(org_id, created_at DESC);
+
+-- Connections to a customer's existing tools (Webflow first). Tokens are
+-- encrypted by the application before they reach this table.
+CREATE TABLE IF NOT EXISTS connections (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  provider    TEXT NOT NULL,
+  label       TEXT,
+  secret_enc  BYTEA NOT NULL,
+  meta        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status      TEXT NOT NULL DEFAULT 'connected',
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (org_id, provider)
+);
+
+-- In-flight OAuth handshakes: which workspace started it, and the PKCE secret.
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state       TEXT PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider    TEXT NOT NULL,
+  verifier    TEXT NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL
+);
+
+-- Our own registration with each provider (platform-level, not per tenant).
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  provider      TEXT NOT NULL,
+  redirect_uri  TEXT NOT NULL,
+  client_id     TEXT NOT NULL,
+  secret_enc    BYTEA,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (provider, redirect_uri)
+);
 """
 
 # Tables that must never be read without an org filter. The isolation test reads
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states",
 )
 
 
