@@ -114,3 +114,14 @@ async def test_a_turn_triggers_the_email(api, monkeypatch):
     monkeypatch.setattr(agent, "_call", FakeModel([text("ok")]))
     await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "hi", "mode": "fast"})
     assert any(to == email and "credits left" in subject for to, subject, _ in api.sent)
+
+
+async def test_old_negative_balances_are_floored_on_startup(api):
+    tok, org, pid, _ = await workspace(api)
+    await set_balance(org, -2)
+    await db.disconnect()
+    await db.connect()
+    assert await billing.balance(org) == 0
+    await db.disconnect()
+    await db.connect()                                    # runs once per workspace
+    assert await billing.balance(org) == 0

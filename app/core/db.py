@@ -435,6 +435,13 @@ async def connect() -> None:
                                       init=_init_conn)
     async with _pool.acquire() as c:
         await c.execute(SCHEMA)
+        # Balances can't go negative any more; bring any from before that fix back to zero, once.
+        await c.execute(
+            """INSERT INTO credit_ledger (org_id, delta, reason, ref, detail)
+               SELECT org_id, -SUM(delta), 'adjustment', 'floor-2026-09:' || org_id,
+                      '{"why": "balance brought back to zero after a pricing fix"}'::jsonb
+               FROM credit_ledger GROUP BY org_id HAVING SUM(delta) < 0
+               ON CONFLICT (ref) DO NOTHING""")
 
 
 async def disconnect() -> None:

@@ -1283,6 +1283,11 @@ async function planCard() {
     return card;
   }
   card.append(el('p', 'note', 'Build free with credits. Upgrade to put your site on your own domain, drop the badge, and get credits every month.'));
+  if (!p.payments_enabled && !NATIVE) {
+    const w = el('p', 'note', 'Checkout is being switched on \u2014 plans and top-ups will be available shortly. Nothing is charged until then.');
+    w.style.cssText = 'border:1px solid var(--warn);padding:10px 12px;color:var(--warn)';
+    card.append(w);
+  }
   let interval = 'yearly';
   const toggle = el('div', 'row');
   const yb = el('button', 'btn primary', 'Yearly · 2 months free'), mb = el('button', 'btn', 'Monthly');
@@ -1308,6 +1313,7 @@ async function planCard() {
       else {
         const b = el('button', 'btn' + (plan.id === 'launch' ? ' primary' : ''), 'Choose ' + plan.name); b.type = 'button';
         b.disabled = !p.can_buy || !p.payments_enabled;
+        if (!p.payments_enabled) b.textContent = plan.name + ' \u00b7 opening soon';
         b.onclick = async () => {
           b.disabled = true; b.textContent = 'Opening checkout…';
           try { location.href = (await api('/v1/plans/checkout', { method: 'POST', body: JSON.stringify({ plan: plan.id, interval }) })).url; }
@@ -1321,7 +1327,7 @@ async function planCard() {
   yb.onclick = () => { interval = 'yearly'; draw(); };
   mb.onclick = () => { interval = 'monthly'; draw(); };
   toggle.append(yb, mb); card.append(toggle, grid);
-  if (!p.payments_enabled) card.append(el('p', 'note', 'Plans open shortly.'));
+  if (!p.payments_enabled) { /* explained at the top of the card */ }
   else if (!p.can_buy) card.append(el('p', 'note', 'Ask your workspace owner to upgrade.'));
   card.append(el('p', 'note', 'Cancel any time in one tap. If a plan ends, your site stays up on its free CreAI address.'));
   draw();
@@ -1376,7 +1382,7 @@ async function loadCredits() {
     grid.append(card);
   }
   pane.append(grid);
-  if (!b.payments_enabled) pane.append(el('p', 'muted', 'Top-ups open shortly.'));
+  if (!b.payments_enabled) { const w = el('p', 'note', 'Top-ups are being switched on and will be available shortly.'); w.style.color = 'var(--warn)'; grid.before(w); }
   else if (!b.can_buy) pane.append(el('p', 'muted', 'Ask your workspace owner to top up.'));
   if (b.history.length) {
     const led = el('div', 'ledger'); led.append(el('h3', null, 'Recent activity'));
