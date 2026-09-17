@@ -218,3 +218,14 @@ async def test_chat_and_plan_never_edit_the_site(api, monkeypatch):
 async def test_unknown_intent_is_rejected(api):
     r = await api.post("/v1/agent/draft", json={"message": "hi", "intent": "deploy"})
     assert r.status_code == 422
+
+
+async def test_production_says_when_email_cannot_be_sent(api, monkeypatch):
+    object.__setattr__(settings, "env", "production")
+    object.__setattr__(settings, "resend_key", "")
+    try:
+        r = await api.post("/v1/auth/start", json={"email": "someone@example-shop.io"})
+        assert r.status_code == 503 and "couldn't send" in r.json()["detail"]
+        assert "code" not in r.text
+    finally:
+        object.__setattr__(settings, "env", "development")

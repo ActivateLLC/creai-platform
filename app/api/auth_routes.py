@@ -24,10 +24,15 @@ class CodeIn(BaseModel):
 async def start(body: StartIn):
     code = await T.issue_code(str(body.email))
     sent = mailer.send_code(str(body.email), code)
-    out = {"sent": sent, "expires_in_minutes": 15}
     if settings.env == "development" and not sent:
-        out["code"] = code          # development only, and only when unconfigured
-    return out
+        return {"sent": False, "expires_in_minutes": 15,
+                "code": code}       # development only, and only when unconfigured
+    if not sent:
+        # Say so plainly rather than leave someone waiting for an email that
+        # will never arrive.
+        raise HTTPException(503, "We couldn't send your sign-in email just now. "
+                                 "Please try again in a few minutes.")
+    return {"sent": True, "expires_in_minutes": 15}
 
 
 @router.post("/code")
