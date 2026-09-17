@@ -276,3 +276,45 @@ async def test_estimates_and_monthly_cap(api, monkeypatch):
         await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "again", "mode": "best"})
     learned = (await api.get("/v1/billing/estimate?mode=best&kind=app", headers=auth(tok))).json()
     assert learned["based_on"] == "your recent messages"
+
+
+
+async def test_app_turn_must_pass_check_before_replying(api, monkeypatch):
+    tok, pid = await new_app(api)
+    broken = "import { html, render } from 'htm/preact';\nimport { Row } from './row';\nrender(html`<p>x</p>`, document.getElementById('root'));"
+    fixed = broken.replace("'./row'", "'./row.js'")
+    row = "import { html } from 'htm/preact';\nexport const Row = () => html`<div>Loading</div>`;"
+    model = FakeModel(
+        [tool("write_files", {"files": [{"path": "app.js", "content": broken}, {"path": "row.js", "content": row}]})],
+        [text("All done.")],                                  # tries to finish without checking
+        [tool("check_app", {})],
+        [tool("write_files", {"files": [{"path": "app.js", "content": fixed}]})],
+        [tool("check_app", {})],
+        [text("Built and checked.")])
+    monkeypatch.setattr(agent, "_call", model)
+    out = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "build it"})).json()
+    assert "check_app" in model.calls[0]["tools"]
+    assert "call check_app" in model.calls[2]["messages"][-1]["content"]
+    first = json.loads(model.calls[3]["messages"][-1]["content"][0]["content"])
+    assert first["ok"] is False and any(".js extension" in p for p in first["problems"])
+    second = json.loads(model.calls[5]["messages"][-1]["content"][0]["content"])
+    assert second["ok"] is True
+    assert out["messages"][-1]["text"] == "Built and checked."
+    assert "checked the app · all clear" in out["log"]
+
+
+def test_reviewer_catches_common_breakages():
+    files = {
+        "app.js": "import { html, render } from 'htm/preact';\nimport List from './screens/list.js';\n"
+                  "import { Card, Nope } from './components/card.js';\nimport x from 'lodash';\n"
+                  "const App = () => <div />;\nrender(html`<p>x</p>`, document.getElementById('root'));",
+        "screens/list.js": "export const List = 1;",
+        "components/card.js": "import { html } from 'htm/preact';\nexport function Card() { return html`<div>`; }\nconst s = `oops;",
+        "app.json": "{bad json",
+    }
+    rep = appfs.review(files)
+    text_ = " ".join(rep["problems"])
+    for expect in ("no default export", "doesn't export it", "'lodash' isn't available", "looks like JSX",
+                   "odd number of backticks", "app.json isn't valid JSON"):
+        assert expect in text_, expect
+    assert appfs.review({"app.js": appfs.STARTER["app.js"]})["ok"] is False

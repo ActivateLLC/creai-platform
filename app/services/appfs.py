@@ -303,3 +303,125 @@ def preview(app_files: dict[str, str], site: dict, app_token: str, api_base: str
 <script>{sdk}</script>
 <script type="module">{RUNNER}</script>
 </body></html>"""
+
+
+# ---------------------------------------------------------------- self-review
+
+IMPORT_RE = re.compile(r"""^\s*import\s+(?:(?P<what>[\w$*{}\s,]+?)\s+from\s+)?['"](?P<spec>[^'"]+)['"]""", re.M)
+DYNAMIC_RE = re.compile(r"""import\(\s*['"](?P<spec>[^'"]+)['"]\s*\)""")
+EXPORT_NAMED_RE = re.compile(r"^\s*export\s+(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)", re.M)
+EXPORT_LIST_RE = re.compile(r"^\s*export\s*\{([^}]*)\}", re.M)
+HOOKS = ("useState", "useEffect", "useMemo", "useCallback", "useRef", "useReducer", "useContext", "useLayoutEffect")
+
+
+def _resolve(from_path: str, spec: str) -> str:
+    parts = from_path.split("/")[:-1]
+    for seg in spec.split("/"):
+        if seg == "..":
+            if parts:
+                parts.pop()
+        elif seg not in (".", ""):
+            parts.append(seg)
+    return "/".join(parts)
+
+
+def _exports(src: str) -> tuple[set, bool]:
+    names = set(EXPORT_NAMED_RE.findall(src))
+    for group in EXPORT_LIST_RE.findall(src):
+        for item in group.split(","):
+            item = item.strip()
+            if item:
+                names.add(item.split(" as ")[-1].strip())
+    return names, bool(re.search(r"^\s*export\s+default\b", src, re.M))
+
+
+def _strip_comments(src: str) -> str:
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"(?m)(^|[^:\\\\])//.*$", r"\1", src)
+
+
+def review(app_files: dict[str, str]) -> dict:
+    """What a careful reviewer would flag before calling the app done. Static checks only:
+    they catch the mistakes that break a no-build ES-module app at load time."""
+    problems, notes = [], []
+    js = {p: c for p, c in app_files.items() if p.endswith(".js")}
+    entry = js.get(ENTRY, "")
+    if not entry:
+        problems.append("app.js is missing.")
+    elif entry == STARTER[ENTRY]:
+        problems.append("app.js is still the starter screen.")
+    elif "getElementById('root')" not in entry and 'getElementById("root")' not in entry:
+        problems.append("app.js never renders into document.getElementById('root').")
+    exports = {p: _exports(c) for p, c in js.items()}
+    reachable, queue = set(), [ENTRY] if entry else []
+    for path, src in js.items():
+        code = _strip_comments(src)
+        if code.count("`") % 2:
+            problems.append(f"{path}: an odd number of backticks — a template literal is not closed.")
+        imports = [(m.group("what") or "", m.group("spec")) for m in IMPORT_RE.finditer(code)]
+        imports += [("", m.group("spec")) for m in DYNAMIC_RE.finditer(code)]
+        imported = set()
+        for what, spec in imports:
+            if spec.startswith("."):
+                target = _resolve(path, spec)
+                if not target.endswith(".js"):
+                    problems.append(f"{path}: import '{spec}' needs the .js extension.")
+                    continue
+                if target not in js:
+                    problems.append(f"{path}: imports '{spec}', but {target} doesn't exist.")
+                    continue
+                names, has_default = exports[target]
+                w = what.strip()
+                default_part = w.split("{")[0].strip().rstrip(",").strip()
+                if default_part and not default_part.startswith("*") and not has_default:
+                    problems.append(f"{path}: default-imports {target}, which has no default export.")
+                for inner in re.findall(r"\{([^}]*)\}", w):
+                    for item in inner.split(","):
+                        name = item.strip().split(" as ")[0].strip()
+                        if name and name not in names:
+                            problems.append(f"{path}: imports {{ {name} }} from {target}, which doesn't export it.")
+            elif spec not in IMPORTS:
+                problems.append(f"{path}: '{spec}' isn't available. Use only preact, preact/hooks and htm/preact.")
+            for item in re.split(r"[,{}\s]+", what):
+                item = item.strip()
+                if item and item not in ("*", "as"):
+                    imported.add(item)
+        body = IMPORT_RE.sub("", code)
+        if re.search(r"\bhtml`", body) and "html" not in imported and not re.search(r"\b(const|let|var|function)\s+html\b", body):
+            problems.append(f"{path}: uses html`…` without importing html from 'htm/preact'.")
+        for hook in HOOKS:
+            if re.search(rf"\b{hook}\s*\(", body) and hook not in imported and not re.search(rf"\bfunction\s+{hook}\b", body):
+                problems.append(f"{path}: calls {hook} without importing it from 'preact/hooks'.")
+        jsx_body = re.sub(r"html`(?:[^`\\]|\\.)*`", "", body, flags=re.S)
+        if re.search(r"(=>|return|\(|=)\s*<[A-Za-z][\w.]*[\s/>]", jsx_body):
+            problems.append(f"{path}: looks like JSX. Use html`<${{Component}} />` templates instead.")
+        if re.search(r"\bclassName=", body):
+            notes.append(f"{path}: prefer class= over className= in htm templates.")
+    while queue:
+        p = queue.pop()
+        if p in reachable or p not in js:
+            continue
+        reachable.add(p)
+        for m in IMPORT_RE.finditer(_strip_comments(js[p])):
+            if m.group("spec").startswith("."):
+                queue.append(_resolve(p, m.group("spec")))
+    for p in js:
+        if p not in reachable and entry:
+            notes.append(f"{p} isn't imported anywhere, so it never runs.")
+    if "app.json" in app_files:
+        try:
+            json.loads(app_files["app.json"])
+        except ValueError as exc:
+            problems.append(f"app.json isn't valid JSON ({exc}).")
+    code_all = "\n".join(js.values())
+    used = sorted(set(re.findall(r"collection\(\s*['\"]([a-z][a-z0-9_]{0,40})['\"]", code_all)))
+    declared = set(rules(app_files))
+    missing = [c for c in used if c not in declared]
+    if missing:
+        notes.append("No visitor access rule yet for: " + ", ".join(missing)
+                     + " (owner-only once published; add them to app.json if visitors should use them).")
+    if used and not re.search(r"catch\s*\(|\.catch\(", code_all):
+        notes.append("Data calls have no error handling; show a friendly message when a call fails.")
+    if used and not re.search(r"[Ll]oading", code_all):
+        notes.append("No loading state found while data loads.")
+    return {"ok": not problems, "problems": problems[:20], "notes": notes[:10]}

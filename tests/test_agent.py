@@ -38,12 +38,17 @@ class FakeModel:
     def __init__(self, *steps):
         self.steps = list(steps)
         self.calls = []
+        self.last = None
 
     async def __call__(self, messages, tools, system, model, max_tokens=2048):
         import json as _json
         self.calls.append({"tools": [t["name"] for t in tools], "system": system,
                            "messages": _json.loads(_json.dumps(messages)), "model": model})
-        return {"content": self.steps.pop(0), "model": model,
+        # When the script runs out (the agent was asked to keep going), repeat the final reply.
+        step = self.steps.pop(0) if self.steps else self.last
+        if not any(b.get("type") == "tool_use" for b in step):
+            self.last = step
+        return {"content": step, "model": model,
                 "usage": {"input_tokens": 3000, "output_tokens": 500}}
 
 
@@ -348,3 +353,25 @@ async def test_balance_never_goes_negative(api, monkeypatch):
     assert spent == have and left == 0
     spent, left = await billing.charge_usage(org, None, None, big, kind="best:site")
     assert spent == 0 and left == 0
+
+
+
+async def test_agent_is_sent_back_to_fix_quality_issues(api, monkeypatch):
+    model = FakeModel([tool("update_site", {"business": "Acme", "headline": "Unlock seamless savings"})],
+                      [text("Done.")],
+                      [tool("update_site", {"headline": "Plumbing fixed the same day in Madison",
+                                            "sections": [{"kind": "services", "items": [{"name": "Leaks", "detail": "Found fast."}]},
+                                                         {"kind": "cta", "body": "Call now.", "button": "Call"}]})],
+                      [text("Fixed the headline.")])
+    monkeypatch.setattr(agent, "_call", model)
+    out = (await api.post("/v1/agent/draft", json={"message": "a plumber"})).json()
+    assert len(model.calls) == 4
+    nudge = model.calls[2]["messages"][-1]
+    assert nudge["role"] == "user" and "quality check still lists issues" in nudge["content"]
+    assert out["messages"][-1]["text"] == "Fixed the headline."
+    assert not any("quality check" in m["text"] for m in out["messages"])     # never shown as the person's words
+
+
+def test_system_prompt_is_current():
+    assert "not switched on yet" not in agent.SYSTEM
+    assert "Verify" in agent.SYSTEM and "check_app" in agent.APP_EXTRA

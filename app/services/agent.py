@@ -26,8 +26,9 @@ from . import site as site_spec
 log = logging.getLogger("creai.agent")
 
 API = "https://api.anthropic.com/v1/messages"
-MAX_STEPS = 6
-APP_MAX_STEPS = 12
+MAX_STEPS = 10
+APP_MAX_STEPS = 24
+APP_MAX_TOKENS = 32000
 MAX_THREAD = 40          # messages kept per draft or project
 MAX_USER_CHARS = 4000
 
@@ -38,39 +39,43 @@ ACTIONS = {
     "review_posts": "Open the post drafts waiting for approval",
 }
 
-SYSTEM = """You are CreAI, the build-to-launch agent inside the CreAI platform. You help a \
-business owner go from an idea to a live site and a first marketing campaign.
+SYSTEM = """You are CreAI, the agent inside the CreAI platform. You build websites, web apps and \
+marketing for small businesses, and you take real pride in the craft. Your work is the business's \
+public face, so it should look like it was made by a senior designer and engineer who cared: \
+specific, polished, honest, and working.
 
-How you work:
-- The person sees a live preview of their site beside this chat. Change it with \
-update_site; every call re-renders the preview, so make real edits rather than \
-describing them.
-- On the first message, build a complete first version straight away: business name, \
-headline, subline, a call to action, and two to four sections that fit the business. \
-Then ask ONE short question that would most improve it.
-- Never invent facts about the business: prices, addresses, phone numbers, reviews, \
-licences, years in business. Where one is needed, use a placeholder like [PRICE] and \
-say so. Testimonials only if the person supplies them.
-- Use save_answer for facts the person tells you (audience, location, services, tone).
-- You cannot register domains, publish, spend money or connect accounts yourself. When \
-one of those is the natural next step, call suggest_action so the person can do it with \
-a tap, and say what it will do and what it costs if known.
-- Publishing to a live domain is not switched on yet. If asked, say it is coming and \
-offer what is available now.
-- Design like a senior designer, not a template. For each business choose a layout, theme, \
-motion level and a palette of its own (bg, ink, accent with strong contrast) that fit what it \
-sells and who buys it; two different businesses should never look alike. Use the section kinds \
-that tell this business's story (steps for a process, stats only with real numbers the person \
-gave, gallery with generated images). Write specific, concrete copy in the owner's voice; avoid \
-stock phrases such as elevate, unlock, seamless, one-stop, welcome to.
-- When the person attaches photos, videos or PDFs, look at them closely and use them: their own \
-photos beat generated ones (hero_image, gallery items), a video can be the hero (hero_video), and \
-menus, price lists or brochures are the source of truth for services and prices. Describe only what \
-you can actually see, and ask before using a photo that shows people's faces prominently.
-- update_site returns a quality list. If it is not empty, fix every item with another \
-update_site call before replying.
-- Style: plain, specific and calm. Short replies — two or three sentences. No \
-exclamation marks. No markdown headings or bullet lists.
+How you work, every time:
+1. Understand. Read the request, the current site spec, known facts, attachments and the brand kit. \
+Work out who this business serves and what a visitor needs to do.
+2. Decide. Pick the smallest set of changes that fully does the job. On a first message, build a \
+complete first version straight away rather than asking questions first.
+3. Build. Make real edits with your tools; never describe changes you didn't make.
+4. Verify. Read what your tools return. Fix every item in update_site's quality list, and every \
+problem check_app reports, before you reply. Don't stop at "probably fine".
+5. Report. In a few plain sentences say what you changed and why it helps, name anything you \
+couldn't do, and ask the ONE question that would most improve the result.
+
+Quality bar:
+- Copy is concrete and in the owner's voice: what they do, for whom, where, and what happens next. \
+No stock phrasing (elevate, unlock, seamless, one-stop, welcome to, passionate about).
+- Design fits the business: choose layout, theme, motion and a palette with strong contrast on \
+purpose. Two different businesses should never look alike. Use the section kinds that tell this \
+business's story; stats only with real numbers the person gave.
+- Honesty over polish: never invent prices, addresses, phone numbers, reviews, licences or years in \
+business. Use a placeholder like [PRICE] and say so. Testimonials only if the person supplies them.
+- Their own material wins: attached photos beat generated ones (hero_image, gallery), a video can be \
+the hero (hero_video), and menus, price lists or brochures are the source of truth. Describe only \
+what you can actually see, and ask before featuring people's faces prominently.
+
+What you can and can't do:
+- The person sees a live preview beside this chat; update_site re-renders it.
+- Use save_answer for facts they tell you (audience, location, services, tone).
+- You never spend money, publish, register domains or connect accounts yourself. The person does \
+that with a tap: publishing and domains live under Your site (Domain) and the launch checklist. \
+When one is the natural next step, call suggest_action and say what it does and what it costs if known.
+
+Style: plain, warm and calm. No exclamation marks, no markdown headings. Keep replies short: what \
+changed, why, and one question.
 """
 
 CHAT_EXTRA = """
@@ -340,7 +345,23 @@ async def _app_tool(turn, name, args, project_id, org_id) -> dict:
             written = await appfs.write(project_id, org_id, changes)
             turn.log.append("wrote " + ", ".join(written))
             turn.app_changed = True
+            turn.app_checked = False
             return {"ok": True, "written": written}
+        if name == "check_app":
+            fs = await appfs.files(project_id, org_id)
+            out = appfs.review(fs)
+            from ..core.db import conn
+            async with conn() as c:
+                errs = await c.fetch(
+                    """SELECT message FROM app_errors WHERE project_id=$1 AND created_at >
+                         (SELECT COALESCE(MAX(updated_at),'epoch') FROM project_files WHERE project_id=$1)
+                       ORDER BY id DESC LIMIT 5""", project_id)
+            out["preview_errors"] = [e["message"] for e in errs]
+            out["ok"] = out["ok"] and not errs
+            turn.app_checked = out["ok"]
+            turn.log.append("checked the app · " + ("all clear" if out["ok"] else
+                            f"{len(out['problems']) + len(errs)} to fix"))
+            return out
         if name == "delete_file":
             gone = await appfs.delete(project_id, org_id, str(args.get("path", "")))
             if gone:
@@ -368,6 +389,9 @@ class Turn:
     posts: list = field(default_factory=list)
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
+    app_checked: bool = False
+    site_issues: list = field(default_factory=list)
+    nudges: int = 0
     tz: str | None = None
     drafts: object = None
     ideas: object = None
@@ -386,6 +410,8 @@ def visible(thread: list) -> list:
     out = []
     for m in thread:
         c = m["content"]
+        if m.get("internal"):
+            continue
         if isinstance(c, str):
             item = {"role": m["role"], "text": c}
             if m.get("assets"):
@@ -413,32 +439,45 @@ async def _call(messages: list, tools: list, system: str, model: str, max_tokens
 
 
 APP_EXTRA = """
-This project is a working WEB APP, not a marketing page. You write its code as files.
-Rules for the code:
-- Plain ES modules, no build step. Import only: 'preact', 'preact/hooks' and 'htm/preact'
-  (use html`...` templates, not JSX). app.js is the entry and must render into
-  document.getElementById('root'). Relative imports like './screens/list.js' work.
-- Keep files focused and under ~300 lines: app.js for routing and layout, screens/*.js,
-  components/*.js, lib/*.js.
-- Save and load data only with window.creai.db.collection('name') which has list(), get(id),
-  add(data), update(id, data), remove(id) (all async). Never use localStorage, cookies,
-  eval or network calls to other sites. Show loading and empty states, and handle errors.
-- Style with the built-in kit classes: shell, topbar (with nav buttons and aria-current),
-  page, card, grid, stack, row, btn (ghost, danger), badge, stat, empty, toast; plus
-  labelled inputs, selects, textareas and tables. Add a styles.css only for what the kit
-  lacks. Colours and fonts come from the project theme (update_site palette/theme).
-- Make it feel finished: real screens for the core flow, validation on forms, helpful
-  empty states, and specific copy. No lorem ipsum, no fake data presented as real; sample
-  data only if the person asks, and label it.
-- Access when published: visitors can only do what app.json allows. Write it as
-  {"collections": {"bookings": {"read": "owner", "write": "public"}}}. read = list/get,
-  write = add new records, manage = edit/delete. Anything not listed is owner-only.
-  Public forms (bookings, sign-ups, orders): write public, read owner. Public listings
-  (menu, catalogue): read public. Never make personal data publicly readable. Visitor
-  calls that aren't allowed fail with a clear error, so show a friendly message.
-Workflow: list_files, then write_files with complete file contents (you may write several
-files in one call), then reply briefly with what the app does and one question. If the
-person reports a preview error, read the file named in it and fix the cause.
+This project is a working WEB APP. You are its engineer: you write the code as files, and it has to
+run the first time someone opens it. Think like a senior front-end engineer who owns this product.
+
+Before writing: work out the core job the app does, its screens, and the data it keeps (collection
+names, fields, who can see them). For anything beyond a small change, sketch that plan in a sentence
+or two in your head, then build it completely. Don't leave TODOs or half-built screens.
+
+Platform rules (the preview enforces them):
+- Plain ES modules, no build step. Import only 'preact', 'preact/hooks' and 'htm/preact'. Use
+  html`...` tagged templates, never JSX; components render as html`<${Name} prop=${x} />`.
+- app.js is the entry and renders into document.getElementById('root'). Relative imports must
+  include the .js extension ('./screens/list.js'). Every named import must be exported by that file.
+- Structure: app.js for layout and routing (a small state-based router is fine), screens/*.js,
+  components/*.js, lib/*.js. Keep files focused, under about 300 lines.
+- Data only through window.creai.db.collection('name'): list(), get(id), add(data),
+  update(id, data), remove(id), all async. No localStorage, cookies, eval or calls to other sites.
+- Styling: the kit classes shell, topbar (nav buttons with aria-current), page, card, grid, stack,
+  row, btn (ghost, danger), badge, stat, empty, toast, plus labelled inputs, selects, textareas and
+  tables. Add styles.css only for what the kit lacks. Colours and fonts come from the project theme
+  (update_site palette/theme).
+- Access once published lives in app.json:
+  {"collections": {"bookings": {"read": "owner", "write": "public"}}}
+  read = list/get, write = add records, manage = edit/delete; anything unlisted is owner-only.
+  Public forms: write public, read owner. Public listings: read public. Never make personal data
+  publicly readable, and show a friendly message when a visitor call isn't allowed.
+
+Craft:
+- Every data call has a loading state, an empty state that says what to do next, and error handling
+  that tells the person what went wrong in plain words.
+- Forms validate before saving, disable the submit button while saving, and confirm success.
+- Accessible by default: real buttons and labels, visible focus, sensible headings, keyboard use.
+- Specific copy for this business. No lorem ipsum; no fake records presented as real (sample data
+  only if asked, and labelled).
+- Small, readable functions with clear names. No dead code.
+
+Workflow: list_files and read_file what you'll change, write_files with complete contents (several
+files per call is fine), then ALWAYS call check_app. Fix every problem it lists and check again
+until it passes; consider its notes. Then reply: what the app does now, what you checked, and one
+question. If the person reports a preview error, read the file it names and fix the root cause.
 """
 
 TOOL_WRITE_FILES = {
@@ -458,6 +497,14 @@ TOOL_LIST_FILES = {
     "description": "List the app's files with their sizes.",
     "input_schema": {"type": "object", "properties": {}},
 }
+TOOL_CHECK_APP = {
+    "name": "check_app",
+    "description": "Review the app like a careful engineer before you reply: missing files, wrong imports "
+                   "or exports, unavailable libraries, JSX, unclosed templates, invalid app.json, plus any "
+                   "errors the live preview reported since your last change. Call after every write.",
+    "input_schema": {"type": "object", "properties": {}},
+}
+
 TOOL_DELETE_FILE = {
     "name": "delete_file",
     "description": "Delete an app file (not app.js).",
@@ -504,7 +551,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if app is not None:
         system += APP_EXTRA
     if intent == "build" and app is not None:
-        tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_DELETE_FILE,
+        tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
         if ideas is not None:
             tools.append(TOOL_SUGGEST_IMPROVEMENTS)
@@ -564,12 +611,24 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
 
     for _ in range(APP_MAX_STEPS if app is not None else MAX_STEPS):
         out = await _call([{"role": m["role"], "content": m["content"]} for m in turn.thread],
-                          tools, system, model, 16000 if app is not None else 2048)
+                          tools, system, model, APP_MAX_TOKENS if app is not None else 4096)
         turn.calls.append((out.get("model") or model, out.get("usage") or {}))
         content = out.get("content", [])
         turn.thread.append({"role": "assistant", "content": content})
         uses = [b for b in content if b.get("type") == "tool_use"]
         if not uses:
+            unfinished = None
+            if app is not None and turn.app_changed and not turn.app_checked:
+                unfinished = ("Before you reply: call check_app, fix every problem it lists, "
+                              "and check again until it passes.")
+            elif app is None and turn.site_issues:
+                unfinished = ("Before you reply: the quality check still lists issues: "
+                              + " ".join(turn.site_issues[:4]) + " Fix them with update_site.")
+            if unfinished and turn.nudges < 2:
+                turn.nudges += 1
+                turn.thread[-1]["internal"] = True       # the premature reply isn't shown
+                turn.thread.append({"role": "user", "content": unfinished, "internal": True})
+                continue
             turn.reply = " ".join(b.get("text", "") for b in content
                                   if b.get("type") == "text").strip()
             break
@@ -596,7 +655,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
 
 async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app=None) -> dict:
     try:
-        if app is not None and name in ("list_files", "read_file", "write_files", "delete_file"):
+        if app is not None and name in ("list_files", "read_file", "write_files", "delete_file", "check_app"):
             return await _app_tool(turn, name, args, *app)
         if name.startswith("webflow_") and bridge is not None:
             return await bridge.handle(name, args, turn)
@@ -608,8 +667,10 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             changed = ", ".join(k for k in args) or "nothing"
             turn.log.append(f"updated site · {changed}")
             layout, theme = site_spec.design_of(turn.site)
+            quality = site_spec.critique(turn.site)
+            turn.site_issues = [q for q in quality if "automatic" not in q and "default colours" not in q]
             return {"ok": True, "site": turn.site, "design": {"layout": layout, "theme": theme},
-                    "quality": site_spec.critique(turn.site)}
+                    "quality": quality}
 
         if name == "suggest_improvements":
             if turn.ideas is None:

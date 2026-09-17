@@ -102,7 +102,10 @@ async def test_signup_grant_once_and_turns_are_charged(api, monkeypatch):
     again = (await api.get("/v1/billing", headers=auth(tok))).json()
     assert first["balance"] == again["balance"] == billing.SIGNUP_CREDITS
 
-    fake = FakeModel([tool("update_site", {"headline": "Hi"})], [text("Done.")])
+    fake = FakeModel([tool("update_site", {"business": "Acme Plumbing", "headline": "Leaks fixed the same day",
+                                           "sections": [{"kind": "services", "items": [{"name": "Leaks", "detail": "Found fast."}]},
+                                                        {"kind": "cta", "body": "Call us.", "button": "Call"}]})],
+                     [text("Done.")])
     monkeypatch.setattr(agent, "_call", fake)
     r = await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok),
                        json={"message": "hello", "mode": "best"})
