@@ -86,6 +86,9 @@ async def publish(project_id: int, ctx: T.Ctx = Depends(T.requires("approve"))):
             ctx.org_id, project_id, slug, site_spec.render(spec), ctx.user_id)
         doms = await _domains(c, project_id)
     _cache.clear()
+    import asyncio
+    from ..services import thumbs
+    asyncio.create_task(thumbs.refresh(ctx.org_id, project_id, site_spec.render(spec)))
     await log_event(ctx.org_id, "site.published", slug, project_id, ctx.user_id)
     return {"published": True, "url": public_url(slug), "domains": doms,
             "quality": issues}

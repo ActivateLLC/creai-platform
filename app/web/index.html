@@ -211,6 +211,56 @@ dialog form{display:flex;flex-direction:column;gap:14px;margin:0}
 label{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream-soft)}
 input[type=email],input[type=text]{height:46px;padding:0 12px;border:1px solid var(--hairline);border-radius:0;background:var(--deep);color:var(--cream);font-size:16px}
 input:focus{outline:none;border-color:var(--leaf)}
+/* ---- projects */
+.projbtn{display:flex;align-items:center;gap:8px;max-width:210px;height:34px;padding:0 10px;border:1px solid var(--hairline);
+  border-radius:var(--radius);background:transparent;color:var(--cream);font:500 13px var(--sans);transition:border-color .2s,background .2s}
+.projbtn:hover{border-color:color-mix(in srgb,var(--cream) 40%,transparent);background:color-mix(in srgb,var(--cream) 6%,transparent)}
+.projbtn .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.projbtn svg{flex:none;opacity:.6;transition:transform .2s}
+.projbtn[aria-expanded=true] svg{transform:rotate(180deg)}
+.projmenu{position:absolute;top:56px;left:50%;transform:translateX(-50%) translateY(-6px);z-index:70;width:min(420px,calc(100vw - 24px));
+  max-height:min(70vh,560px);overflow:auto;overscroll-behavior:contain;border:1px solid var(--hairline);border-radius:18px;padding:8px;
+  background:color-mix(in srgb,var(--surface) 96%,transparent);backdrop-filter:blur(16px);
+  box-shadow:0 30px 70px -24px rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.projmenu.open{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+.projmenu h4{margin:10px 10px 6px;font:500 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--cream-soft)}
+.prow{display:flex;gap:10px;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:12px;background:transparent;
+  color:inherit;text-align:left;transition:background .18s}
+.prow:hover,.prow:focus-visible{background:color-mix(in srgb,var(--cream) 8%,transparent);outline:none}
+.prow[aria-current=true]{background:color-mix(in srgb,var(--leaf) 12%,transparent)}
+.pthumb{flex:none;width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid var(--hairline);
+  background:color-mix(in srgb,var(--cream) 6%,transparent);display:grid;place-items:center;font:600 11px var(--mono);color:var(--cream-soft)}
+.pthumb img{width:100%;height:100%;object-fit:cover;object-position:top}
+.pmeta{min-width:0;flex:1}
+.pmeta b{display:block;font:600 14px/1.3 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmeta span{display:block;font-size:12px;color:var(--cream-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.pdot.live{background:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 22%,transparent)}
+.newrow{border-top:1px solid var(--hairline);margin-top:8px;padding-top:8px}
+.newrow .prow{font-weight:600}
+.newrow .pthumb{font-size:18px;color:var(--leaf)}
+.projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;margin-top:18px}
+.pcard{position:relative;border:1px solid var(--hairline);border-radius:18px;overflow:hidden;background:color-mix(in srgb,var(--cream) 4%,transparent);
+  transition:transform .3s var(--ease),border-color .3s;animation:riIn .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 40ms)}
+.pcard:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--leaf) 50%,transparent)}
+.pcard .shot{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;object-position:top;background:color-mix(in srgb,var(--cream) 6%,transparent);border:0}
+.pcard .empty-shot{display:grid;place-items:center;aspect-ratio:4/3;font:400 34px var(--display);color:var(--cream-soft);opacity:.5}
+.pcard .body{padding:12px 14px 14px}
+.pcard .body b{display:block;font:600 15px/1.35 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .body small{display:block;color:var(--cream-soft);font-size:12px;margin-top:2px}
+.pcard .tags{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.ptag{font:600 10px/1 var(--sans);letter-spacing:.04em;padding:5px 8px;border-radius:99px;background:color-mix(in srgb,var(--cream) 10%,transparent);color:var(--cream-soft)}
+.ptag.live{background:color-mix(in srgb,var(--leaf) 20%,transparent);color:var(--leaf)}
+.pcard .more{position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:50%;border:0;display:grid;place-items:center;
+  background:rgba(0,0,0,.45);color:#fff;opacity:0;transition:opacity .2s,background .2s}
+.pcard:hover .more,.pcard .more:focus-visible{opacity:1}
+.pcard .more:hover{background:rgba(0,0,0,.7)}
+.pnew{display:grid;place-items:center;gap:8px;min-height:190px;border:1.5px dashed var(--hairline);border-radius:18px;background:transparent;
+  color:var(--cream-soft);font:600 14px var(--sans);transition:border-color .2s,background .2s,color .2s}
+.pnew:hover{border-color:var(--leaf);background:color-mix(in srgb,var(--leaf) 6%,transparent);color:var(--cream)}
+.pnew .plus{font:300 30px/1 var(--sans);color:var(--leaf)}
+@media (max-width:860px){.projmenu{left:12px;right:12px;width:auto;transform:translateY(-6px)}.projmenu.open{transform:none}}
+@media (prefers-reduced-motion:reduce){.pcard{animation:none}}
 /* ---- attachments */
 .tray{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .tray::-webkit-scrollbar{display:none}
@@ -514,9 +564,14 @@ html[data-theme=day] .paybtn{color:#fff}
   <span class="spacer"></span>
   <button class="themebtn" id="thBtn" type="button" aria-label="Change theme"><span class="sw" aria-hidden="true"></span><span id="thName">Day</span></button>
   <button class="chipbtn" id="credBtn" type="button" hidden aria-label="Credits"><span class="dot">●</span><span id="credTxt">–</span></button>
+  <button class="projbtn" id="projBtn" type="button" hidden aria-haspopup="menu" aria-expanded="false" aria-controls="projMenu">
+    <span class="nm" id="projName">Project</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
   <span class="who" id="who"></span>
   <button class="btn" id="signBtn" type="button">Sign in</button>
 </header>
+<div class="projmenu" id="projMenu" role="menu" aria-labelledby="projBtn" hidden></div>
 <div class="m-tabs" role="tablist" aria-label="View">
   <button class="tab" role="tab" id="mChat" aria-selected="true" type="button">Chat</button>
   <button class="tab" role="tab" id="mWork" aria-selected="false" type="button">Your site</button>
@@ -561,6 +616,7 @@ html[data-theme=day] .paybtn{color:#fff}
       <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden>Review</button>
       <button class="tab" role="tab" id="tDomain" aria-selected="false" type="button" hidden>Domain</button>
       <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden>Credits</button>
+      <button class="tab" role="tab" id="tProjects" aria-selected="false" type="button" hidden>Projects</button>
       <button class="tab" role="tab" id="tFiles" aria-selected="false" type="button" hidden>Files</button>
       <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden>Connect</button>
       <span class="status label"><span class="dot" id="sDot" style="color:var(--dim)"></span><span id="sText">Draft · not published</span></span>
@@ -576,6 +632,7 @@ html[data-theme=day] .paybtn{color:#fff}
     <div class="pane" id="pPosts" hidden></div>
     <div class="pane" id="pDomain" hidden></div>
     <div class="pane" id="pCredits" hidden></div>
+    <div class="pane" id="pProjects" hidden></div>
     <div class="pane" id="pFiles" hidden></div>
     <div class="pane" id="pConnect" hidden></div>
   </section>
@@ -831,14 +888,29 @@ async function send(text, intentOverride) {
   const ready = ATT.filter(a => a.state === 'ready');
   S.busy = true; $('send').disabled = true; $('starters').replaceChildren();
   $('thread').querySelector('.hero')?.remove();
-  addUser(text, ready.map(a => ({ kind: a.kind, name: a.name, url: a.url, preview: a.preview })));
   const assetIds = ready.map(a => a.id);
+  const shown = ready.map(a => ({ kind: a.kind, name: a.name, url: a.url, preview: a.preview }));
   attClear(true);
+  if (PJ.pending && S.token && !S.project) {
+    try {
+      const made = await api('/v1/projects', { method: 'POST', body: JSON.stringify({
+        name: PJ.pending === 'app' ? 'New app' : PJ.pending === 'market' ? 'Marketing' : 'New site', path: PJ.pending }) });
+      PJ.pending = null;
+      await openProject(made.id);
+      history.replaceState({ p: made.id }, '', '?p=' + made.id);
+      api('/v1/projects/' + made.id + '/opened', { method: 'POST' }).catch(() => {});
+    } catch (e) { addAgent(e.message); S.busy = false; $('send').disabled = false; return; }
+  }
+  addUser(text, shown);
   const w = el('div', 'working msg'); const d = el('span', 'dot pulse'); w.append(d, el('span', null, document.documentElement.dataset.theme === 'terminal' ? ({ build: 'building', chat: 'thinking', plan: 'planning' }[S.intent] + '… ▍') : ({ build: 'Building your site', chat: 'Thinking', plan: 'Drafting a plan' }[S.intent])));
   $('thread').append(w); scroll();
   try {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
     const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent, timezone: TZ, asset_ids: assetIds }) });
+    if (out.site && out.site.business && S.project) {
+      // the project takes the name of the business as soon as there is one
+      projects(true).then(list => setProjectName(list.find(x => x.id === S.project.id) || { business: out.site.business }));
+    }
     if (out.review) showReview(out.review);
     if (out.credits) { setBalance(out.credits.balance); creditNotice(out.credits.status); }
     if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else setHasSite(out.site);
@@ -999,7 +1071,7 @@ if (NATIVE && window.Capacitor.Plugins.App) {
     if ((ev.url || '').startsWith('creai://auth')) finishNativeLogin(ev.url);
   });
 }
-function signOut() { S.token = null; S.project = null; try { localStorage.removeItem('creai_token'); } catch (_) {} location.reload(); }
+function signOut() { S.token = null; S.project = null; PJ.list = []; $('projBtn').hidden = true; try { localStorage.removeItem('creai_token'); } catch (_) {} location.reload(); }
 
 async function afterSignIn(justSigned) {
   try { S.me = await api('/v1/auth/me'); } catch (e) { if (e.status === 401) return signOut(); throw e; }
@@ -1007,15 +1079,23 @@ async function afterSignIn(justSigned) {
   let pid = null;
   const claim = await api('/v1/drafts/claim', { method: 'POST' }).catch(() => ({}));
   if (claim.claimed) pid = claim.project_id;
-  if (!pid) { const ps = await api('/v1/projects'); if (ps.length) pid = ps[0].id; }
+  const wanted = new URLSearchParams(location.search).get('p');
+  const ps = await projects(true);
+  if (!pid && wanted && ps.some(p => String(p.id) === wanted)) pid = parseInt(wanted, 10);
+  if (!pid && ps.length) pid = ps[0].id;                     // most recent activity first
   if (!pid) {
     const p = await api('/v1/projects', { method: 'POST', body: JSON.stringify({ name: 'My business', path: 'launch' }) });
     pid = p.id;
   }
   await openProject(pid);
+  history.replaceState({ p: pid }, '', '?p=' + pid);
+  api('/v1/projects/' + pid + '/opened', { method: 'POST' }).catch(() => {});
+  if (!justSigned && ps.length > 1) {
+    addTool('picked up where you left off · ' + (PJ.list.find(x => x.id === pid)?.business || 'your last project'));
+  }
   creditNotice();
   if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
-  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('credBtn').hidden = false;
+  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('credBtn').hidden = false;
   refreshPreview(); loadPosts(); loadDomains(); loadCredits();
 }
 
@@ -1403,6 +1483,8 @@ function postEditor(r, card) {
 async function openProject(pid) {
   const t = await api('/v1/agent/projects/' + pid);
   S.project = t.project;
+  PJ.pending = null;
+  setProjectName(PJ.list.find(x => x.id === t.project.id) || t.project);
   renderThread(t.messages);
   lastAppError = '';
   if (S.project && S.project.path === 'app') { $('stage').hidden = true; setStatus('App · running in a sandbox', 'var(--leaf)'); }
@@ -1814,6 +1896,189 @@ async function checkVersion() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
 setInterval(checkVersion, 5 * 60 * 1000);
+
+// ------------------------------------------------------------ projects
+const PJ = { list: [], loaded: 0, pending: null };
+const KIND_ICON = { Site: '◻', App: '▣', Marketing: '◈', Domain: '◉', Project: '○' };
+function ago(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  if (s < 604800) return Math.round(s / 86400) + 'd ago';
+  return new Date(iso).toLocaleDateString();
+}
+function projLine(p) {
+  return [p.kind, p.published ? (p.domain || 'live') : 'draft', ago(p.updated_at)].join(' · ');
+}
+async function projects(force) {
+  if (!S.token) return [];
+  if (!force && PJ.list.length && Date.now() - PJ.loaded < 20000) return PJ.list;
+  try { PJ.list = await api('/v1/projects'); PJ.loaded = Date.now(); } catch (_) {}
+  return PJ.list;
+}
+function thumbEl(p, cls) {
+  const box = el('div', cls || 'pthumb');
+  if (p.thumb) { const im = el('img'); im.src = p.thumb; im.alt = ''; im.loading = 'lazy'; box.append(im); }
+  else box.append(KIND_ICON[p.kind] || '○');
+  return box;
+}
+function setProjectName(p) {
+  const btn = $('projBtn');
+  if (!S.token) { btn.hidden = true; return; }
+  btn.hidden = false;
+  $('projName').textContent = p ? (p.business || p.name) : 'New project';
+  btn.setAttribute('aria-label', 'Current project: ' + $('projName').textContent + '. Switch project');
+}
+function closeProjMenu() {
+  const m = $('projMenu');
+  m.classList.remove('open'); $('projBtn').setAttribute('aria-expanded', 'false');
+  setTimeout(() => { if (!m.classList.contains('open')) m.hidden = true; }, 200);
+}
+async function openProjMenu() {
+  const m = $('projMenu');
+  m.replaceChildren(el('p', 'note', 'Loading…'));
+  m.hidden = false; requestAnimationFrame(() => m.classList.add('open'));
+  $('projBtn').setAttribute('aria-expanded', 'true');
+  const list = await projects(true);
+  m.replaceChildren();
+  if (list.length) m.append(el('h4', null, 'Your projects'));
+  for (const p of list.slice(0, 8)) {
+    const row = el('button', 'prow'); row.type = 'button'; row.setAttribute('role', 'menuitem');
+    if (S.project && p.id === S.project.id) row.setAttribute('aria-current', 'true');
+    const meta = el('div', 'pmeta');
+    meta.append(el('b', null, p.business || p.name), el('span', null, projLine(p)));
+    row.append(thumbEl(p), meta, el('span', 'pdot' + (p.published ? ' live' : '')));
+    row.onclick = () => { closeProjMenu(); goProject(p.id); };
+    m.append(row);
+  }
+  const news = el('div', 'newrow');
+  for (const [label, kind, hint] of [['New site', 'launch', 'Describe a business and watch it build'],
+                                     ['New app', 'app', 'A working app with screens and data'],
+                                     ['Edit an existing site', 'edit', 'Connect Webflow and change it by chat'],
+                                     ['Grow my business', 'market', 'Brand kit and posts from your site']]) {
+    const row = el('button', 'prow'); row.type = 'button'; row.setAttribute('role', 'menuitem');
+    const box = el('div', 'pthumb'); box.append('+');
+    const meta = el('div', 'pmeta'); meta.append(el('b', null, label), el('span', null, hint));
+    row.append(box, meta);
+    row.onclick = () => { closeProjMenu(); startNew(kind); };
+    news.append(row);
+  }
+  m.append(news);
+  const all = el('button', 'prow'); all.type = 'button'; all.setAttribute('role', 'menuitem');
+  all.append(el('div', 'pthumb', '☰'), el('div', 'pmeta').appendChild(el('b', null, 'See all projects')).parentElement);
+  all.onclick = () => { closeProjMenu(); showPane('projects'); loadProjects(); setMobile('work'); };
+  m.append(all);
+  (m.querySelector('.prow') || m).focus?.();
+}
+$('projBtn').onclick = () => ($('projMenu').classList.contains('open') ? closeProjMenu() : openProjMenu());
+document.addEventListener('click', (e) => {
+  if (!$('projMenu').hidden && !$('projMenu').contains(e.target) && e.target !== $('projBtn') && !$('projBtn').contains(e.target)) closeProjMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('projMenu').hidden) { closeProjMenu(); $('projBtn').focus(); } });
+
+// A new project isn't created until the person actually says something.
+function startNew(kind) {
+  if (S.busy) { flash('One moment — finishing the current message.'); return; }
+  if (kind === 'edit') { runAction({ kind: 'edit_site' }); return; }
+  PJ.pending = kind;
+  S.project = null; S.site = null;
+  history.pushState({}, '', location.pathname);
+  renderThread([]);
+  setProjectName(null);
+  $('readyBar').hidden = true; $('pubBar').hidden = true;
+  setStatus(kind === 'app' ? 'New app' : 'New project', 'var(--dim)');
+  setHasSite(null); refreshPreview();
+  setIntent('build'); setMobile('chat');
+  $('input').value = '';
+  $('input').placeholder = kind === 'app' ? 'Describe the app you want…' : 'Describe your business…';
+  $('input').focus();
+  addAgent(kind === 'app' ? 'Tell me what the app should do and who uses it, and I\u2019ll build the first version.'
+    : kind === 'market' ? 'Tell me about your business and I\u2019ll read your site, save your brand kit and draft posts.'
+    : 'Tell me about your business in a sentence and I\u2019ll build the first version.');
+}
+async function goProject(pid, quiet) {
+  if (S.busy) { flash('One moment — finishing the current message.'); return; }
+  PJ.pending = null;
+  await openProject(pid);
+  if (!quiet) history.pushState({ p: pid }, '', '?p=' + pid);
+  api('/v1/projects/' + pid + '/opened', { method: 'POST' }).catch(() => {});
+}
+window.addEventListener('popstate', () => {
+  const id = new URLSearchParams(location.search).get('p');
+  if (id && (!S.project || String(S.project.id) !== id)) goProject(parseInt(id, 10), true).catch(() => {});
+});
+async function loadProjects() {
+  const pane = $('pProjects'); 
+  if (!pane.childElementCount) pane.replaceChildren(el('p', 'note', 'Loading…'));
+  const list = await projects(true);
+  const frag = document.createDocumentFragment();
+  const head = el('div'); head.style.marginBottom = '4px';
+  head.append(el('h2', null, 'Projects'),
+    el('p', 'muted', list.length ? 'Everything you\u2019ve made here. Pick one to keep working, or start something new.'
+      : 'Nothing here yet. Start your first site or app.'));
+  frag.append(head);
+  const grid = el('div', 'projects');
+  const add = el('button', 'pnew'); add.type = 'button';
+  add.append(el('span', 'plus', '+'), el('span', null, 'New site'));
+  add.onclick = () => { startNew('launch'); setMobile('chat'); };
+  grid.append(add);
+  list.forEach((p, i) => {
+    const card = el('div', 'pcard'); card.style.setProperty('--i', i);
+    const open = el('button', 'shot'); open.type = 'button'; open.setAttribute('aria-label', 'Open ' + (p.business || p.name));
+    if (p.thumb) { const im = el('img'); im.src = p.thumb; im.alt = ''; im.loading = 'lazy'; im.className = 'shot';
+      open.replaceWith(im); im.style.cursor = 'pointer'; im.onclick = () => { goProject(p.id); setMobile('chat'); }; card.append(im); }
+    else { const ph = el('div', 'empty-shot'); ph.append(KIND_ICON[p.kind] || '○'); ph.style.cursor = 'pointer';
+      ph.onclick = () => { goProject(p.id); setMobile('chat'); }; card.append(ph); }
+    const body = el('div', 'body');
+    const name = el('b', null, p.business || p.name);
+    const sub = el('small', null, p.headline || projLine(p));
+    const tags = el('div', 'tags');
+    tags.append(el('span', 'ptag', p.kind));
+    if (p.published) { const t = el('span', 'ptag live', p.domain || 'Live'); tags.append(t); }
+    else tags.append(el('span', 'ptag', 'Draft'));
+    tags.append(el('span', 'ptag', ago(p.updated_at)));
+    body.append(name, sub, tags);
+    if (p.url) {
+      const visit = el('a', 'ptag', 'Visit ↗'); visit.href = p.url; visit.target = '_blank'; visit.rel = 'noopener';
+      visit.style.cssText = 'color:var(--leaf);text-decoration:none';
+      tags.append(visit);
+    }
+    const more = el('button', 'more'); more.type = 'button'; more.setAttribute('aria-label', 'More for ' + (p.business || p.name));
+    more.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+    more.onclick = (e) => { e.stopPropagation(); projectActions(p, card); };
+    card.append(more, body);
+    grid.append(card);
+  });
+  frag.append(grid);
+  pane.replaceChildren(frag);
+}
+async function projectActions(p, card) {
+  const box = el('div', 'rd-confirm'); box.style.margin = '10px 14px 14px';
+  const row = el('div', 'ri-acts');
+  const rename = el('button', null, 'Rename'); rename.type = 'button';
+  rename.onclick = async () => {
+    const name = prompt('Name this project', p.business || p.name);
+    if (!name) return;
+    try { await api('/v1/projects/' + p.id, { method: 'PATCH', body: JSON.stringify({ name }) }); loadProjects(); if (S.project && S.project.id === p.id) { S.project.name = name; setProjectName({ name }); } }
+    catch (e) { flash(e.message); }
+  };
+  const archive = el('button', null, 'Archive'); archive.type = 'button';
+  archive.onclick = async () => {
+    try { await api('/v1/projects/' + p.id, { method: 'PATCH', body: JSON.stringify({ archived: true }) }); readyToast('Archived ' + (p.business || p.name)); loadProjects(); }
+    catch (e) { flash(e.message); }
+  };
+  const del = el('button', null, 'Delete'); del.type = 'button';
+  del.onclick = async () => {
+    if (!confirm('Delete ' + (p.business || p.name) + ' for good? This cannot be undone.')) return;
+    try { await api('/v1/projects/' + p.id, { method: 'DELETE' }); loadProjects(); }
+    catch (e) { flash(e.message); }
+  };
+  const cancel = el('button', null, 'Close'); cancel.type = 'button'; cancel.onclick = () => box.remove();
+  row.append(rename, archive, del, cancel);
+  box.append(row);
+  card.append(box);
+}
 
 // ------------------------------------------------------------ attachments
 const ATT = [];
@@ -2409,7 +2674,7 @@ function revealTab(tab) {
   strip.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' });
 }
 function showPane(which) {
-  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect']]) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
     if (k === which) revealTab($(t));
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
@@ -2422,6 +2687,7 @@ $('tDomain').onclick = () => { showPane('domain'); loadDomains(); };
 $('tCredits').onclick = () => { showPane('credits'); loadCredits(); };
 $('tConnect').onclick = () => { showPane('connect'); loadConnections(); };
 $('tFiles').onclick = () => { showPane('files'); loadFiles(); };
+$('tProjects').onclick = () => { showPane('projects'); loadProjects(); };
 $('credBtn').onclick = () => { showPane('credits'); loadCredits(); };
 function setMobile(m) { document.body.dataset.m = m; $('mChat').setAttribute('aria-selected', String(m === 'chat')); $('mWork').setAttribute('aria-selected', String(m === 'work')); }
 $('mChat').onclick = () => setMobile('chat');

@@ -8,6 +8,7 @@ scoped to a project the caller's workspace owns, and can also queue post drafts.
 
 import time
 from collections import defaultdict, deque
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -134,6 +135,22 @@ async def draft_preview(creai_draft: str | None = Depends(draft_token)):
 
 
 # ---------------------------------------------------------------- signed in
+
+async def _refresh_thumb(org_id: int, project_id: int, path: str, spec: dict | None):
+    """A fresh picture of the project, after the work is done."""
+    from ..services import appfs, site as site_spec, thumbs
+    try:
+        if path == "app":
+            files = await appfs.files(project_id, org_id)
+            if not files:
+                return
+            html = appfs.preview(files, spec or {}, appfs.token(project_id, org_id), settings.public_url)
+        else:
+            html = site_spec.render(spec or {})
+        await thumbs.refresh(org_id, project_id, html)
+    except Exception:
+        log.debug("thumbnail refresh failed", exc_info=True)
+
 
 FIX_PREFIX = "The preview shows this error, please fix it: "
 FREE_FIXES = 3
@@ -311,6 +328,8 @@ async def project_say(project_id: int, body: SayIn,
     if turn.posts:
         await log_event(ctx.org_id, "agent.posts_drafted", str(len(turn.posts)),
                         project_id, ctx.user_id)
+    if turn.site_changed or turn.app_changed:
+        asyncio.create_task(_refresh_thumb(ctx.org_id, project_id, p_path(p), turn.site))
     from ..services import credit_alerts
     try:
         await credit_alerts.check(ctx.org_id)

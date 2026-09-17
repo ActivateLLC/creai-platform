@@ -200,6 +200,24 @@ async def delete(org_id: int, asset_id: int) -> bool:
     return bool(rows)
 
 
+async def store_bytes(org_id: int, *, name: str, mime: str, data: bytes,
+                      project_id: int | None = None) -> dict:
+    """Save a file the server made itself (a project thumbnail, say)."""
+    if not configured():
+        raise AssetError("uploads aren't switched on yet")
+    if mime not in TYPES or not data:
+        raise AssetError("unsupported file")
+    token = secrets.token_urlsafe(18)
+    key = f"org/{org_id}/{secrets.token_hex(12)}/{clean_name(name)}"
+    await _run(_s3().put_object, Bucket=settings.assets_bucket, Key=key, Body=data, ContentType=mime)
+    async with conn() as c:
+        row = await c.fetchrow(
+            """INSERT INTO assets (org_id, project_id, kind, mime, name, size, key, token, status)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ready') RETURNING *""",
+            org_id, project_id, TYPES[mime][0], mime, clean_name(name), len(data), key, token)
+    return describe(row)
+
+
 # ---------------------------------------------------------------- serving
 
 async def signed_get(token: str) -> str | None:
