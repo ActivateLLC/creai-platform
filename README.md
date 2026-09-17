@@ -8,7 +8,12 @@ TLS, social channels and payments included. That last third is the wedge.
 ## Where this is
 
 **Phase 0 — the launch chain.** Auth, projects, domains, DNS, the approval queue
-and the dashboard payload. Generation and deployment are Phase 1 and 2.
+and the dashboard payload.
+
+**Phase 1, started — the agent.** A conversation beside a live preview
+(`app/web`, served at `/`). The agent edits a validated site spec, records facts,
+queues post drafts and suggests actions; it has no tool that registers, publishes,
+spends or connects anything. Deployment to customer domains is Phase 2.
 
 Phase 0 is deliberately first: if deploy → DNS → TLS cannot be made reliable and
 repeatable, the wedge does not hold and the plan should change before any
@@ -32,7 +37,10 @@ app/
   core/auth.py       passwordless sign-in, sessions
   services/dns.py    Cloudflare; the rules about what we never touch
   services/mailer.py Resend; best-effort, never raises into a request
-  api/               auth, projects, domains, approvals, dashboard
+  services/agent.py  the conversation loop; tools are bound to one draft or project
+  services/site.py   site spec and renderer; the model never writes HTML
+  api/               auth, projects, domains, approvals, dashboard, agent
+  web/               the app itself: chat, live preview, sign-in, posts, domain
 ```
 
 ## Two rules the code enforces
@@ -61,7 +69,8 @@ by trusting our own write.
 | `SECRET_KEY` | Session signing |
 | `PUBLIC_URL` | This API's public address, used for CORS |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | DNS |
-| `ORIGIN_IP`, `ORIGIN_CNAME` | Where customer domains point |
+| `ORIGIN_CNAME` | Where customer domains point (apex and www, both CNAME) |
+| `ANTHROPIC_API_KEY`, `AGENT_MODEL` | The agent. Without a key, `/v1/agent/*` returns 503 |
 | `RESEND_API_KEY`, `MAIL_FROM` | Sign-in codes and notifications |
 | `RAILWAY_TOKEN`, `RAILWAY_PROJECT_ID` | Deploys (Phase 2) |
 | `POSTIZ_URL`, `POSTIZ_API_KEY` | Publishing (Phase 3) |
@@ -71,7 +80,7 @@ fine. A deployment missing its DNS credential is not healthy in any useful sense
 
 ## Not built yet
 
-- Site generation (Phase 1) and deploys (Phase 2)
+- Deploys to customer domains (Phase 2); the agent's streaming replies
 - The worker that executes approved rows
 - Registrar integration — `/v1/domains/search` returns `availability: unknown`
   rather than inventing prices. A fake "available" becomes a failed purchase,

@@ -8,11 +8,13 @@ made reliable, the product's whole wedge does not hold.
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import (admin, approvals, auth_routes, dashboard, domains, drafts,
+from .api import (admin, agent, approvals, auth_routes, dashboard, domains, drafts,
                   orgs, projects)
 from .core import db
 from .core.config import settings
@@ -38,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (agent.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 
@@ -51,3 +53,20 @@ async def health():
     and finding that out here beats finding it out mid-launch.
     """
     return {"ok": True, "env": settings.env, "configured": settings.configured}
+
+
+# ---------------------------------------------------------------- the app itself
+# Served from the same origin as the API, so the draft cookie and sign-in work
+# without cross-site configuration.
+WEB = Path(__file__).parent / "web"
+
+
+@app.get("/", include_in_schema=False)
+async def index():
+    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/logo.svg", include_in_schema=False)
+async def logo():
+    return FileResponse(WEB / "logo.svg", media_type="image/svg+xml",
+                        headers={"Cache-Control": "public, max-age=86400"})

@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CreAI — from idea to a live business</title>
+<meta name="description" content="Describe your business. CreAI builds the site, connects your domain and drafts your first campaign — you approve every step.">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#090B11;--panel:#11141C;--panel-2:#171B25;--line:#232937;--line-soft:#1A1F2A;
+  --ink:#E8EBF2;--ink-2:#96A0B4;--ink-3:#616C82;--accent:#6E5BF2;--accent-soft:#8B7BFF;
+  --ok:#2ED3A7;--warn:#F5A524;--err:#F0616D;--on-ok:#06110D;
+  --display:Archivo,Inter,system-ui,sans-serif;--sans:Inter,system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;--ease:cubic-bezier(.19,1,.22,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/24px var(--sans);display:flex;flex-direction:column}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+header{height:60px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--line)}
+header img{width:32px;height:32px;border-radius:9px}
+.brand{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:-.02em}
+.spacer{flex:1}
+.btn{height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:transparent;font-size:14px;font-weight:500;transition:transform .3s var(--ease)}
+.btn:hover{transform:translateY(-1px)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.who{font-size:13px;color:var(--ink-2)}
+
+main{flex:1;min-height:0;display:flex}
+#chat{width:440px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+#thread{flex:1;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:14px}
+.msg{animation:rise .45s var(--ease) both;max-width:100%}
+.msg.a{display:flex;gap:10px}
+.msg.a .pip{width:26px;height:26px;flex-shrink:0;border-radius:8px;overflow:hidden}
+.msg.a .pip img{width:100%;height:100%}
+.msg.u{align-self:flex-end;max-width:85%;padding:10px 14px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line);white-space:pre-wrap}
+.tool{margin-left:36px;align-self:flex-start;display:flex;gap:8px;padding:6px 12px;border-radius:10px;border:1px solid var(--line-soft);font:12px/20px var(--mono);color:var(--ink-2)}
+.tool b{color:var(--ok);font-weight:400}
+.acts{margin-left:36px;display:flex;flex-wrap:wrap;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:44px;padding:8px 14px;border-radius:12px;border:1px dashed var(--line);background:transparent;color:var(--ink-2);font-size:13px;line-height:18px;text-align:left}
+.chip:hover{border-color:var(--accent)}
+.working{margin-left:36px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--warn)}
+.dot{width:8px;height:8px;border-radius:99px;background:currentColor;display:inline-block}
+.pulse{animation:pulse 1.4s var(--ease) infinite}
+.err{margin-left:36px;color:var(--err);font-size:14px}
+
+#composer{padding:14px 22px 18px;border-top:1px solid var(--line-soft);display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;align-items:flex-end;gap:8px;padding:6px 6px 6px 14px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line)}
+textarea{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:15px/22px var(--sans);resize:none;max-height:140px;padding:9px 0;outline:none}
+.icon{width:44px;height:44px;flex-shrink:0;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink-2);display:flex;align-items:center;justify-content:center}
+.icon.send{background:var(--accent);border-color:var(--accent);color:#fff}
+.icon.on{border-color:var(--warn);color:var(--warn)}
+.hint{font-size:12px;color:var(--ink-3)}
+
+#work{flex:1;min-width:0;display:flex;flex-direction:column}
+.tabs{height:56px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 20px;border-bottom:1px solid var(--line-soft)}
+.tab{height:40px;padding:0 14px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--ink-2);font-size:14px;font-weight:500}
+.tab[aria-selected=true]{border-color:var(--line);background:var(--panel-2);color:var(--ink)}
+.status{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+.pane{flex:1;min-height:0;overflow:auto;padding:20px}
+.frame{height:100%;min-height:520px;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;background:#fff}
+.frame .url{height:38px;flex-shrink:0;display:flex;align-items:center;padding:0 12px;background:var(--panel-2);border-bottom:1px solid var(--line);font:12px var(--mono);color:var(--ink-2)}
+iframe{flex:1;width:100%;border:0;background:#fff}
+
+.card{padding:20px;border-radius:14px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
+.card h3{margin:0;font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.02em}
+.tag{padding:2px 10px;border-radius:99px;border:1px solid currentColor;font-size:12px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.muted{color:var(--ink-2);font-size:14px}
+.mono{font-family:var(--mono);font-size:13px;word-break:break-all}
+h2{font-family:var(--display);font-weight:800;font-size:25px;line-height:28px;letter-spacing:-.03em;margin:0 0 6px}
+
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--ink);padding:26px;width:min(420px,92vw)}
+dialog::backdrop{background:rgba(5,6,10,.7)}
+dialog form{display:flex;flex-direction:column;gap:12px;margin:0}
+label{font-size:13px;font-weight:500;color:var(--ink-2)}
+input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);font-size:15px}
+
+.m-tabs{display:none}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:860px){
+  .m-tabs{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+  .m-tabs .tab{flex:1}
+  main{flex-direction:column}
+  #chat{width:auto;border-right:0;flex:1;min-height:0}
+  #work{flex:1;min-height:0}
+  body[data-m=chat] #work,body[data-m=work] #chat{display:none}
+  .who{display:none}
+}
+</style>
+</head>
+<body data-m="chat">
+<header>
+  <img src="/logo.svg" alt="">
+  <span class="brand">CreAI</span>
+  <span class="spacer"></span>
+  <span class="who" id="who"></span>
+  <button class="btn" id="signBtn" type="button">Sign in</button>
+</header>
+<div class="m-tabs" role="tablist" aria-label="View">
+  <button class="tab" role="tab" id="mChat" aria-selected="true" type="button">Chat</button>
+  <button class="tab" role="tab" id="mWork" aria-selected="false" type="button">Your site</button>
+</div>
+<main>
+  <section id="chat" aria-label="Conversation">
+    <div id="thread" aria-live="polite"></div>
+    <div id="composer">
+      <div class="chips" id="starters"></div>
+      <div class="bar">
+        <label for="input" class="sr">Message CreAI</label>
+        <textarea id="input" rows="1" placeholder="Describe your business…"></textarea>
+        <button class="icon" id="mic" type="button" aria-label="Speak instead of typing" hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <button class="icon send" id="send" type="button" aria-label="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div class="hint" id="hint">Nothing is registered, published or posted without your approval.</div>
+    </div>
+  </section>
+  <section id="work" aria-label="Workspace">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tSite" aria-selected="true" type="button">Site preview</button>
+      <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden>Posts</button>
+      <button class="tab" role="tab" id="tDomain" aria-selected="false" type="button" hidden>Domain</button>
+      <span class="status"><span class="dot" id="sDot" style="color:var(--ink-3)"></span><span id="sText">Draft · not published</span></span>
+    </div>
+    <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><iframe id="preview" title="Site preview" sandbox></iframe></div></div>
+    <div class="pane" id="pPosts" hidden></div>
+    <div class="pane" id="pDomain" hidden></div>
+  </section>
+</main>
+
+<dialog id="dSign">
+  <form id="fSign">
+    <h2>Save your work</h2>
+    <p class="muted" id="signWhy">An account keeps this draft and lets you connect a domain and approve posts. We'll email you a six-digit code — no password.</p>
+    <label for="email">Email</label>
+    <input type="email" id="email" required autocomplete="email">
+    <div id="codeRow" hidden style="display:flex;flex-direction:column;gap:8px">
+      <label for="code">Code from your email</label>
+      <input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+    </div>
+    <p class="err" id="signErr" style="margin:0"></p>
+    <div class="row"><button class="btn primary" id="signGo" type="submit">Email me a code</button><button class="btn" type="button" data-close>Not now</button></div>
+  </form>
+</dialog>
+
+<dialog id="dDomain">
+  <form id="fDomain">
+    <h2>Connect a domain you own</h2>
+    <p class="muted">We'll give you one record to add at your registrar to prove it's yours. Your email records are never changed.</p>
+    <label for="dname">Domain</label>
+    <input type="text" id="dname" placeholder="yourbusiness.com" required>
+    <p class="err" id="domErr" style="margin:0"></p>
+    <div class="row"><button class="btn primary" type="submit">Get verification record</button><button class="btn" type="button" data-close>Cancel</button></div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const S = { token: null, me: null, project: null, busy: false };
+try { S.token = localStorage.getItem('creai_token'); } catch (_) {}
+
+const STARTERS = [
+  'Mobile car detailing in Milwaukee. I want people to book online.',
+  'A home bakery selling custom cakes for pickup.',
+  'Bookkeeping for small construction companies.'
+];
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (S.token) headers.Authorization = 'Bearer ' + S.token;
+  const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+  const text = await r.text();
+  let body; try { body = JSON.parse(text); } catch (_) { body = text; }
+  if (!r.ok) { const e = new Error((body && body.detail) || ('Request failed (' + r.status + ')')); e.status = r.status; throw e; }
+  return body;
+}
+
+// ------------------------------------------------------------ rendering
+function logoPip() { const p = el('div', 'pip'); const i = el('img'); i.src = '/logo.svg'; i.alt = ''; p.append(i); return p; }
+function addAgent(text) { const m = el('div', 'msg a'); m.append(logoPip(), el('div', null, text)); $('thread').append(m); }
+function addUser(text) { $('thread').append(el('div', 'msg u', text)); }
+function addTool(text) { const t = el('div', 'tool msg'); const b = el('b', null, '✓'); t.append(b, el('span', null, text)); $('thread').append(t); }
+function scroll() { const t = $('thread'); t.scrollTop = t.scrollHeight; }
+
+function renderThread(messages) {
+  $('thread').replaceChildren();
+  if (!messages.length) {
+    addAgent("What are you starting? One sentence is plenty — type it, or tap the mic and say it.");
+  }
+  for (const m of messages) (m.role === 'user' ? addUser : addAgent)(m.text);
+  $('starters').replaceChildren();
+  if (!messages.length) for (const s of STARTERS) {
+    const c = el('button', 'chip', 'Try: “' + s + '”'); c.type = 'button';
+    c.onclick = () => send(s); $('starters').append(c);
+  }
+  scroll();
+}
+
+function renderActions(actions) {
+  if (!actions || !actions.length) return;
+  const row = el('div', 'acts msg');
+  actions.forEach((a, i) => {
+    const b = el('button', 'btn' + (i === 0 ? ' primary' : ''), a.label); b.type = 'button';
+    b.onclick = () => runAction(a); row.append(b);
+  });
+  $('thread').append(row);
+}
+
+async function refreshPreview() {
+  const path = S.project ? '/v1/agent/projects/' + S.project.id + '/preview' : '/v1/agent/draft/preview';
+  try {
+    const headers = S.token && S.project ? { Authorization: 'Bearer ' + S.token } : {};
+    const r = await fetch(path, { credentials: 'same-origin', headers });
+    $('preview').srcdoc = await r.text();
+  } catch (_) {}
+  $('url').textContent = S.project ? 'preview · ' + S.project.name : 'preview · draft';
+}
+
+function setStatus(text, color) { $('sText').textContent = text; $('sDot').style.color = color; }
+
+// ------------------------------------------------------------ talking
+async function send(text) {
+  text = (text || '').trim();
+  if (!text || S.busy) return;
+  S.busy = true; $('send').disabled = true; $('starters').replaceChildren();
+  addUser(text);
+  const w = el('div', 'working msg'); const d = el('span', 'dot pulse'); w.append(d, el('span', null, 'Working on it…'));
+  $('thread').append(w); scroll();
+  try {
+    const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
+    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text }) });
+    w.remove();
+    (out.log || []).forEach(addTool);
+    const last = (out.messages || []).filter(m => m.role === 'assistant').pop();
+    if (last) addAgent(last.text);
+    renderActions(out.actions);
+    if (out.posts && out.posts.length) { $('tPosts').hidden = false; loadPosts(); }
+    refreshPreview();
+    if (window.matchMedia('(max-width:860px)').matches && (out.log || []).length) flash('Your site updated — tap “Your site” to see it.');
+  } catch (e) {
+    w.remove();
+    const msg = e.status === 503 ? "The agent isn't switched on for this server yet. Your message wasn't lost — try again shortly." : e.message;
+    $('thread').append(el('div', 'err msg', msg));
+    if (e.status === 429 && !S.token) renderActions([{ kind: 'sign_in', label: 'Create an account' }]);
+  } finally {
+    S.busy = false; $('send').disabled = false; scroll();
+  }
+}
+function flash(t) { $('hint').textContent = t; setTimeout(() => { $('hint').textContent = 'Nothing is registered, published or posted without your approval.'; }, 6000); }
+
+$('send').onclick = () => { const v = $('input').value; $('input').value = ''; autosize(); send(v); };
+$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
+function autosize() { const t = $('input'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
+$('input').addEventListener('input', autosize);
+
+// voice
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  const rec = new SR(); rec.interimResults = true; rec.continuous = false; rec.lang = navigator.language || 'en-US';
+  let on = false, heard = '';
+  $('mic').hidden = false;
+  rec.onresult = (e) => { heard = Array.from(e.results).map(r => r[0].transcript).join(' '); $('input').value = heard; autosize(); };
+  rec.onend = () => { on = false; $('mic').classList.remove('on'); $('mic').setAttribute('aria-label', 'Speak instead of typing'); if (heard.trim()) { $('send').click(); heard = ''; } };
+  rec.onerror = () => { on = false; $('mic').classList.remove('on'); };
+  $('mic').onclick = () => {
+    if (on) { rec.stop(); return; }
+    heard = ''; on = true; $('mic').classList.add('on'); $('mic').setAttribute('aria-label', 'Stop listening');
+    try { rec.start(); } catch (_) { on = false; }
+  };
+}
+
+// ------------------------------------------------------------ actions
+function runAction(a) {
+  if (a.kind === 'sign_in' || !S.token) return openSign(a.kind === 'sign_in' ? null : a);
+  if (a.kind === 'connect_domain') { $('dname').value = a.domain || ''; $('domErr').textContent = ''; $('dDomain').showModal(); }
+  if (a.kind === 'review_posts') { showPane('posts'); loadPosts(); }
+}
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+
+let pendingAction = null, codeSent = false;
+function openSign(after) {
+  pendingAction = after; codeSent = false;
+  $('codeRow').hidden = true; $('signGo').textContent = 'Email me a code'; $('signErr').textContent = '';
+  $('dSign').showModal();
+}
+$('signBtn').onclick = () => { if (S.token) return signOut(); openSign(null); };
+$('fSign').onsubmit = async (e) => {
+  e.preventDefault(); $('signErr').textContent = '';
+  const email = $('email').value.trim();
+  try {
+    if (!codeSent) {
+      const r = await api('/v1/auth/start', { method: 'POST', body: JSON.stringify({ email }) });
+      codeSent = true; $('codeRow').hidden = false; $('signGo').textContent = 'Sign in';
+      if (r.code) $('code').value = r.code;       // development servers only
+      $('code').focus();
+      return;
+    }
+    const r = await api('/v1/auth/code', { method: 'POST', body: JSON.stringify({ email, code: $('code').value.trim() }) });
+    S.token = r.token; try { localStorage.setItem('creai_token', r.token); } catch (_) {}
+    $('dSign').close();
+    await afterSignIn(true);
+    if (pendingAction) runAction(pendingAction);
+  } catch (err) { $('signErr').textContent = err.message; }
+};
+function signOut() { S.token = null; S.project = null; try { localStorage.removeItem('creai_token'); } catch (_) {} location.reload(); }
+
+async function afterSignIn(justSigned) {
+  try { S.me = await api('/v1/auth/me'); } catch (e) { if (e.status === 401) return signOut(); throw e; }
+  $('who').textContent = S.me.email; $('signBtn').textContent = 'Sign out';
+  let pid = null;
+  const claim = await api('/v1/drafts/claim', { method: 'POST' }).catch(() => ({}));
+  if (claim.claimed) pid = claim.project_id;
+  if (!pid) { const ps = await api('/v1/projects'); if (ps.length) pid = ps[0].id; }
+  if (!pid) {
+    const p = await api('/v1/projects', { method: 'POST', body: JSON.stringify({ name: 'My business', path: 'launch' }) });
+    pid = p.id;
+  }
+  const t = await api('/v1/agent/projects/' + pid);
+  S.project = t.project;
+  renderThread(t.messages);
+  if (justSigned) addAgent('Saved to your workspace. You can connect a domain or ask me to draft your first posts whenever you are ready.');
+  $('tPosts').hidden = false; $('tDomain').hidden = false;
+  refreshPreview(); loadPosts(); loadDomains();
+}
+
+// domain
+$('fDomain').onsubmit = async (e) => {
+  e.preventDefault(); $('domErr').textContent = '';
+  try {
+    const r = await api('/v1/domains/connect', { method: 'POST', body: JSON.stringify({ name: $('dname').value, project_id: S.project.id }) });
+    $('dDomain').close();
+    addTool('domain added · ' + r.domain + ' · waiting for verification');
+    addAgent('Add the record shown under Domain at your registrar. It usually takes a few minutes, sometimes an hour — you can close this page meanwhile.');
+    scroll(); showPane('domain'); loadDomains();
+  } catch (err) { $('domErr').textContent = err.message; }
+};
+
+async function loadDomains() {
+  if (!S.token) return;
+  const pane = $('pDomain'); pane.replaceChildren();
+  const head = el('div'); head.append(el('h2', null, 'Domain'), el('p', 'muted', 'Connect a domain you already own. Registering new domains through CreAI is coming.'));
+  const add = el('button', 'btn primary', 'Connect a domain'); add.type = 'button';
+  add.onclick = () => runAction({ kind: 'connect_domain' });
+  head.append(add); head.style.marginBottom = '16px'; pane.append(head);
+  let list = [];
+  try { list = await api('/v1/domains'); } catch (_) {}
+  for (const d of list) {
+    const c = el('div', 'card');
+    const live = d.status === 'live', color = live ? 'var(--ok)' : 'var(--warn)';
+    const top = el('div', 'row'); top.append(el('span', 'mono', d.name));
+    const tag = el('span', 'tag', live ? 'Live' : d.status === 'verifying' ? 'Verified' : 'Waiting for record'); tag.style.color = color; tag.style.marginLeft = 'auto';
+    top.append(tag); c.append(top);
+    if (d.status === 'pending') {
+      c.append(el('p', 'muted', 'Add this TXT record at your registrar, then check.'));
+      const chk = el('button', 'btn', 'Check now'); chk.type = 'button';
+      chk.onclick = async () => {
+        chk.disabled = true;
+        try { const r = await api('/v1/domains/' + d.id + '/verify', { method: 'POST' }); if (r.verified) loadDomains(); else { chk.textContent = 'Not visible yet — try again in a few minutes'; } }
+        catch (err) { chk.textContent = err.message; }
+        chk.disabled = false;
+      };
+      c.append(chk);
+    }
+    pane.append(c);
+  }
+}
+
+// posts
+async function loadPosts() {
+  if (!S.token) return;
+  const pane = $('pPosts'); pane.replaceChildren();
+  const head = el('div'); head.style.marginBottom = '16px';
+  head.append(el('h2', null, 'Posts waiting for you'), el('p', 'muted', 'Drafted from your site. Nothing posts until you approve it — ask the agent for more.'));
+  pane.append(head);
+  let rows = [];
+  try { rows = await api('/v1/approvals?state=pending'); } catch (_) {}
+  rows = rows.filter(r => r.kind === 'post');
+  if (!rows.length) pane.append(el('p', 'muted', 'No drafts waiting. Try asking: “Draft a week of Instagram posts.”'));
+  for (const r of rows) {
+    const p = r.payload || {}, c = el('div', 'card');
+    const top = el('div', 'row'); top.append(el('strong', null, (p.network || 'post') + (p.when ? ' · ' + p.when : '')));
+    const tag = el('span', 'tag', 'Draft'); tag.style.color = 'var(--warn)'; tag.style.marginLeft = 'auto'; top.append(tag);
+    c.append(top, el('div', null, p.text || ''));
+    const acts = el('div', 'row');
+    const ok = el('button', 'btn primary', 'Approve'); ok.type = 'button';
+    const no = el('button', 'btn', 'Discard'); no.type = 'button';
+    ok.onclick = async () => { await api('/v1/approvals/' + r.id + '/approve', { method: 'POST' }).catch(() => {}); loadPosts(); };
+    no.onclick = async () => { await api('/v1/approvals/' + r.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
+    acts.append(ok, no); c.append(acts); pane.append(c);
+  }
+}
+
+// ------------------------------------------------------------ tabs
+function showPane(which) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain']]) {
+    $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
+  }
+  setMobile('work');
+}
+$('tSite').onclick = () => showPane('site');
+$('tPosts').onclick = () => { showPane('posts'); loadPosts(); };
+$('tDomain').onclick = () => { showPane('domain'); loadDomains(); };
+function setMobile(m) { document.body.dataset.m = m; $('mChat').setAttribute('aria-selected', String(m === 'chat')); $('mWork').setAttribute('aria-selected', String(m === 'work')); }
+$('mChat').onclick = () => setMobile('chat');
+$('mWork').onclick = () => setMobile('work');
+
+// ------------------------------------------------------------ boot
+(async () => {
+  try {
+    const h = await api('/health');
+    if (!h.configured || !h.configured.agent) setStatus('Agent not switched on yet', 'var(--warn)');
+  } catch (_) {}
+  if (S.token) { try { await afterSignIn(false); return; } catch (_) {} }
+  try { const t = await api('/v1/agent/draft'); renderThread(t.messages || []); }
+  catch (_) { renderThread([]); }
+  refreshPreview();
+})();
+})();
+</script>
+</body>
+</html>

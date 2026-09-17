@@ -47,6 +47,10 @@ class Settings:
     postiz_url: str = _req("POSTIZ_URL", "")
     postiz_key: str = _req("POSTIZ_API_KEY", "")
 
+    # agent — Anthropic, called over HTTP
+    anthropic_key: str = _req("ANTHROPIC_API_KEY", "")
+    agent_model: str = _req("AGENT_MODEL", "claude-sonnet-5")
+
     verify_prefix: str = "_creai-verify"
 
     @property
@@ -57,6 +61,7 @@ class Settings:
             "deploy": bool(self.railway_token),
             "email": bool(self.resend_key),
             "publishing": bool(self.postiz_url and self.postiz_key),
+            "agent": bool(self.anthropic_key),
         }
 
     def missing_for(self, capability: str) -> bool:
