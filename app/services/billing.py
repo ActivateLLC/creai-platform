@@ -322,6 +322,8 @@ async def create_payment(org_id: int, user_id: int, email: str, pack_id: str) ->
             raise
         intent = await _stripe("POST", "/payment_intents",
                                params | {"payment_method_types": ["card"]})
+    if not settings.stripe_publishable_key.startswith("pk_"):
+        raise BillingError("payments are not switched on yet")      # never send anything but a pk_ key
     return {"client_secret": intent["client_secret"],
             "publishable_key": settings.stripe_publishable_key,
             "amount": pack["price_cents"], "credits": pack["credits"],

@@ -258,3 +258,20 @@ async def test_payments_still_work_if_klarna_is_off(api, monkeypatch):
     r = await api.post("/v1/billing/pay", headers=auth(tok), json={"pack": "starter"})
     assert r.status_code == 200 and r.json()["client_secret"] == "pi_2_secret"
     assert tried == [["card", "klarna"], ["card"]]
+
+
+def test_swapped_stripe_keys_keep_billing_off():
+    from app.core.config import settings as st
+    saved = (st.stripe_key, st.stripe_publishable_key, st.stripe_webhook_secret)
+    try:
+        for secret, public, ok in (("pk_live_x", "sk_live_y", False), ("sk_live_x", "sk_live_y", False),
+                                   ("pk_live_x", "pk_live_y", False), ("rk_live_x", "pk_live_y", True),
+                                   ("sk_live_x", "pk_live_y", True)):
+            object.__setattr__(st, "stripe_key", secret)
+            object.__setattr__(st, "stripe_publishable_key", public)
+            object.__setattr__(st, "stripe_webhook_secret", "whsec_x")
+            assert st.stripe_keys_ok() is ok
+            assert (not st.missing_for("billing")) is ok
+    finally:
+        for name, v in zip(("stripe_key", "stripe_publishable_key", "stripe_webhook_secret"), saved):
+            object.__setattr__(st, name, v)

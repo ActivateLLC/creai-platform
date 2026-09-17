@@ -73,6 +73,11 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(_renewals()))
         if not settings.missing_for("billing"):
             tasks.append(asyncio.create_task(_stripe_self_check()))
+        elif settings.stripe_key or settings.stripe_publishable_key:
+            logging.getLogger("creai.stripe").error(
+                "stripe keys look wrong: STRIPE_SECRET_KEY should start with sk_ or rk_ (has %s…), "
+                "STRIPE_PUBLISHABLE_KEY with pk_ (has %s…); billing stays off",
+                settings.stripe_key[:3], settings.stripe_publishable_key[:3])
     yield
     for t in tasks:
         t.cancel()

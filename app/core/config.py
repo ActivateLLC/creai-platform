@@ -86,9 +86,15 @@ class Settings:
             "registrar": bool(self.cloudflare_token and self.cloudflare_account_id),
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
-            "billing": bool(self.stripe_key and self.stripe_webhook_secret
-                            and self.stripe_publishable_key),
+            "billing": self.stripe_keys_ok(),
         }
+
+    def stripe_keys_ok(self) -> bool:
+        """Secret key must be secret (sk_/rk_), publishable must be publishable (pk_).
+        A swapped pair is treated as not configured, so a secret never reaches a browser."""
+        return (self.stripe_key.startswith(("sk_", "rk_"))
+                and self.stripe_publishable_key.startswith("pk_")
+                and bool(self.stripe_webhook_secret))
 
     def missing_for(self, capability: str) -> bool:
         return not self.configured.get(capability, False)
