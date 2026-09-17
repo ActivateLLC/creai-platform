@@ -26,6 +26,28 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
+async def _stripe_self_check():
+    """On start: prove the Stripe key works and make sure wallets are on for our domain."""
+    from urllib.parse import urlparse
+    from .services import billing, plans
+    log = logging.getLogger("creai.stripe")
+    try:
+        ids = [await plans._price_id(p, i) for p in plans.PAID for i in plans.INTERVALS]
+        log.info("stripe prices ready: %s", ", ".join(ids))
+    except Exception as exc:
+        log.error("stripe price check failed: %s", exc)
+    try:
+        out = await billing.register_domain(urlparse(settings.public_url).hostname)
+        log.info("stripe wallet domain: %s", out)
+    except Exception as exc:
+        log.error("stripe wallet domain failed: %s", exc)
+    try:
+        cfg = await plans._portal_configuration()
+        log.info("stripe portal configuration: %s", cfg)
+    except Exception as exc:
+        log.error("stripe portal configuration failed: %s", exc)
+
+
 async def _renewals():
     from .services import registrar
     log = logging.getLogger("creai.renewals")
@@ -49,6 +71,8 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(social_publish.sweeper()))
     if settings.env != "development":
         tasks.append(asyncio.create_task(_renewals()))
+        if not settings.missing_for("billing"):
+            tasks.append(asyncio.create_task(_stripe_self_check()))
     yield
     for t in tasks:
         t.cancel()
