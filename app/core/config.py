@@ -15,6 +15,12 @@ def _req(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _token(name: str) -> str:
+    """API keys never contain whitespace or quotes; drop any a copy-paste added."""
+    raw = os.environ.get(name, "")
+    return "".join(ch for ch in raw if not ch.isspace() and ch not in "\"'\u200b\ufeff")
+
+
 @dataclass(frozen=True)
 class Settings:
     # identity
@@ -69,9 +75,9 @@ class Settings:
     agent_fast_model: str = _req("AGENT_FAST_MODEL", "claude-sonnet-5")  # "Fast"
 
     # payments — in-app panel on Stripe Elements (cards, Apple Pay, Google Pay, Klarna)
-    stripe_key: str = _req("STRIPE_SECRET_KEY", "")
-    stripe_publishable_key: str = _req("STRIPE_PUBLISHABLE_KEY", "")
-    stripe_webhook_secret: str = _req("STRIPE_WEBHOOK_SECRET", "")
+    stripe_key: str = _token("STRIPE_SECRET_KEY")
+    stripe_publishable_key: str = _token("STRIPE_PUBLISHABLE_KEY")
+    stripe_webhook_secret: str = _token("STRIPE_WEBHOOK_SECRET")
 
     verify_prefix: str = "_creai-verify"
 
