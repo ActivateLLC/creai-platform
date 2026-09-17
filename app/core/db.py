@@ -262,6 +262,26 @@ CREATE TABLE IF NOT EXISTS identities (
   PRIMARY KEY (provider, subject)
 );
 
+-- App projects: the code the agent writes, and the data those apps save.
+CREATE TABLE IF NOT EXISTS project_files (
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, path)
+);
+CREATE TABLE IF NOT EXISTS app_records (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  collection  TEXT NOT NULL,
+  data        JSONB NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS app_records_idx ON app_records(project_id, collection, id);
+
 -- Social accounts connected through Postiz, each owned by exactly one workspace.
 CREATE TABLE IF NOT EXISTS social_channels (
   id          BIGSERIAL PRIMARY KEY,
@@ -305,7 +325,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records",
 )
 
 

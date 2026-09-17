@@ -39,7 +39,7 @@ class FakeModel:
         self.steps = list(steps)
         self.calls = []
 
-    async def __call__(self, messages, tools, system, model):
+    async def __call__(self, messages, tools, system, model, max_tokens=2048):
         import json as _json
         self.calls.append({"tools": [t["name"] for t in tools], "system": system,
                            "messages": _json.loads(_json.dumps(messages)), "model": model})
@@ -87,7 +87,7 @@ async def test_anonymous_turn_builds_the_site(api, monkeypatch):
 
     page = await api.get("/v1/agent/draft/preview")
     assert "Your car, spotless." in page.text and "Full detail" in page.text
-    assert "script-src" not in page.headers["content-security-policy"]
+    assert "script-src 'none'" in page.headers["content-security-policy"]
 
     again = await api.get("/v1/agent/draft")
     assert [m["role"] for m in again.json()["messages"]] == ["user", "assistant"]

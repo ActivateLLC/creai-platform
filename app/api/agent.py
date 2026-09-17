@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from ..core import tenancy as T
 from ..core.config import settings
 from ..core.db import conn, log_event
-from ..services import agent, billing, site, webflow
+from ..services import agent, appfs, billing, site, webflow
 from .drafts import DRAFT_TTL, _token, draft_token, remember
 
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
@@ -194,9 +194,10 @@ async def project_say(project_id: int, body: SayIn,
         bridge = webflow.Bridge(ctx.org_id, project_id, answers.get("site") or {},
                                 st["auto_publish"], queue_approval)
 
+    app_ctx = (project_id, ctx.org_id) if p_path(p) == "app" else None
     turn = await _run(body.message, answers, project=True,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
-                      intent=body.intent, bridge=bridge,
+                      intent=body.intent, bridge=bridge, app=app_ctx,
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls)
@@ -215,12 +216,21 @@ async def project_say(project_id: int, body: SayIn,
 async def project_preview(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
     async with conn() as c:
         p = await _project(c, project_id, ctx.org_id)
-    return HTMLResponse(site.render((p["answers"] or {}).get("site")),
-                        headers=_preview_headers())
+    answers = p["answers"] or {}
+    if p_path(p) == "app":
+        page = appfs.preview(await appfs.files(project_id, ctx.org_id), answers.get("site"),
+                             appfs.token(project_id, ctx.org_id), settings.public_url)
+        # Even if opened directly, app code never runs with CreAI's origin.
+        return HTMLResponse(page, headers={
+            "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-modals; frame-ancestors 'self'",
+            "Cache-Control": "no-store"})
+    return HTMLResponse(site.render(answers.get("site")), headers=_preview_headers())
 
 
 def _preview_headers() -> dict:
-    # Rendered pages carry no script; this makes that a rule, not a habit.
-    return {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
-                                       "img-src 'self' data:; frame-ancestors 'self'",
+    # Rendered sites carry no script; this makes that a rule, not a habit.
+    return {"Content-Security-Policy": "default-src 'none'; script-src 'none'; "
+                                       "style-src 'unsafe-inline' https://fonts.googleapis.com; "
+                                       "font-src https://fonts.gstatic.com; img-src data: https:; "
+                                       "frame-ancestors 'self'",
             "Cache-Control": "no-store"}

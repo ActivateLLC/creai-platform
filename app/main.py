@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
-                  domains, drafts, marketing, orgs, projects, channels)
+                  domains, drafts, marketing, orgs, projects, channels, appdata)
 from .core import db
 from .services import social_publish
 from .core.config import settings
@@ -51,7 +51,38 @@ app.add_middleware(
     expose_headers=["X-Draft-Token"],
 )
 
-for r in (agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+class AppDataCORS:
+    """Sandboxed app previews have an opaque origin. /v1/appdata authenticates by
+    app token only, so it answers any origin without credentials; every other
+    route keeps the strict CORS policy above."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/v1/appdata"):
+            return await self.app(scope, receive, send)
+        headers = [(b"access-control-allow-origin", b"*"),
+                   (b"access-control-allow-methods", b"GET, POST, PATCH, DELETE, OPTIONS"),
+                   (b"access-control-allow-headers", b"content-type, x-app-token"),
+                   (b"access-control-max-age", b"600")]
+        if scope["method"] == "OPTIONS":
+            await send({"type": "http.response.start", "status": 204, "headers": headers})
+            return await send({"type": "http.response.body", "body": b""})
+
+        async def with_cors(message):
+            if message["type"] == "http.response.start":
+                message = {**message, "headers": [h for h in message.get("headers", [])
+                                                  if not h[0].startswith(b"access-control-")] + headers}
+            await send(message)
+        # strip Origin so the strict middleware below doesn't interfere
+        scope = {**scope, "headers": [h for h in scope["headers"] if h[0] != b"origin"]}
+        return await self.app(scope, receive, with_cors)
+
+
+app.add_middleware(AppDataCORS)
+
+for r in (appdata.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 

@@ -170,7 +170,7 @@ async def test_eval_harness_runs_and_scores(monkeypatch):
     from app.services import agent
     from scripts import eval_models
 
-    async def lazy(messages, tools, system, model):
+    async def lazy(messages, tools, system, model, max_tokens=2048):
         return {"model": model, "content": [{"type": "text", "text": "Sure, tell me more about it first."}],
                 "usage": {"input_tokens": 100, "output_tokens": 10}}
     monkeypatch.setattr(agent, "_call", lazy)

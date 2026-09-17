@@ -423,7 +423,9 @@ function renderThread(messages) {
     const h1 = el('h1');
     for (const w of ['Say', 'it.']) h1.append(el('span', null, w));
     h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it, or tap the mic and say it.'));
-    if (S.project && S.project.path === 'market') {
+    if (S.project && S.project.path === 'app') {
+      h.querySelector('p:last-child').textContent = 'Describe the app: who uses it, what they need to do, and what it should remember. CreAI writes the code and runs it here.';
+    } else if (S.project && S.project.path === 'market') {
       h.querySelector('p:last-child').textContent = 'Marketing ' + (S.project.brand?.name || S.project.name) + '. Ask for a week of posts, a launch campaign, or ideas for slow days.';
     } else if (!S.project || S.project.source !== 'webflow') {
       const ch = el('div', 'choices');
@@ -431,7 +433,9 @@ function renderThread(messages) {
       edit.onclick = () => runAction({ kind: 'connect', label: 'Connect your site' });
       const grow = el('button', 'btn', 'Grow my business'); grow.type = 'button';
       grow.onclick = () => runAction({ kind: 'grow', label: 'Grow my business' });
-      ch.append(edit, grow); h.append(ch);
+      const mkapp = el('button', 'btn', 'Build an app'); mkapp.type = 'button';
+      mkapp.onclick = () => runAction({ kind: 'new_app', label: 'Build an app' });
+      ch.append(mkapp, edit, grow); h.append(ch);
     } else {
       h.querySelector('p:last-child').textContent = 'Editing ' + (S.project.site?.name || 'your Webflow site') + '. Tell me what to change — copy, SEO, CMS, pages or layout.';
     }
@@ -440,7 +444,9 @@ function renderThread(messages) {
   }
   for (const m of messages) (m.role === 'user' ? addUser : addAgent)(m.text);
   $('starters').replaceChildren();
-  const starters = S.project && S.project.path === 'market'
+  const starters = S.project && S.project.path === 'app'
+    ? ['A booking app for my salon: clients pick a service and time, I see the day\'s list.', 'A simple CRM: add leads, move them through stages, see who to follow up with.', 'An inventory tracker for my shop with low-stock warnings.']
+    : S.project && S.project.path === 'market'
     ? ['Read my website and plan my next two weeks of posts.', 'Draft a promotion for my slowest day of the week.', 'Write three posts that each link to a different page.']
     : S.project && S.project.source === 'webflow'
     ? ['Audit my SEO titles and descriptions and fix the weak ones.', 'Rewrite my homepage hero to be clearer.', 'Add alt text to images that are missing it.']
@@ -476,14 +482,19 @@ async function refreshPreview() {
     $('url').textContent = (site.staging_url || 'staging').replace('https://', '') + (S.project.path === 'market' ? ' · your site' : ' · staging');
     return;
   }
-  if (fr.getAttribute('src')) { fr.removeAttribute('src'); fr.setAttribute('sandbox', ''); }
+  if (fr.getAttribute('src')) fr.removeAttribute('src');
+  const isApp = !!(S.project && S.project.path === 'app');
+  // Apps may run scripts, but never with CreAI's origin (no allow-same-origin).
+  fr.setAttribute('sandbox', isApp ? 'allow-scripts allow-forms allow-modals' : '');
+  $('stage').hidden = isApp ? true : $('stage').hidden;
+  if (isApp) { lastAppError = ''; setStatus('App · running in a sandbox', 'var(--leaf)'); }
   const path = S.project ? '/v1/agent/projects/' + S.project.id + '/preview' : '/v1/agent/draft/preview';
   try {
     const headers = S.token && S.project ? { Authorization: 'Bearer ' + S.token } : {};
     const r = await fetch(API_BASE + path, { credentials: NATIVE ? 'omit' : 'same-origin', headers: draftHeaders(headers) });
     $('preview').srcdoc = await r.text();
   } catch (_) {}
-  $('url').textContent = S.project ? 'preview · ' + S.project.name : 'preview · draft';
+  $('url').textContent = S.project ? (isApp ? 'app · ' : 'preview · ') + S.project.name : 'preview · draft';
 }
 
 function setStatus(text, color) { $('sText').textContent = text; $('sDot').style.color = color; }
@@ -502,7 +513,7 @@ async function send(text, intentOverride) {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
     const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent }) });
     if (out.credits) setBalance(out.credits.balance);
-    setHasSite(out.site);
+    if (S.project && S.project.path === 'app') refreshPreview(); else setHasSite(out.site);
     w.remove();
     (out.log || []).forEach(addTool);
     const last = (out.messages || []).filter(m => m.role === 'assistant').pop();
@@ -548,6 +559,13 @@ if (SR) {
 function runAction(a) {
   if (a.kind === 'build_plan') return send('Build the plan you just proposed.', 'build');
   if (a.kind === 'connect' && S.token) { showPane('connect'); return loadConnections(); }
+  if (a.kind === 'new_app' && S.token) {
+    api('/v1/projects', { method: 'POST', body: JSON.stringify({ name: 'New app', path: 'app' }) })
+      .then(p => openProject(p.id))
+      .then(() => { setIntent('build'); setMobile('chat'); $('input').focus(); })
+      .catch(e => addAgent(e.message));
+    return;
+  }
   if (a.kind === 'grow' && S.token) {
     const site = S.project && S.project.site && S.project.site.staging_url;
     $('growUrl').value = (S.project && S.project.website) || '';
@@ -600,6 +618,19 @@ async function loadProviders() {
   }
   $('orLine').hidden = !list.length;
 }
+var lastAppError = '';
+window.addEventListener('message', (ev) => {
+  if (ev.source !== $('preview').contentWindow || !ev.data || ev.data.type !== 'creai-app-error') return;
+  const msg = String(ev.data.message || '').slice(0, 600);
+  if (!msg || msg === lastAppError) return;
+  lastAppError = msg;
+  setStatus('App error · tap Fix it', 'var(--err)');
+  const row = el('div', 'acts');
+  const b = el('button', 'btn', 'Fix it'); b.type = 'button';
+  b.onclick = () => { row.remove(); send('The preview shows this error, please fix it: ' + msg, 'build'); };
+  addTool('the app reported an error: ' + msg);
+  row.append(b); $('thread').append(row);
+});
 function openExternal(url) {
   const B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
   if (B) B.open({ url, presentationStyle: 'popover' }); else window.open(url, '_blank');
@@ -786,8 +817,11 @@ async function openProject(pid) {
   const t = await api('/v1/agent/projects/' + pid);
   S.project = t.project;
   renderThread(t.messages);
-  if (isExternal()) { $('stage').hidden = true; setStatus(S.project.path === 'market' ? 'Marketing' : 'Webflow · edits staged', 'var(--leaf)'); }
+  lastAppError = '';
+  if (S.project && S.project.path === 'app') { $('stage').hidden = true; setStatus('App · running in a sandbox', 'var(--leaf)'); }
+  else if (isExternal()) { $('stage').hidden = true; setStatus(S.project.path === 'market' ? 'Marketing' : 'Webflow · edits staged', 'var(--leaf)'); }
   else { setHasSite(t.site); setStatus('Draft · not published', 'var(--dim)'); }
+  if (S.project && S.project.path === 'app') refreshPreview();
   setIntent(S.intent);
   refreshPreview();
 }
@@ -883,7 +917,8 @@ function setIntent(i) {
   S.intent = i;
   document.querySelectorAll('#intentMenu [data-intent]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.intent === i)));
   $('intentName').textContent = i.charAt(0).toUpperCase() + i.slice(1);
-  $('input').placeholder = (i === 'build' && S.project && S.project.source === 'webflow') ? 'What should we change?' : PLACEHOLDER[i];
+  $('input').placeholder = (i === 'build' && S.project && S.project.path === 'app') ? 'Describe the app or a change…'
+    : (i === 'build' && S.project && S.project.source === 'webflow') ? 'What should we change?' : PLACEHOLDER[i];
 }
 function toggleMenu(open) {
   const m = $('intentMenu'), want = open ?? m.hidden;

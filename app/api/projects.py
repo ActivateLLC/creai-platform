@@ -7,7 +7,7 @@ from ..core import tenancy as T
 from ..core.db import conn, log_event
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
-PATHS = {"launch", "market", "domain", "company", "edit"}
+PATHS = {"launch", "market", "domain", "company", "edit", "app"}
 
 
 class ProjectIn(BaseModel):
@@ -38,6 +38,9 @@ async def create(body: ProjectIn, ctx: T.Ctx = Depends(T.requires("write"))):
             """INSERT INTO projects (org_id, created_by, name, path, brief, answers)
                VALUES ($1,$2,$3,$4,$5,$6) RETURNING *""",
             ctx.org_id, ctx.user_id, body.name.strip(), body.path, body.brief, body.answers)
+    if body.path == "app":
+        from ..services import appfs
+        await appfs.seed(row["id"], ctx.org_id)
     await log_event(ctx.org_id, "project.created", body.name, row["id"], ctx.user_id)
     return {"id": row["id"], "name": row["name"], "path": row["path"], "status": row["status"]}
 

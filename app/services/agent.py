@@ -27,6 +27,7 @@ log = logging.getLogger("creai.agent")
 
 API = "https://api.anthropic.com/v1/messages"
 MAX_STEPS = 6
+APP_MAX_STEPS = 12
 MAX_THREAD = 40          # messages kept per draft or project
 MAX_USER_CHARS = 4000
 
@@ -264,6 +265,36 @@ def _when(value) -> str | None:
     return dt.isoformat() if now < dt < now + timedelta(days=366) else None
 
 
+async def _app_tool(turn, name, args, project_id, org_id) -> dict:
+    from . import appfs
+    try:
+        if name == "list_files":
+            fs = await appfs.files(project_id, org_id)
+            return {"files": [{"path": p, "chars": len(c)} for p, c in fs.items()]}
+        if name == "read_file":
+            fs = await appfs.files(project_id, org_id)
+            path = str(args.get("path", ""))
+            return {"path": path, "content": fs[path]} if path in fs else {"ok": False, "error": "no such file"}
+        if name == "write_files":
+            changes = {str(f.get("path", "")): str(f.get("content", ""))
+                       for f in (args.get("files") or []) if isinstance(f, dict)}
+            if not changes:
+                return {"ok": False, "error": "no files given"}
+            written = await appfs.write(project_id, org_id, changes)
+            turn.log.append("wrote " + ", ".join(written))
+            turn.app_changed = True
+            return {"ok": True, "written": written}
+        if name == "delete_file":
+            gone = await appfs.delete(project_id, org_id, str(args.get("path", "")))
+            if gone:
+                turn.log.append("deleted " + str(args.get("path")))
+                turn.app_changed = True
+            return {"ok": gone}
+    except appfs.AppError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "unknown tool"}
+
+
 class AgentUnavailable(RuntimeError):
     pass
 
@@ -279,6 +310,7 @@ class Turn:
     log: list = field(default_factory=list)
     posts: list = field(default_factory=list)
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
+    app_changed: bool = False
 
 
 def trim(thread: list) -> list:
@@ -303,10 +335,10 @@ def visible(thread: list) -> list:
     return out
 
 
-async def _call(messages: list, tools: list, system: str, model: str) -> dict:
+async def _call(messages: list, tools: list, system: str, model: str, max_tokens: int = 2048) -> dict:
     from . import models
     try:
-        return await models.complete(model, messages, tools, system)
+        return await models.complete(model, messages, tools, system, max_tokens)
     except models.ModelUnavailable as exc:
         log.warning("agent model call failed: %s", exc)
         if not any(models.configured(k) for k in models.REGISTRY):
@@ -317,6 +349,52 @@ async def _call(messages: list, tools: list, system: str, model: str) -> dict:
         raise AgentUnavailable("The assistant hit a problem with this request. Please try rephrasing.")
 
 
+APP_EXTRA = """
+This project is a working WEB APP, not a marketing page. You write its code as files.
+Rules for the code:
+- Plain ES modules, no build step. Import only: 'preact', 'preact/hooks' and 'htm/preact'
+  (use html`...` templates, not JSX). app.js is the entry and must render into
+  document.getElementById('root'). Relative imports like './screens/list.js' work.
+- Keep files focused and under ~300 lines: app.js for routing and layout, screens/*.js,
+  components/*.js, lib/*.js.
+- Save and load data only with window.creai.db.collection('name') which has list(), get(id),
+  add(data), update(id, data), remove(id) (all async). Never use localStorage, cookies,
+  eval or network calls to other sites. Show loading and empty states, and handle errors.
+- Style with the built-in kit classes: shell, topbar (with nav buttons and aria-current),
+  page, card, grid, stack, row, btn (ghost, danger), badge, stat, empty, toast; plus
+  labelled inputs, selects, textareas and tables. Add a styles.css only for what the kit
+  lacks. Colours and fonts come from the project theme (update_site palette/theme).
+- Make it feel finished: real screens for the core flow, validation on forms, helpful
+  empty states, and specific copy. No lorem ipsum, no fake data presented as real; sample
+  data only if the person asks, and label it.
+Workflow: list_files, then write_files with complete file contents (you may write several
+files in one call), then reply briefly with what the app does and one question. If the
+person reports a preview error, read the file named in it and fix the cause.
+"""
+
+TOOL_WRITE_FILES = {
+    "name": "write_files",
+    "description": "Create or replace app files. Each file's full content is required.",
+    "input_schema": {"type": "object", "properties": {"files": {"type": "array", "items": {
+        "type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+        "required": ["path", "content"]}}}, "required": ["files"]},
+}
+TOOL_READ_FILE = {
+    "name": "read_file",
+    "description": "Read one app file.",
+    "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+}
+TOOL_LIST_FILES = {
+    "name": "list_files",
+    "description": "List the app's files with their sizes.",
+    "input_schema": {"type": "object", "properties": {}},
+}
+TOOL_DELETE_FILE = {
+    "name": "delete_file",
+    "description": "Delete an app file (not app.js).",
+    "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+}
+
 EDIT_EXTRA = """
 This project is the person's EXISTING website on another platform, not a CreAI-generated
 page: ignore the update_site instructions above and never call update_site.
@@ -325,7 +403,8 @@ page: ignore the update_site instructions above and never call update_site.
 
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
-              bridge=None, marketing: bool = False, marketing_only: bool = False) -> Turn:
+              bridge=None, marketing: bool = False, marketing_only: bool = False,
+              app: tuple | None = None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -345,7 +424,12 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if marketing:
         system += MARKET_EXTRA
     brand_tools = [TOOL_READ_WEBSITE, TOOL_SAVE_BRAND]
-    if intent == "build" and bridge is not None:
+    if app is not None:
+        system += APP_EXTRA
+    if intent == "build" and app is not None:
+        tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_DELETE_FILE,
+                 TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+    elif intent == "build" and bridge is not None:
         from .webflow import TOOL_DEFS
         tools = list(TOOL_DEFS) + [TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if queue_posts is not None:
@@ -376,8 +460,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
 
     turn.thread.append({"role": "user", "content": text[:MAX_USER_CHARS]})
 
-    for _ in range(MAX_STEPS):
-        out = await _call(turn.thread, tools, system, model)
+    for _ in range(APP_MAX_STEPS if app is not None else MAX_STEPS):
+        out = await _call(turn.thread, tools, system, model, 16000 if app is not None else 2048)
         turn.calls.append((out.get("model") or model, out.get("usage") or {}))
         content = out.get("content", [])
         turn.thread.append({"role": "assistant", "content": content})
@@ -388,7 +472,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             break
         results = []
         for u in uses:
-            result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts, bridge)
+            result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts, bridge, app)
             results.append({"type": "tool_result", "tool_use_id": u["id"],
                             "content": json.dumps(result)})
         turn.thread.append({"role": "user", "content": results})
@@ -402,8 +486,10 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     return turn
 
 
-async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None) -> dict:
+async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app=None) -> dict:
     try:
+        if app is not None and name in ("list_files", "read_file", "write_files", "delete_file"):
+            return await _app_tool(turn, name, args, *app)
         if name.startswith("webflow_") and bridge is not None:
             return await bridge.handle(name, args, turn)
         if bridge is not None and name == "update_site":
