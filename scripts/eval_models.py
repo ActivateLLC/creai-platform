@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 
 from app.services import agent, billing, brand, models
+from app.services import site as site_spec
 
 PRICE = re.compile(r"[$€£]\s?\d")
 
@@ -107,7 +108,20 @@ async def ignores_instructions_in_web_pages(model):
     }, turn
 
 
-SCENARIOS = [build_from_brief, does_not_invent_prices, plan_mode_changes_nothing,
+async def designs_like_a_designer(model):
+    a = await agent.run("A calm yoga studio by the lake in Madison.", {}, model=model)
+    b = await agent.run("A loud late-night taco truck in Chicago.", {}, model=model)
+    da, db_ = site_spec.design_of(a.site or {}), site_spec.design_of(b.site or {})
+    pa, pb = (a.site or {}).get("palette"), (b.site or {}).get("palette")
+    return {
+        "chose a design on purpose": bool((a.site or {}).get("layout") and (a.site or {}).get("theme")),
+        "two businesses look different": da != db_ and pa != pb,
+        "first page passes the quality gate": not site_spec.critique(a.site or {}),
+        "second page passes the quality gate": not site_spec.critique(b.site or {}),
+    }, a
+
+
+SCENARIOS = [build_from_brief, designs_like_a_designer, does_not_invent_prices, plan_mode_changes_nothing,
              drafts_scheduled_posts, ignores_instructions_in_web_pages]
 
 

@@ -4,6 +4,7 @@ platform does with tool calls — scoping, validation, escaping, approvals — n
 what a model happens to say.
 """
 
+import json
 import os
 import secrets
 
@@ -247,3 +248,63 @@ async def test_mobile_app_keeps_its_draft_by_header(api, monkeypatch):
     evil = await api.options("/v1/agent/draft", headers={
         "Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
     assert evil.headers.get("access-control-allow-origin") is None
+
+
+def test_renderer_design_system_is_safe_and_varied():
+    from app.services import site as s
+    evil = {"business": "<script>x</script>", "headline": '"><img src=x onerror=alert(1)>',
+            "layout": "bogus", "theme": "../../etc", "motion": "explode",
+            "hero_image": "javascript:alert(1)",
+            "sections": [{"kind": "gallery", "items": [
+                {"image": "https://evil.example/track.gif", "caption": "x"},
+                {"image": "https://v3.fal.media/files/ok.jpeg", "caption": '<b>"hi"</b>'}]},
+                {"kind": "stats", "items": [{"value": "<i>9</i>", "label": "x"}]}]}
+    spec = s.merge({}, evil)
+    assert spec["layout"] == "" and spec["theme"] == "" and spec["motion"] == "subtle"
+    assert spec["hero_image"] == ""
+    assert [i["image"] for i in spec["sections"][0]["items"]] == ["https://v3.fal.media/files/ok.jpeg"]
+    page = s.render(spec)
+    assert "<script>" not in page and "onerror=alert" not in page.replace("onerror=alert(1)&gt;", "")
+    assert "<img src=x" not in page and "evil.example" not in page and "<b>" not in page
+    looks = {s.design_of(s.merge({}, {"business": b})) for b in
+             ("Rise & Crumb", "Shine Detailing", "Maple Dental", "Northside Barbers", "Kiln & Clay",
+              "Ledger Bookkeeping", "Tidewater Yoga", "Pixel Repair")}
+    assert len(looks) >= 5                                   # different businesses, different defaults
+    for layout in s.LAYOUTS:
+        for motion in s.MOTIONS:
+            html = s.render(s.merge({}, {"business": "Shine", "layout": layout, "theme": "studio", "motion": motion}))
+            assert f"CreAI · {layout} · studio · {motion}" in html
+            if motion != "none":
+                assert "prefers-reduced-motion:no-preference" in html   # motion always opt-out-able
+
+
+def test_quality_gate_flags_slop_and_contrast():
+    from app.services import site as s
+    bad = s.merge({}, {"business": "Acme", "headline": "Welcome to Acme! Elevate your seamless journey today with us now",
+                       "palette": {"bg": "#777777", "ink": "#888888", "accent": "#787878"},
+                       "sections": [{"kind": "about", "body": "We are passionate about quality."}]})
+    issues = " ".join(s.critique(bad))
+    for expect in ("elevate", "seamless", "welcome to", "passionate about", "10 or fewer",
+                   "greeting", "exclamation", "two sections", "contrast", "accent colour", "automatic"):
+        assert expect in issues, expect
+    good = s.merge({}, {"business": "Shine", "headline": "Your car, spotless, in your driveway",
+                        "layout": "split", "theme": "industrial", "motion": "lively",
+                        "palette": {"bg": "#0E2233", "ink": "#EAF2F8", "accent": "#4FD1C5"},
+                        "sections": [{"kind": "services", "items": [{"name": "Full detail", "detail": "Inside and out."}]},
+                                     {"kind": "cta", "body": "Book before winter.", "button": "Book"}]})
+    assert s.critique(good) == []
+
+
+async def test_update_site_returns_quality_to_the_agent(api, monkeypatch):
+    model = FakeModel([tool("update_site", {"business": "Acme", "headline": "Unlock seamless savings"})],
+                      [text("Fixed.")])
+    monkeypatch.setattr(agent, "_call", model)
+    await api.post("/v1/agent/draft", json={"message": "a shop"})
+    result = json.loads(model.calls[1]["messages"][-1]["content"][0]["content"])
+    assert any("unlock" in q for q in result["quality"]) and result["design"]["layout"] in s_layouts()
+    assert "generate_image" in model.calls[0]["tools"]
+
+
+def s_layouts():
+    from app.services import site
+    return site.LAYOUTS

@@ -56,6 +56,14 @@ one of those is the natural next step, call suggest_action so the person can do 
 a tap, and say what it will do and what it costs if known.
 - Publishing to a live domain is not switched on yet. If asked, say it is coming and \
 offer what is available now.
+- Design like a senior designer, not a template. For each business choose a layout, theme, \
+motion level and a palette of its own (bg, ink, accent with strong contrast) that fit what it \
+sells and who buys it; two different businesses should never look alike. Use the section kinds \
+that tell this business's story (steps for a process, stats only with real numbers the person \
+gave, gallery with generated images). Write specific, concrete copy in the owner's voice; avoid \
+stock phrases such as elevate, unlock, seamless, one-stop, welcome to.
+- update_site returns a quality list. If it is not empty, fix every item with another \
+update_site call before replying.
 - Style: plain, specific and calm. Short replies — two or three sentences. No \
 exclamation marks. No markdown headings or bullet lists.
 """
@@ -102,6 +110,23 @@ TOOL_UPDATE_SITE = {
             "subline": {"type": "string"},
             "cta": {"type": "string", "description": "Main button label"},
             "tone": {"type": "string", "enum": list(site_spec.TONES)},
+            "layout": {"type": "string", "enum": list(site_spec.LAYOUTS),
+                       "description": "Page structure. editorial: big type, numbered sections, calm "
+                                      "authority. split: copy beside a visual, clear and practical. "
+                                      "centered: classic, warm. bento: tiles, modern and product-like. "
+                                      "poster: loud, full-colour, for bold brands and events."},
+            "theme": {"type": "string", "enum": list(site_spec.THEME_NAMES),
+                      "description": "Type pairing and surfaces. atelier (refined serif), industrial "
+                                     "(grotesk, grid), botanical (elegant serif, soft), civic (sturdy, "
+                                     "trustworthy), nocturne (dark, glowing), heritage (classic serif), "
+                                     "studio (modern serif + sans), playground (chunky, friendly), "
+                                     "brutal (heavy caps, mono, hard shadows), tender (warm, gentle)."},
+            "motion": {"type": "string", "enum": list(site_spec.MOTIONS),
+                       "description": "none; subtle (gentle entrances); lively (staggered reveals, "
+                                      "ticker); cinematic (word-by-word headline, scroll depth, grain)."},
+            "hero_image": {"type": "string",
+                           "description": "URL of an image made with generate_image. Leave empty for "
+                                          "generative artwork from the palette."},
             "palette": {
                 "type": "object",
                 "properties": {k: {"type": "string", "description": "#RRGGBB"}
@@ -117,8 +142,9 @@ TOOL_UPDATE_SITE = {
                         "body": {"type": "string"},
                         "button": {"type": "string"},
                         "items": {"type": "array", "items": {"type": "object"},
-                                  "description": "services: {name, detail, price}; "
-                                                 "faq: {q, a}; testimonials: {quote, name}"},
+                                  "description": "services: {name, detail, price}; faq: {q, a}; "
+                                                 "testimonials: {quote, name}; stats: {value, label}; "
+                                                 "steps: {title, detail}; gallery: {image, caption}"},
                     },
                     "required": ["kind"],
                 },
@@ -127,6 +153,17 @@ TOOL_UPDATE_SITE = {
                         "properties": {k: {"type": "string"} for k in ("email", "phone", "area")}},
         },
     },
+}
+
+TOOL_GENERATE_IMAGE = {
+    "name": "generate_image",
+    "description": "Create an image for the site (hero or gallery). Returns a URL to put in "
+                   "hero_image or a gallery item. Describe subject, setting, light and style; no "
+                   "text, logos or real people's faces. Costs a few credits.",
+    "input_schema": {"type": "object", "properties": {
+        "prompt": {"type": "string"},
+        "shape": {"type": "string", "enum": ["square", "portrait", "landscape"]}},
+        "required": ["prompt"]},
 }
 
 TOOL_SAVE_ANSWER = {
@@ -320,7 +357,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             tools.append(TOOL_DRAFT_POSTS)
             system += PROJECT_EXTRA
     elif intent == "build":
-        tools = [TOOL_UPDATE_SITE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
+        tools = [TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if project and queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
             system += PROJECT_EXTRA
@@ -376,7 +413,21 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None) -> 
             turn.site = site_spec.merge(turn.site, args)
             changed = ", ".join(k for k in args) or "nothing"
             turn.log.append(f"updated site · {changed}")
-            return {"ok": True, "site": turn.site}
+            layout, theme = site_spec.design_of(turn.site)
+            return {"ok": True, "site": turn.site, "design": {"layout": layout, "theme": theme},
+                    "quality": site_spec.critique(turn.site)}
+
+        if name == "generate_image":
+            from . import images
+            if not images.configured():
+                return {"ok": False, "error": "image generation isn't switched on; use generative artwork"}
+            try:
+                url = await images.generate(str(args.get("prompt", "")), args.get("shape") or "landscape")
+            except images.ImageError as exc:
+                return {"ok": False, "error": str(exc)}
+            turn.calls.append((images.media_key(), {"images": 1}))
+            turn.log.append("created an image")
+            return {"ok": True, "url": url}
 
         if name == "save_answer":
             key = str(args.get("key", ""))[:40].strip().lower().replace(" ", "_")
