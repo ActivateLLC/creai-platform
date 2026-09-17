@@ -9,6 +9,7 @@ made reliable, the product's whole wedge does not hold.
 import asyncio
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from .core import db
 from .services import social_publish
 from .core.config import settings
 
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
