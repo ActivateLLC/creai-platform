@@ -248,6 +248,13 @@ input:focus{outline:none;border-color:var(--leaf)}
   .hero h1{font-size:52px}
   .pane{padding:16px}
 }
+
+.formgrid{display:grid;gap:12px;margin:8px 0}
+.formgrid label{display:flex;flex-direction:column;gap:6px;font-family:var(--sans,inherit);font-size:13px;letter-spacing:0;text-transform:none}
+.formgrid input{width:100%;box-sizing:border-box;padding:12px;font:inherit;font-size:16px;border:1px solid var(--hairline);background:var(--paper,#fff);color:inherit}
+.consent{display:flex;gap:10px;align-items:flex-start;font-family:var(--sans,inherit);font-size:14px;line-height:1.45;margin:8px 0;text-transform:none;letter-spacing:0}
+.consent input{margin-top:3px;width:18px;height:18px;flex:none}
+@media (min-width:700px){.formgrid{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body data-m="chat">
@@ -702,18 +709,94 @@ $('fDomain').onsubmit = async (e) => {
 async function loadDomains() {
   if (!S.token) return;
   const pane = $('pDomain'); pane.replaceChildren();
-  const head = el('div'); head.append(el('h2', null, 'Domain'), el('p', 'muted', 'Connect a domain you already own. Registering new domains through CreAI is coming.'));
-  const add = el('button', 'btn primary', 'Connect a domain'); add.type = 'button';
+  const head = el('div'); head.style.marginBottom = '16px';
+  head.append(el('h2', null, 'Go live'), el('p', 'muted', 'Publish on a free CreAI address, buy a new domain, or use one you already own. Nothing is bought or published without your OK.'));
+  pane.append(head);
+
+  // 1. Publish on CreAI
+  const isApp = S.project && S.project.path === 'app';
+  const isSite = S.project && !isApp && S.project.path !== 'market' && !isExternal();
+  const pubCard = el('div', 'card');
+  pubCard.append(el('p', 'label', '1 · Publish on CreAI'));
+  if (!S.project) pubCard.append(el('p', 'note', 'Sign in and save your site to a project to publish it.'));
+  else if (isApp) pubCard.append(el('p', 'note', 'Apps publish from the bar above the preview.'));
+  else if (!isSite) pubCard.append(el('p', 'note', 'This project publishes through its own platform.'));
+  else {
+    const state = el('p', 'note', 'Checking…'); const btn = el('button', 'btn primary', 'Publish site'); btn.type = 'button';
+    const show = (r) => {
+      state.replaceChildren();
+      if (r.published) {
+        const a = el('a', 'mono', r.url.replace('https://', '')); a.href = r.url; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--leaf)';
+        state.append('Live at ', a);
+        for (const d of (r.domains || [])) state.append(d.status === 'live' ? ' · ' + d.name : ' · ' + d.name + ' (connecting)');
+        btn.textContent = 'Publish changes';
+      } else { state.textContent = 'Not published yet. You get a free address right away.'; btn.textContent = 'Publish site'; }
+    };
+    api('/v1/sites/' + S.project.id + '/release').then(show).catch(() => { state.textContent = ''; });
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        const r = await api('/v1/sites/' + S.project.id + '/publish', { method: 'POST' });
+        show(r); addTool('published · ' + r.url.replace('https://', ''));
+        if (r.quality && r.quality.length) state.append(el('span', 'note', ' · Worth fixing: ' + r.quality[0]));
+      } catch (e) { state.textContent = e.message; }
+      btn.disabled = false;
+    };
+    pubCard.append(state, btn);
+  }
+  pane.append(pubCard);
+
+  // 2. Find and buy a domain
+  const buy = el('div', 'card');
+  buy.append(el('p', 'label', '2 · Get a domain'));
+  const row = el('form', 'row');
+  const q = el('input'); q.placeholder = 'Search a name, e.g. shinedetailing'; q.style.flex = '1'; q.setAttribute('aria-label', 'Domain name');
+  q.value = (S.site && S.site.business) ? S.site.business.toLowerCase().replace(/[^a-z0-9]+/g, '') : '';
+  const go = el('button', 'btn', 'Search'); go.type = 'submit';
+  row.append(q, go);
+  const results = el('div', 'stack');
+  row.onsubmit = async (e) => {
+    e.preventDefault(); results.replaceChildren(el('p', 'note', 'Searching…'));
+    try {
+      const r = await api('/v1/domains/search?q=' + encodeURIComponent(q.value));
+      results.replaceChildren();
+      if (!r.registrar_connected) { results.append(el('p', 'note', 'Buying domains is being switched on. You can connect one you own below.')); return; }
+      if (!r.results.length) results.append(el('p', 'note', 'No suggestions for that. Try another word.'));
+      for (const d of r.results) {
+        const line = el('div', 'row'); line.style.cssText = 'justify-content:space-between;border-bottom:1px solid var(--hairline);padding:8px 0';
+        line.append(el('span', 'mono', d.domain));
+        if (d.available) {
+          const b = el('button', 'btn', d.credits.toLocaleString() + ' cr · ~$' + (d.credits / 100).toFixed(2)); b.type = 'button';
+          b.onclick = () => startPurchase(d.domain, results);
+          line.append(b);
+        } else line.append(el('span', 'note', 'Taken'));
+        results.append(line);
+      }
+    } catch (err) { results.replaceChildren(el('p', 'note', err.message)); }
+  };
+  buy.append(row, results, el('p', 'note', 'Registered in your name at cost plus a small fee, with WHOIS privacy where available.'));
+  pane.append(buy);
+
+  // 3. Connect one you own
+  const conn = el('div', 'card');
+  conn.append(el('p', 'label', '3 · Use a domain you own'));
+  const add = el('button', 'btn', 'Connect a domain'); add.type = 'button';
   add.onclick = () => runAction({ kind: 'connect_domain' });
-  head.append(add); head.style.marginBottom = '16px'; pane.append(head);
+  conn.append(el('p', 'note', 'Add one record at your registrar to prove it\u2019s yours; email and other records are never touched.'), add);
+  pane.append(conn);
+
+  // Your domains
   let list = [];
   try { list = await api('/v1/domains'); } catch (_) {}
+  if (list.length) pane.append(el('p', 'label', 'Your domains'));
   for (const d of list) {
     const c = el('div', 'card');
-    const live = d.status === 'live', color = live ? 'var(--ok)' : 'var(--warn)';
+    const live = d.status === 'live';
+    const label = { live: 'Live', verifying: 'Verified', registered: 'Yours', pending: 'Waiting for record' }[d.status] || d.status;
     const top = el('div', 'row'); top.append(el('span', 'mono', d.name));
-    const tag = el('span', 'tag', live ? 'Live' : d.status === 'verifying' ? 'Verified' : 'Waiting for record'); tag.style.color = color; tag.style.marginLeft = 'auto';
+    const tag = el('span', 'tag', label); tag.style.color = live ? 'var(--ok)' : d.status === 'pending' ? 'var(--warn)' : 'var(--leaf)'; tag.style.marginLeft = 'auto';
     top.append(tag); c.append(top);
+    if (d.expires_at) c.append(el('p', 'note', 'Renews ' + new Date(d.expires_at).toLocaleDateString() + ' · we email you before charging credits.'));
     if (d.status === 'pending') {
       c.append(el('p', 'muted', 'Add this TXT record at your registrar, then check.'));
       const chk = el('button', 'btn', 'Check now'); chk.type = 'button';
@@ -724,9 +807,80 @@ async function loadDomains() {
         chk.disabled = false;
       };
       c.append(chk);
+    } else if (!live) {
+      const host = el('button', 'btn', 'Point to my CreAI site'); host.type = 'button';
+      const note = el('p', 'note', '');
+      host.onclick = async () => {
+        host.disabled = true;
+        try {
+          const r = await api('/v1/domains/' + d.id + '/host', { method: 'POST' });
+          note.textContent = r.ok ? 'Records set. Your address usually works within minutes; the certificate follows shortly after.' : r.message;
+          if (r.ok && r.records && !r.written?.length) note.textContent = 'Add these at your registrar: ' + r.records.map(x => x.type + ' ' + x.name + ' → ' + x.content).join(' · ');
+        } catch (err) { note.textContent = err.message; }
+        host.disabled = false;
+      };
+      c.append(host, note);
     }
     pane.append(c);
   }
+}
+
+const CONTACT_FIELDS = [['name', 'Full name'], ['organization', 'Business (optional)'], ['email', 'Email'],
+  ['phone', 'Phone, e.g. +1.4145550100'], ['street', 'Street address'], ['city', 'City'], ['state', 'State / region'],
+  ['postal_code', 'Postal code'], ['country_code', 'Country code, e.g. US']];
+async function startPurchase(domain, box) {
+  box.replaceChildren(el('p', 'note', 'Checking ' + domain + ' with the registry…'));
+  let quote, saved = null;
+  try {
+    quote = await api('/v1/domains/quote', { method: 'POST', body: JSON.stringify({ domain }) });
+    if (quote.available) saved = (await api('/v1/domains/contact')).contact;
+  } catch (e) { box.replaceChildren(el('p', 'note', e.message)); return; }
+  box.replaceChildren();
+  if (!quote.available) { box.append(el('p', 'note', quote.message)); return; }
+  const card = el('form', 'stack');
+  card.append(el('h3', null, quote.domain),
+    el('p', null, quote.credits.toLocaleString() + ' credits for the first year' + (quote.renewal_credits ? ', then about ' + quote.renewal_credits.toLocaleString() + ' a year.' : '.')),
+    el('p', 'note', quote.terms));
+  const inputs = {};
+  const fields = el('div', 'formgrid');
+  for (const [k, label] of CONTACT_FIELDS) {
+    const l = el('label', null, label); const i = el('input'); i.name = k;
+    i.required = !['organization', 'state'].includes(k);
+    if (saved && saved[k]) i.value = saved[k];
+    if (k === 'email') i.type = 'email';
+    if (k === 'phone') { i.type = 'tel'; i.pattern = '\\+[0-9]{1,3}\\.[0-9]{4,14}'; }
+    if (k === 'country_code') { i.maxLength = 2; i.autocapitalize = 'characters'; }
+    i.autocomplete = { name: 'name', organization: 'organization', email: 'email', phone: 'tel', street: 'street-address',
+      city: 'address-level2', state: 'address-level1', postal_code: 'postal-code', country_code: 'country' }[k];
+    inputs[k] = i; l.append(i); fields.append(l);
+  }
+  if (saved) {
+    const toggle = el('button', 'btn ghost', 'Registered to ' + saved.name + ' · change'); toggle.type = 'button';
+    fields.hidden = true; toggle.onclick = () => { fields.hidden = false; toggle.remove(); };
+    card.append(toggle);
+  } else card.append(el('p', 'note', 'The domain is registered to you, so the registry needs these details.'));
+  card.append(fields);
+  const agree = el('label', 'consent'); const cb = el('input'); cb.type = 'checkbox'; cb.required = true;
+  agree.append(cb, 'I understand this costs ' + quote.credits.toLocaleString() + ' credits and can\u2019t be refunded once registered.');
+  const btn = el('button', 'btn primary', 'Buy ' + quote.domain); btn.type = 'submit';
+  const msg = el('p', 'note', '');
+  card.append(agree, btn, msg);
+  card.onsubmit = async (e) => {
+    e.preventDefault(); btn.disabled = true; msg.textContent = 'Registering…';
+    const contact = {};
+    for (const [k] of CONTACT_FIELDS) contact[k] = inputs[k].value.trim();
+    contact.country_code = contact.country_code.toUpperCase();
+    try {
+      const r = await api('/v1/domains/purchase', { method: 'POST', body: JSON.stringify({
+        quote_id: quote.quote_id, accept_terms: cb.checked,
+        project_id: S.project ? S.project.id : null,
+        contact: (saved && fields.hidden) ? null : contact }) });
+      addTool('bought ' + r.domain + ' · ' + r.credits_spent.toLocaleString() + ' credits');
+      addAgent(r.domain + ' is yours.' + (r.hosting && r.hosting.ok ? ' It\u2019s pointed at your CreAI site and should work within minutes.' : ' ' + ((r.hosting && r.hosting.message) || '')));
+      loadDomains(); api('/v1/billing').then(b => setBalance(b.balance)).catch(() => {});
+    } catch (err) { msg.textContent = err.message; btn.disabled = false; }
+  };
+  box.append(card);
 }
 
 // posts
@@ -986,7 +1140,7 @@ function setBalance(n) {
 }
 
 const NETWORKS = { instagram: 'Instagram', facebook: 'Facebook', google_business: 'Google Business', gmb: 'Google Business', linkedin: 'LinkedIn', tiktok: 'TikTok', x: 'X', threads: 'Threads', youtube: 'YouTube', pinterest: 'Pinterest' };
-const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment', waived: 'On us' };
+const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment', waived: 'On us', domain: 'Domain' };
 async function loadCredits() {
   if (!S.token) return;
   let b;
@@ -1278,6 +1432,7 @@ const lens = (() => {
 })();
 
 function setHasSite(site) {
+  S.site = site || null;
   const has = !!(site && (site.headline || (site.sections || []).length));
   const st = $('stage');
   if (has && !st.hidden) {

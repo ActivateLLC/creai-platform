@@ -21,6 +21,7 @@ write — because what the customer sees is what a resolver says.
 
 import asyncio
 import logging
+import re
 import secrets
 import socket
 
@@ -49,8 +50,33 @@ def _fq(name: str, domain: str) -> str:
     return domain if name == "@" else f"{name}.{domain}"
 
 
-def wanted_records(domain: str, token: str) -> list[dict]:
+def hosting_records(domain: str, required: list[dict]) -> list[dict]:
+    """Records the host (Railway) asked for, translated to zone-relative names.
+    DNS-only (not proxied) so the host can verify the domain and issue its certificate."""
+    out = []
+    for r in required:
+        rtype = str(r.get("recordType", "")).replace("DNS_RECORD_TYPE_", "").upper()
+        value = str(r.get("requiredValue") or "")
+        fqdn = str(r.get("fqdn") or r.get("hostlabel") or "").rstrip(".").lower()
+        if rtype not in {"CNAME", "TXT", "A", "AAAA"} or not value:
+            continue
+        if fqdn in ("", "@", domain):
+            name = "@"
+        elif fqdn.endswith("." + domain):
+            name = fqdn[: -len(domain) - 1]
+        else:
+            continue            # never write records for anyone else's domain
+        if not re.fullmatch(r"@|[a-z0-9_]([a-z0-9_.-]{0,60}[a-z0-9])?", name):
+            continue
+        out.append({"type": rtype, "name": name, "content": value.rstrip(".") if rtype == "CNAME" else value,
+                    "proxied": False})
+    return out
+
+
+def wanted_records(domain: str, token: str, hosting: list[dict] | None = None) -> list[dict]:
     """The complete set the platform writes. Nothing outside this list, ever."""
+    if hosting:
+        return hosting + [{"type": "TXT", "name": settings.verify_prefix, "content": token, "proxied": False}]
     if not settings.origin_cname:
         raise RuntimeError("ORIGIN_CNAME is not set")
     return [
@@ -92,9 +118,10 @@ async def _list_records(x: httpx.AsyncClient, zone_id: str) -> list[dict]:
         page += 1
 
 
-async def write_records(zone_id: str, domain: str, token: str) -> list[dict]:
+async def write_records(zone_id: str, domain: str, token: str,
+                        hosting: list[dict] | None = None) -> list[dict]:
     written, replaced = [], []
-    wanted = wanted_records(domain, token)
+    wanted = wanted_records(domain, token, hosting)
     async with httpx.AsyncClient(timeout=30) as x:
         existing = await _list_records(x, zone_id)
         routed_fq = {_fq(n, domain) for n in ROUTED_NAMES}
@@ -116,6 +143,9 @@ async def write_records(zone_id: str, domain: str, token: str) -> list[dict]:
                 continue
             fq = _fq(rec["name"], domain)
             found = by_key.get((rec["type"], fq))
+            if rec["type"] == "TXT" and found and found.get("content") != rec["content"] \
+                    and not str(found.get("content", "")).startswith(("creai-site-verify=", "railway-verify=")):
+                found = None          # someone else's TXT at this name: add ours alongside
             if found and rec["type"] == "CNAME" and found.get("content") != rec["content"]:
                 replaced.append({k: found.get(k) for k in
                                  ("type", "name", "content", "proxied", "ttl")})

@@ -224,9 +224,14 @@ async def sweep_once() -> int:
         if not await c.fetchval("SELECT pg_try_advisory_lock(424242)"):
             return 0
         try:
+            # Approved posts first; held ones take turns so none can starve the rest.
             ids = await c.fetch(
-                """SELECT id FROM approvals WHERE kind='post' AND state IN ('approved','held')
-                   ORDER BY scheduled_for NULLS FIRST LIMIT 50""")
+                """UPDATE approvals SET checked_at = now()
+                   WHERE id IN (SELECT id FROM approvals WHERE kind='post' AND state IN ('approved','held')
+                                ORDER BY (state = 'approved') DESC, checked_at NULLS FIRST,
+                                         scheduled_for NULLS FIRST
+                                LIMIT 50)
+                   RETURNING id""")
         finally:
             await c.execute("SELECT pg_advisory_unlock(424242)")
     done = 0

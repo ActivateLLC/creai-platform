@@ -282,12 +282,19 @@ CREATE TABLE IF NOT EXISTS app_records (
 );
 CREATE INDEX IF NOT EXISTS app_records_idx ON app_records(project_id, collection, id);
 
--- Workspace spending cap (credits per calendar month; NULL = no cap).
+-- Workspace spending cap (credits per calendar month; NULL = no cap) and the
+-- registrant contact for domains (encrypted).
 CREATE TABLE IF NOT EXISTS org_settings (
   org_id       BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
   monthly_cap  INTEGER,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS registrant_enc TEXT;
+ALTER TABLE approvals ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS hosting JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS renewal_credits INTEGER;
+
 
 -- Errors reported by app previews, so fixing them can be free.
 CREATE TABLE IF NOT EXISTS app_errors (
@@ -298,6 +305,34 @@ CREATE TABLE IF NOT EXISTS app_errors (
   free_fixes  INTEGER NOT NULL DEFAULT 0,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, message)
+);
+
+-- Published site snapshots (rendered HTML — sites never carry script).
+CREATE TABLE IF NOT EXISTS site_releases (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  slug        TEXT NOT NULL,
+  html        TEXT NOT NULL,
+  live        BOOLEAN NOT NULL DEFAULT true,
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS site_releases_slug_idx ON site_releases(slug, id DESC);
+CREATE INDEX IF NOT EXISTS site_releases_project_idx ON site_releases(project_id, id DESC);
+
+-- A priced offer for a domain, valid for a few minutes, so the customer pays
+-- exactly what they were shown.
+CREATE TABLE IF NOT EXISTS domain_quotes (
+  id          TEXT PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  domain      TEXT NOT NULL,
+  cost_usd    NUMERIC(10,2) NOT NULL,
+  credits     INTEGER NOT NULL,
+  renewal_credits INTEGER,
+  state       TEXT NOT NULL DEFAULT 'open',      -- open | buying | bought | failed
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Published app snapshots and their public addresses.
@@ -358,7 +393,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes",
 )
 
 

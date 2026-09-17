@@ -101,6 +101,33 @@ async def balance(org_id: int) -> int:
             "SELECT COALESCE(SUM(delta), 0) FROM credit_ledger WHERE org_id=$1", org_id))
 
 
+async def spend(org_id: int, actor_id: int, credits: int, reason: str, ref: str, detail: dict) -> bool:
+    """Take credits for a purchase, all or nothing. Serialised per workspace so two
+    purchases can't both pass the balance check. Returns False if the balance is short."""
+    async with conn() as c:
+        async with c.transaction():
+            await c.execute("SELECT pg_advisory_xact_lock(918273, $1::int)", org_id % 2_000_000_000)
+            if await c.fetchval("SELECT 1 FROM credit_ledger WHERE ref=$1", ref):
+                return True                     # already paid for this exact thing
+            have = int(await c.fetchval(
+                "SELECT COALESCE(SUM(delta), 0) FROM credit_ledger WHERE org_id=$1", org_id))
+            if have < credits:
+                return False
+            await c.execute(
+                """INSERT INTO credit_ledger (org_id, delta, reason, ref, detail, actor_id)
+                   VALUES ($1,$2,$3,$4,$5,$6)""",
+                org_id, -credits, reason, ref, detail | {"credits": credits}, actor_id)
+    return True
+
+
+async def refund(org_id: int, credits: int, ref: str, detail: dict) -> None:
+    async with conn() as c:
+        await c.execute(
+            """INSERT INTO credit_ledger (org_id, delta, reason, ref, detail)
+               VALUES ($1,$2,'refund',$3,$4) ON CONFLICT (ref) DO NOTHING""",
+            org_id, credits, ref, detail)
+
+
 async def charge_usage(org_id: int, actor_id: int, project_id: int,
                        calls: list[tuple[str, dict]], *, kind: str = "",
                        waived: str | None = None) -> tuple[int, int]:
@@ -174,7 +201,7 @@ async def history(org_id: int, limit: int = 20) -> list[dict]:
             """SELECT delta, reason, detail, created_at FROM credit_ledger
                WHERE org_id=$1 ORDER BY created_at DESC, id DESC LIMIT $2""", org_id, limit)
     return [{"delta": r["delta"], "reason": r["reason"],
-             "pack": (r["detail"] or {}).get("pack"),
+             "pack": (r["detail"] or {}).get("pack") or (r["detail"] or {}).get("domain"),
              "saved": (r["detail"] or {}).get("credits") if r["reason"] == "waived" else None,
              "note": (r["detail"] or {}).get("waived"),
              "at": r["created_at"].isoformat()} for r in rows]

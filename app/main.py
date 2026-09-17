@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
-                  domains, drafts, marketing, orgs, projects, channels, appdata, apps)
+                  domains, drafts, marketing, orgs, projects, channels, appdata, apps, sites)
 from .core import db
 from .services import social_publish
 from .core.config import settings
@@ -26,15 +26,30 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
+async def _renewals():
+    from .services import registrar
+    log = logging.getLogger("creai.renewals")
+    while True:
+        try:
+            out = await registrar.renewal_sweep()
+            if out["charged"] or out["short"]:
+                log.info("domain renewals: %s", out)
+        except Exception:
+            log.exception("renewal sweep failed")
+        await asyncio.sleep(6 * 3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.connect()
-    sweeper = None
+    tasks = []
     if social_publish.configured() and settings.env != "development":
-        sweeper = asyncio.create_task(social_publish.sweeper())
+        tasks.append(asyncio.create_task(social_publish.sweeper()))
+    if settings.env != "development":
+        tasks.append(asyncio.create_task(_renewals()))
     yield
-    if sweeper:
-        sweeper.cancel()
+    for t in tasks:
+        t.cancel()
     await db.disconnect()
 
 
@@ -81,8 +96,9 @@ class AppDataCORS:
 
 
 app.add_middleware(AppDataCORS)
+app.add_middleware(sites.CustomDomains)
 
-for r in (appdata.router, apps.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (appdata.router, apps.router, sites.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 
