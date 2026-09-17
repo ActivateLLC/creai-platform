@@ -327,6 +327,78 @@ def _when(value, tz: str | None = None) -> str | None:
     return dt.isoformat() if now < dt < now + timedelta(days=366) else None
 
 
+async def _game_tool(turn, name, args, project_id, org_id) -> dict:
+    """Godot file tools, plus the build. Same shapes as the app tools, different rules."""
+    from . import godot
+    try:
+        if name == "list_files":
+            fs = await godot.files(project_id, org_id)
+            return {"files": [{"path": p, "chars": len(c)} for p, c in fs.items()]}
+        if name == "read_file":
+            fs = await godot.files(project_id, org_id)
+            path = str(args.get("path", ""))
+            return {"path": path, "content": fs[path]} if path in fs else {"ok": False, "error": "no such file"}
+        if name == "write_files":
+            changes = {str(f.get("path", "")): str(f.get("content", ""))
+                       for f in (args.get("files") or []) if isinstance(f, dict)}
+            if not changes:
+                return {"ok": False, "error": "no files given"}
+            written = await godot.write(project_id, org_id, changes)
+            turn.log.append("wrote " + ", ".join(written))
+            turn.app_changed = True
+            turn.app_checked = False
+            return {"ok": True, "written": written}
+        if name == "check_game":
+            out = godot.review(await godot.files(project_id, org_id))
+            turn.app_checked = out["ok"]
+            turn.log.append("checked the game · " + ("all clear" if out["ok"]
+                            else f"{len(out['problems'])} to fix"))
+            return out
+        if name == "build_game":
+            return await _build_game(turn, project_id, org_id)
+        if name == "delete_file":
+            gone = await godot.delete(project_id, org_id, str(args.get("path", "")))
+            if gone:
+                turn.log.append("deleted " + str(args.get("path")))
+                turn.app_changed = True
+            return {"ok": gone}
+    except godot.GameError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "unknown tool"}
+
+
+BUILD_WAIT = 150          # a turn will wait this long for an export before handing off to the UI
+
+
+async def _build_game(turn, project_id: int, org_id: int) -> dict:
+    """Run an export inside the turn so the agent can fix what the log says.
+
+    Exports usually land inside a minute. If one runs long the turn stops waiting and
+    says so — the job keeps going and the client watches its progress.
+    """
+    from . import billing, godot
+    want = await godot.estimate(project_id, org_id)
+    if await billing.balance(org_id) < want:
+        return {"ok": False, "error": f"a build costs about {want} credits and the balance is short; "
+                                      "tell the person to top up — nothing is lost"}
+    job = await godot.start(project_id, org_id, None)
+    turn.log.append("building the game")
+    task = asyncio.create_task(godot.run(job["id"], project_id, org_id))
+    for _ in range(BUILD_WAIT // 3):
+        await asyncio.sleep(3)
+        st = await godot.status(job["id"], project_id, org_id)
+        if st and st["state"] in ("done", "failed"):
+            turn.game_built = st["state"] == "done"
+            turn.log.append("built the game · " + ("ready to play" if turn.game_built
+                            else "the export failed"))
+            if st["state"] == "failed":
+                return {"ok": False, "build": st, "error": st["error"]}
+            return {"ok": True, "build": st,
+                    "note": "exported and ready; publishing is the person's call"}
+    task.add_done_callback(lambda t: t.exception())
+    return {"ok": True, "build": job, "note": "still exporting; it will finish on its own"}
+
+
 async def _app_tool(turn, name, args, project_id, org_id) -> dict:
     from . import appfs
     try:
@@ -390,6 +462,7 @@ class Turn:
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
     app_checked: bool = False
+    game_built: bool = False
     reviewed: bool = False
     review: dict | None = None
     site_issues: list = field(default_factory=list)
@@ -525,6 +598,54 @@ TOOL_DELETE_FILE = {
     "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
 }
 
+GAME_EXTRA = """
+This project is a real GODOT GAME, exported to WebAssembly and played in a browser. You are its
+engineer: you write Godot source files, and an export has to succeed and be fun the first time.
+
+Platform rules (the builder enforces them):
+- Godot 4.5. Text source only: project.godot, .tscn scenes, .gd scripts, .tres, .gdshader, .svg.
+  No binary art or audio yet — draw with code (draw_circle, draw_rect, draw_line, Polygon2D,
+  ColorRect) and make sounds with AudioStreamGenerator, or keep it silent.
+- project.godot must set run/main_scene, config/features PackedStringArray("4.5", "GL Compatibility")
+  and renderer/rendering_method="gl_compatibility" — the web export is far more reliable that way.
+- Every res:// path you reference in a scene or preload must be a file you actually wrote.
+- Scenes are text .tscn files with a [gd_scene] header and correctly numbered load_steps.
+- GDScript indents with TABS. Never mix tabs and spaces. Every func declaration ends with ':'.
+- The game must work on a PHONE: touch input as a first-class control scheme, not a keyboard
+  afterthought. Handle InputEventScreenTouch/Drag, size the viewport for portrait or landscape
+  deliberately, and set window/stretch so it scales.
+
+A game needs the things people forget: a start screen that says how to play, a pause, a game-over
+with the score and a way to play again, and a score that survives a refresh. Keep the first playable
+loop small and make it feel good before adding a second system.
+
+Workflow: list_files and read_file what you'll change, write_files with complete contents, then
+check_game and fix everything it lists. When it passes and the change is worth playing, call
+build_game — it exports the real engine build and takes about a minute. If the export fails, read
+the log it returns, fix the root cause, and build again. Then reply: what the game does now, what
+you checked, and one question.
+
+Builds cost credits by the minute, so build when there is something new to play, not after every
+edit.
+"""
+
+TOOL_CHECK_GAME = {
+    "name": "check_game",
+    "description": "Review the game project before spending a build on it: missing project.godot "
+                   "keys, a main scene that doesn't exist, res:// references to files that were "
+                   "never written, malformed scenes, GDScript indentation and syntax slips. "
+                   "Call after every write and before build_game.",
+    "input_schema": {"type": "object", "properties": {}},
+}
+TOOL_BUILD_GAME = {
+    "name": "build_game",
+    "description": "Export the game to WebAssembly with the real Godot engine and wait for it. "
+                   "Takes about a minute and costs build credits. Returns the export log so you "
+                   "can fix what failed. Build when there is something new worth playing.",
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+
 EDIT_EXTRA = """
 This project is the person's EXISTING website on another platform, not a CreAI-generated
 page: ignore the update_site instructions above and never call update_site.
@@ -534,7 +655,8 @@ page: ignore the update_site instructions above and never call update_site.
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
               bridge=None, marketing: bool = False, marketing_only: bool = False,
-              app: tuple | None = None, tz: str | None = None, drafts=None, ideas=None,
+              app: tuple | None = None, game: tuple | None = None,
+              tz: str | None = None, drafts=None, ideas=None,
               attachments: tuple | None = None, reviewer=None) -> Turn:
     """One conversational turn.
 
@@ -564,7 +686,12 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     brand_tools = [TOOL_READ_WEBSITE, TOOL_SAVE_BRAND]
     if app is not None:
         system += APP_EXTRA
-    if intent == "build" and app is not None:
+    if game is not None:
+        system += GAME_EXTRA
+    if intent == "build" and game is not None:
+        tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_GAME,
+                 TOOL_BUILD_GAME, TOOL_DELETE_FILE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+    elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
         if ideas is not None:
@@ -623,16 +750,20 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         turn.thread.append({"role": "user", "content": typed})
     user_at = len(turn.thread) - 1
 
-    for _ in range(APP_MAX_STEPS if app is not None else MAX_STEPS):
+    for _ in range(APP_MAX_STEPS if (app is not None or game is not None) else MAX_STEPS):
         out = await _call([{"role": m["role"], "content": m["content"]} for m in turn.thread],
-                          tools, system, model, APP_MAX_TOKENS if app is not None else 4096)
+                          tools, system, model,
+                          APP_MAX_TOKENS if (app is not None or game is not None) else 4096)
         turn.calls.append((out.get("model") or model, out.get("usage") or {}))
         content = out.get("content", [])
         turn.thread.append({"role": "assistant", "content": content})
         uses = [b for b in content if b.get("type") == "tool_use"]
         if not uses:
             unfinished = None
-            if app is not None and turn.app_changed and not turn.app_checked:
+            if game is not None and turn.app_changed and not turn.app_checked:
+                unfinished = ("Before you reply: call check_game, fix every problem it lists, "
+                              "and check again until it passes.")
+            elif app is not None and turn.app_changed and not turn.app_checked:
                 unfinished = ("Before you reply: call check_app, fix every problem it lists, "
                               "and check again until it passes.")
             elif app is None and turn.site_issues:
@@ -664,7 +795,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             break
         results = []
         for u in uses:
-            result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts, bridge, app)
+            result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts, bridge, app, game)
             results.append({"type": "tool_result", "tool_use_id": u["id"],
                             "content": json.dumps(result)})
         turn.thread.append({"role": "user", "content": results})
@@ -683,8 +814,11 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     return turn
 
 
-async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app=None) -> dict:
+async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app=None, game=None) -> dict:
     try:
+        if game is not None and name in ("list_files", "read_file", "write_files", "delete_file",
+                                         "check_game", "build_game"):
+            return await _game_tool(turn, name, args, *game)
         if app is not None and name in ("list_files", "read_file", "write_files", "delete_file", "check_app"):
             return await _app_tool(turn, name, args, *app)
         if name.startswith("webflow_") and bridge is not None:

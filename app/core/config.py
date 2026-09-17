@@ -83,6 +83,12 @@ class Settings:
     build_url: str = _req("BUILD_URL", "")
     build_token: str = _token("BUILD_TOKEN")
 
+    # Where published games are served. A host of their own, never the app's: a game
+    # page that is cross-origin isolated is not sandboxed, and unsandboxed game code
+    # must never share an origin with the app's session storage. Unset means games
+    # publish single-threaded under the app's sandbox, which runs everywhere.
+    games_url: str = _req("GAMES_URL", "")
+
     # file uploads — Railway Bucket (S3-compatible)
     assets_bucket: str = _token("ASSETS_BUCKET")
     assets_key_id: str = _token("ASSETS_ACCESS_KEY_ID")

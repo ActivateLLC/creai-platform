@@ -8,7 +8,7 @@ from ..core.config import settings
 from ..core.db import conn, log_event
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
-PATHS = {"launch", "market", "domain", "company", "edit", "app"}
+PATHS = {"launch", "market", "domain", "company", "edit", "app", "game"}
 
 
 class ProjectIn(BaseModel):
@@ -18,8 +18,20 @@ class ProjectIn(BaseModel):
     answers: dict = {}
 
 
-KINDS = {"launch": "Site", "edit": "Site", "app": "App", "market": "Marketing",
-         "domain": "Domain", "company": "Company"}
+KINDS = {"launch": "Site", "edit": "Site", "app": "App", "game": "Game",
+         "market": "Marketing", "domain": "Domain", "company": "Company"}
+
+
+def _url(r, base: str, slug: str | None) -> str | None:
+    """Where this project can be seen: its own domain, or the address we host it at."""
+    if r["domain"] and r["status"] == "live":
+        return f"https://{r['domain']}"
+    if not slug:
+        return None
+    if r["game_slug"]:
+        from ..api.games import public_url
+        return public_url(slug)
+    return f"{base}/{'a' if r['app_slug'] else 's'}/{slug}"
 
 
 @router.get("")
@@ -35,7 +47,9 @@ async def list_projects(archived: bool = False, ctx: T.Ctx = Depends(T.current_c
                       (SELECT s.slug FROM site_releases s WHERE s.project_id = p.id AND s.live
                        ORDER BY s.id DESC LIMIT 1) AS site_slug,
                       (SELECT a.slug FROM app_releases a WHERE a.project_id = p.id AND a.live
-                       ORDER BY a.id DESC LIMIT 1) AS app_slug
+                       ORDER BY a.id DESC LIMIT 1) AS app_slug,
+                      (SELECT g.slug FROM game_releases g WHERE g.project_id = p.id AND g.live
+                       ORDER BY g.id DESC LIMIT 1) AS game_slug
                FROM projects p
                WHERE p.org_id=$1 AND (p.archived_at IS NULL) <> $2
                ORDER BY GREATEST(p.updated_at, COALESCE(p.last_opened_at, p.updated_at)) DESC""",
@@ -44,7 +58,7 @@ async def list_projects(archived: bool = False, ctx: T.Ctx = Depends(T.current_c
     for r in rows:
         answers = r["answers"] or {}
         spec = answers.get("site") or {}
-        slug = r["site_slug"] or r["app_slug"]
+        slug = r["site_slug"] or r["app_slug"] or r["game_slug"]
         base = settings.public_url.rstrip("/")
         out.append({
             "id": r["id"], "name": r["name"], "path": r["path"],
@@ -54,8 +68,7 @@ async def list_projects(archived: bool = False, ctx: T.Ctx = Depends(T.current_c
             "business": spec.get("business") or None,
             "headline": spec.get("headline") or None,
             "domain": r["domain"],
-            "url": (f"https://{r['domain']}" if r["domain"] and r["status"] == "live"
-                    else f"{base}/{'a' if r['app_slug'] else 's'}/{slug}" if slug else None),
+            "url": _url(r, base, slug),
             "published": bool(slug),
             "thumb": f"{base}/f/{r['thumb_token']}" if r["thumb_token"] else None,
             "updated_at": r["updated_at"].isoformat(),
@@ -76,6 +89,9 @@ async def create(body: ProjectIn, ctx: T.Ctx = Depends(T.requires("write"))):
     if body.path == "app":
         from ..services import appfs
         await appfs.seed(row["id"], ctx.org_id)
+    elif body.path == "game":
+        from ..services import godot
+        await godot.seed(row["id"], ctx.org_id)
     await log_event(ctx.org_id, "project.created", body.name, row["id"], ctx.user_id)
     return {"id": row["id"], "name": row["name"], "path": row["path"], "status": row["status"]}
 
@@ -129,7 +145,8 @@ async def remove(project_id: int, ctx: T.Ctx = Depends(T.requires("approve"))):
         live = await c.fetchval(
             """SELECT 1 FROM domains WHERE project_id=$1 AND status IN ('registered','verifying','live')
                UNION ALL SELECT 1 FROM site_releases WHERE project_id=$1 AND live
-               UNION ALL SELECT 1 FROM app_releases WHERE project_id=$1 AND live LIMIT 1""", project_id)
+               UNION ALL SELECT 1 FROM app_releases WHERE project_id=$1 AND live
+               UNION ALL SELECT 1 FROM game_releases WHERE project_id=$1 AND live LIMIT 1""", project_id)
         if live:
             raise HTTPException(409, "This is published or has a domain. Unpublish it first, or archive it instead.")
         await c.execute("DELETE FROM projects WHERE id=$1 AND org_id=$2", project_id, ctx.org_id)

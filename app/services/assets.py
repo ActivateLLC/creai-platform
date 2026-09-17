@@ -220,6 +220,22 @@ async def store_bytes(org_id: int, *, name: str, mime: str, data: bytes,
 
 # ---------------------------------------------------------------- serving
 
+async def put_blob(key: str, data: bytes, mime: str) -> None:
+    """Store a file the platform owns outright (a game export), outside the asset
+    library: it has no owner-facing entry, and the API serves it, not a signed URL."""
+    if not configured():
+        raise AssetError("uploads aren't switched on yet")
+    await _run(_s3().put_object, Bucket=settings.assets_bucket, Key=key, Body=data,
+               ContentType=mime)
+
+
+async def blob(key: str) -> bytes | None:
+    try:
+        return await _bytes(key)
+    except Exception:
+        return None
+
+
 async def signed_get(token: str) -> str | None:
     if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", token or ""):
         return None

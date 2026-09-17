@@ -33,16 +33,20 @@ ALLOWED_SUFFIX = {".godot", ".gd", ".tscn", ".tres", ".cfg", ".import", ".json",
                   ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ogg", ".wav", ".mp3", ".glb", ".gltf",
                   ".ttf", ".otf", ".shader", ".gdshader"}
 
+# include_filter/exclude_filter are read unconditionally by the exporter: leaving
+# them out works but logs an error on every build, which buries real ones.
 PRESET = """[preset.0]
 name="Web"
 platform="Web"
 runnable=true
 export_filter="all_resources"
+include_filter=""
+exclude_filter=""
 export_path="build/index.html"
 
 [preset.0.options]
 variant/extensions_support=false
-variant/thread_support=true
+variant/thread_support={threads}
 vram_texture_compression/for_desktop=false
 vram_texture_compression/for_mobile=false
 html/export_icon=true
@@ -50,6 +54,13 @@ html/canvas_resize_policy=2
 html/focus_canvas_on_start=true
 progressive_web_app/enabled=false
 """
+
+
+def preset(threads: bool) -> str:
+    """Threaded exports are faster but only run on a cross-origin-isolated page.
+    The platform decides which it can serve; the builder just does as it's told."""
+    return PRESET.format(threads="true" if threads else "false")
+
 
 app = FastAPI(title="CreAI builder")
 
@@ -62,6 +73,7 @@ def check(token: str | None):
 class BuildIn(BaseModel):
     files: dict[str, str] = Field(description="path -> text, or base64: prefixed for binary")
     name: str = Field("game", max_length=60)
+    threads: bool = Field(False, description="threaded export; needs a cross-origin-isolated page")
 
 
 def _write(root: Path, files: dict[str, str]) -> int:
@@ -110,7 +122,7 @@ async def export_web(body: BuildIn, x_build_token: str | None = Header(None)):
     work = Path(tempfile.mkdtemp(prefix="creai-"))
     try:
         _write(work, body.files)
-        (work / "export_presets.cfg").write_text(PRESET)
+        (work / "export_presets.cfg").write_text(preset(body.threads))
         (work / "build").mkdir(exist_ok=True)
         # import assets first: a cold project has no .godot cache, and export needs one
         await _run([GODOT, "--headless", "--import"], work)
@@ -123,6 +135,7 @@ async def export_web(body: BuildIn, x_build_token: str | None = Header(None)):
             data = p.read_bytes()
             total += len(data)
             files[p.name] = base64.b64encode(data).decode()
-        return {"ok": code == 0, "files": files, "bytes": total, "log": log[-1500:]}
+        return {"ok": code == 0, "files": files, "bytes": total,
+                "threads": body.threads, "log": log[-1500:]}
     finally:
         shutil.rmtree(work, ignore_errors=True)

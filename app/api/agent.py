@@ -189,6 +189,7 @@ async def project_say(project_id: int, body: SayIn,
     await billing.ensure_signup_grant(ctx.org_id)
     tier = "fast" if body.intent == "chat" else body.mode
     kind = ("chat" if body.intent == "chat" else "app" if p_path(p) == "app"
+            else "game" if p_path(p) == "game"
             else "market" if p_path(p) == "market" else "site")
 
     # Fixing an error the preview reported is on us — a few times per error.
@@ -249,6 +250,7 @@ async def project_say(project_id: int, body: SayIn,
                                 st["auto_publish"], queue_approval)
 
     app_ctx = (project_id, ctx.org_id) if p_path(p) == "app" else None
+    game_ctx = (project_id, ctx.org_id) if p_path(p) == "game" else None
     attachments = None
     if body.asset_ids:
         from ..services import assets as asset_svc
@@ -310,10 +312,11 @@ async def project_say(project_id: int, body: SayIn,
             return row is not None
     turn = await _run(body.message, answers, project=True, tz=body.timezone,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
-                      intent=body.intent, bridge=bridge, app=app_ctx, drafts=Drafts(),
-                      ideas=None if answers.get("source") or p_path(p) == "market" else Ideas(),
+                      intent=body.intent, bridge=bridge, app=app_ctx, game=game_ctx,
+                      drafts=Drafts(),
+                      ideas=None if answers.get("source") or p_path(p) in ("market", "game") else Ideas(),
                       attachments=attachments,
-                      reviewer=None if answers.get("source") or p_path(p) == "market" else Reviewer(),
+                      reviewer=None if answers.get("source") or p_path(p) in ("market", "game") else Reviewer(),
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls,

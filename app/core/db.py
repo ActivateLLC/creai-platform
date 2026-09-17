@@ -296,7 +296,6 @@ ALTER TABLE approvals ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_opened_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS thumb_token TEXT;
-ALTER TABLE domain_quotes ADD COLUMN IF NOT EXISTS included BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS hosting JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS renewal_credits INTEGER;
@@ -396,6 +395,7 @@ CREATE TABLE IF NOT EXISTS domain_quotes (
   expires_at  TIMESTAMPTZ NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE domain_quotes ADD COLUMN IF NOT EXISTS included BOOLEAN NOT NULL DEFAULT false;
 
 -- Published app snapshots and their public addresses.
 CREATE TABLE IF NOT EXISTS app_releases (
@@ -411,6 +411,43 @@ CREATE TABLE IF NOT EXISTS app_releases (
 );
 CREATE INDEX IF NOT EXISTS app_releases_slug_idx ON app_releases(slug, id DESC);
 CREATE INDEX IF NOT EXISTS app_releases_project_idx ON app_releases(project_id, id DESC);
+
+-- Godot exports. A build is slow enough to be a job the person watches, and big
+-- enough that its files live in the bucket: `prefix` is where, `names` is what.
+CREATE TABLE IF NOT EXISTS game_builds (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  state       TEXT NOT NULL DEFAULT 'queued',  -- queued|importing|exporting|packaging|done|failed
+  progress    INTEGER NOT NULL DEFAULT 0,
+  threads     BOOLEAN NOT NULL DEFAULT false,
+  prefix      TEXT,
+  names       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  bytes       BIGINT,
+  seconds     INTEGER,
+  credits     INTEGER,
+  log         TEXT,
+  error       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS game_builds_project_idx ON game_builds(project_id, id DESC);
+
+-- A published game points at the build it serves, so publishing costs nothing.
+CREATE TABLE IF NOT EXISTS game_releases (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  build_id    BIGINT NOT NULL REFERENCES game_builds(id) ON DELETE CASCADE,
+  slug        TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  live        BOOLEAN NOT NULL DEFAULT true,
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS game_releases_slug_idx ON game_releases(slug, id DESC);
+CREATE INDEX IF NOT EXISTS game_releases_project_idx ON game_releases(project_id, id DESC);
 
 -- Social accounts connected through Postiz, each owned by exactly one workspace.
 CREATE TABLE IF NOT EXISTS social_channels (
@@ -456,6 +493,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
     "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
+    "game_builds", "game_releases",
 )
 
 

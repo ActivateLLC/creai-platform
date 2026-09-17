@@ -27,8 +27,12 @@ def configured() -> bool:
     return bool(settings.build_url and settings.build_token)
 
 
-async def export_web(files: dict[str, str | bytes]) -> dict:
-    """files: path -> text, or bytes for binary. Returns {'files': {name: bytes}, 'log': str}."""
+async def export_web(files: dict[str, str | bytes], *, threads: bool = False) -> dict:
+    """files: path -> text, or bytes for binary. Returns {'files': {name: bytes}, 'log': str}.
+
+    threads=True produces a faster export that only runs on a cross-origin-isolated
+    page; the caller decides whether it has somewhere to serve that from.
+    """
     if not configured():
         raise BuildError("the game builder isn't switched on yet")
     payload, total = {}, 0
@@ -39,8 +43,12 @@ async def export_web(files: dict[str, str | bytes]) -> dict:
     if total > MAX_PROJECT:
         raise BuildError("that project is too large to export")
     async with httpx.AsyncClient(timeout=TIMEOUT) as x:
-        r = await x.post(settings.build_url.rstrip("/") + "/export/web", json={"files": payload},
-                         headers={"X-Build-Token": settings.build_token})
+        try:
+            r = await x.post(settings.build_url.rstrip("/") + "/export/web",
+                             json={"files": payload, "threads": bool(threads)},
+                             headers={"X-Build-Token": settings.build_token})
+        except httpx.HTTPError as exc:
+            raise BuildError(f"the builder wasn't reachable: {exc}")
     if r.status_code == 422:
         raise BuildError("the export failed:\n" + (r.json().get("detail") or "")[-1200:])
     if r.status_code >= 400:

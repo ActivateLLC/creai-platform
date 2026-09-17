@@ -186,6 +186,8 @@ TYPICAL = {
     ("best", "app"): (40, 150), ("fast", "app"): (8, 30),
     ("best", "chat"): (3, 10), ("fast", "chat"): (1, 3),
     ("best", "market"): (15, 45), ("fast", "market"): (3, 10),
+    # A game turn writes more code than an app turn, and may spend a build on top.
+    ("best", "game"): (50, 180), ("fast", "game"): (10, 40),
 }
 
 
