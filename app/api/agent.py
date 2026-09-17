@@ -130,9 +130,13 @@ async def draft_preview(creai_draft: str | None = Cookie(None)):
 
 # ---------------------------------------------------------------- signed in
 
+def p_path(p) -> str:
+    return p["path"] if "path" in p.keys() else ""
+
+
 async def _project(c, project_id: int, org_id: int):
     p = await c.fetchrow(
-        "SELECT id, name, answers FROM projects WHERE id=$1 AND org_id=$2",
+        "SELECT id, name, path, answers FROM projects WHERE id=$1 AND org_id=$2",
         project_id, org_id)
     if not p:
         raise HTTPException(404, "no such project")
@@ -144,8 +148,10 @@ async def project_thread(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
     async with conn() as c:
         p = await _project(c, project_id, ctx.org_id)
     a = p["answers"] or {}
-    return _payload(a) | {"project": {"id": p["id"], "name": p["name"],
-                                      "source": a.get("source"), "site": a.get("site")}}
+    return _payload(a) | {"project": {"id": p["id"], "name": p["name"], "path": p["path"],
+                                      "source": a.get("source"), "site": a.get("site"),
+                                      "website": a.get("website"), "brand": a.get("brand"),
+                                      "marketing": bool(a.get("marketing"))}}
 
 
 @router.post("/projects/{project_id}")
@@ -166,10 +172,12 @@ async def project_say(project_id: int, body: SayIn,
         ids = []
         async with conn() as c:
             for post in posts:
+                when = post.get("scheduled_for")
+                when = datetime.fromisoformat(when) if when else None
                 ids.append(await c.fetchval(
-                    """INSERT INTO approvals (org_id, project_id, kind, payload)
-                       VALUES ($1,$2,'post',$3) RETURNING id""",
-                    ctx.org_id, project_id, post))
+                    """INSERT INTO approvals (org_id, project_id, kind, payload, scheduled_for)
+                       VALUES ($1,$2,'post',$3,$4) RETURNING id""",
+                    ctx.org_id, project_id, post, when))
         return ids
 
     answers = p["answers"] or {}
@@ -190,7 +198,9 @@ async def project_say(project_id: int, body: SayIn,
 
     turn = await _run(body.message, answers, project=True,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
-                      intent=body.intent, bridge=bridge)
+                      intent=body.intent, bridge=bridge,
+                      marketing=bool(answers.get("marketing")) or p_path(p) == "market",
+                      marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls)
     async with conn() as c:
         await c.execute(

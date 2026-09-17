@@ -342,6 +342,17 @@ input:focus{outline:none;border-color:var(--leaf)}
   </form>
 </dialog>
 
+<dialog id="dGrow">
+  <form id="fGrow">
+    <h2>Grow your business</h2>
+    <p class="muted">Share your website. CreAI reads it to learn your voice, services and colours, then plans posts that link back to it.</p>
+    <label for="growUrl">Your website</label>
+    <input type="text" id="growUrl" placeholder="yourbusiness.com" inputmode="url" autocomplete="url" required>
+    <p class="err" id="growErr" style="margin:0"></p>
+    <div class="row"><button class="btn primary" type="submit">Plan my marketing</button><button class="btn" type="button" data-close>Cancel</button></div>
+  </form>
+</dialog>
+
 <dialog id="dDomain">
   <form id="fDomain">
     <h2>Connect a domain you own</h2>
@@ -398,11 +409,15 @@ function renderThread(messages) {
     const h1 = el('h1');
     for (const w of ['Say', 'it.']) h1.append(el('span', null, w));
     h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it, or tap the mic and say it.'));
-    if (!S.project || S.project.source !== 'webflow') {
+    if (S.project && S.project.path === 'market') {
+      h.querySelector('p:last-child').textContent = 'Marketing ' + (S.project.brand?.name || S.project.name) + '. Ask for a week of posts, a launch campaign, or ideas for slow days.';
+    } else if (!S.project || S.project.source !== 'webflow') {
       const ch = el('div', 'choices');
       const edit = el('button', 'btn', 'Edit my existing site'); edit.type = 'button';
       edit.onclick = () => runAction({ kind: 'connect', label: 'Connect your site' });
-      ch.append(edit); h.append(ch);
+      const grow = el('button', 'btn', 'Grow my business'); grow.type = 'button';
+      grow.onclick = () => runAction({ kind: 'grow', label: 'Grow my business' });
+      ch.append(edit, grow); h.append(ch);
     } else {
       h.querySelector('p:last-child').textContent = 'Editing ' + (S.project.site?.name || 'your Webflow site') + '. Tell me what to change — copy, SEO, CMS, pages or layout.';
     }
@@ -411,7 +426,9 @@ function renderThread(messages) {
   }
   for (const m of messages) (m.role === 'user' ? addUser : addAgent)(m.text);
   $('starters').replaceChildren();
-  const starters = S.project && S.project.source === 'webflow'
+  const starters = S.project && S.project.path === 'market'
+    ? ['Read my website and plan my next two weeks of posts.', 'Draft a promotion for my slowest day of the week.', 'Write three posts that each link to a different page.']
+    : S.project && S.project.source === 'webflow'
     ? ['Audit my SEO titles and descriptions and fix the weak ones.', 'Rewrite my homepage hero to be clearer.', 'Add alt text to images that are missing it.']
     : STARTERS;
   if (!messages.length) starters.forEach((s, i) => {
@@ -432,17 +449,17 @@ function renderActions(actions) {
   $('thread').append(enter(row));
 }
 
-function isExternal() { return !!(S.project && S.project.source === 'webflow'); }
+function isExternal() { return !!(S.project && (S.project.source === 'webflow' || S.project.path === 'market')); }
 async function refreshPreview() {
   const fr = $('preview');
   if (isExternal()) {
-    const site = S.project.site || {};
+    const site = S.project.path === 'market' ? { staging_url: S.project.website } : (S.project.site || {});
     $('stage').hidden = true;
     fr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
     fr.removeAttribute('srcdoc');
     const want = site.staging_url || 'about:blank';
     if (fr.getAttribute('src') !== want) fr.setAttribute('src', want); else fr.contentWindow?.location.replace(want);
-    $('url').textContent = (site.staging_url || 'staging').replace('https://', '') + ' · staging';
+    $('url').textContent = (site.staging_url || 'staging').replace('https://', '') + (S.project.path === 'market' ? ' · your site' : ' · staging');
     return;
   }
   if (fr.getAttribute('src')) { fr.removeAttribute('src'); fr.setAttribute('sandbox', ''); }
@@ -517,6 +534,11 @@ if (SR) {
 function runAction(a) {
   if (a.kind === 'build_plan') return send('Build the plan you just proposed.', 'build');
   if (a.kind === 'connect' && S.token) { showPane('connect'); return loadConnections(); }
+  if (a.kind === 'grow' && S.token) {
+    const site = S.project && S.project.site && S.project.site.staging_url;
+    $('growUrl').value = (S.project && S.project.website) || '';
+    $('growErr').textContent = ''; $('dGrow').showModal(); return;
+  }
   if (a.kind === 'sign_in' || !S.token) return openSign(a.kind === 'sign_in' ? null : a);
   if (a.kind === 'connect_domain') { $('dname').value = a.domain || ''; $('domErr').textContent = ''; $('dDomain').showModal(); }
   if (a.kind === 'review_posts') { showPane('posts'); loadPosts(); }
@@ -629,7 +651,12 @@ async function loadPosts() {
   if (!S.token) return;
   const pane = $('pPosts'); pane.replaceChildren();
   const head = el('div'); head.style.marginBottom = '16px';
-  head.append(el('h2', null, 'Waiting for your OK'), el('p', 'muted', 'Anything public or permanent waits here. Everything else just happens.'));
+  head.append(el('h2', null, 'Waiting for your OK'), el('p', 'muted', 'Anything public or permanent waits here, and your post calendar lives here too.'));
+  if (S.project && S.project.path !== 'market' && !S.project.marketing) {
+    const add = el('button', 'btn', 'Add marketing to this project'); add.type = 'button';
+    add.onclick = () => enableMarketing().catch(e => addAgent(e.message));
+    head.append(add);
+  }
   pane.append(head);
   let rows = [];
   try { rows = await api('/v1/approvals?state=pending'); } catch (_) {}
@@ -652,12 +679,16 @@ async function loadPosts() {
     no.onclick = async () => { await api('/v1/approvals/' + r.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
     acts.append(ok, no); c.append(acts); pane.append(c);
   }
-  rows = rows.filter(r => r.kind === 'post');
+  rows = rows.filter(r => r.kind === 'post')
+    .sort((a, b) => (a.scheduled_for || '9') < (b.scheduled_for || '9') ? -1 : 1);
+  if (rows.length) pane.append(el('p', 'note', 'Approved posts publish on schedule once your social accounts are connected under Connect.'));
   for (const r of rows) {
     const p = r.payload || {}, c = el('div', 'card');
-    const top = el('div', 'row'); top.append(el('strong', null, (p.network || 'post') + (p.when ? ' · ' + p.when : '')));
+    const whenTxt = r.scheduled_for ? new Date(r.scheduled_for).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : (p.when || 'Not scheduled');
+    const top = el('div', 'row'); top.append(el('strong', null, (NETWORKS[p.network] || p.network || 'Post') + ' · ' + whenTxt));
     const tag = el('span', 'tag', 'Draft'); tag.style.color = 'var(--warn)'; tag.style.marginLeft = 'auto'; top.append(tag);
     c.append(top, el('div', null, p.text || ''));
+    if (p.link) { const l = el('a', 'mono', p.link); l.href = p.link; l.target = '_blank'; l.rel = 'noopener'; l.style.color = 'var(--leaf)'; c.append(l); }
     const acts = el('div', 'row');
     const ok = el('button', 'btn primary', 'Approve'); ok.type = 'button';
     const no = el('button', 'btn', 'Discard'); no.type = 'button';
@@ -667,12 +698,29 @@ async function loadPosts() {
   }
 }
 
+$('fGrow').onsubmit = async (e) => {
+  e.preventDefault(); $('growErr').textContent = '';
+  try {
+    const r = await api('/v1/marketing/start', { method: 'POST', body: JSON.stringify({ website: $('growUrl').value }) });
+    $('dGrow').close();
+    await openProject(r.project_id);
+    setIntent('build'); setMobile('chat');
+    send('Read my website and plan my next two weeks of posts.');
+  } catch (err) { $('growErr').textContent = err.message; }
+};
+async function enableMarketing() {
+  if (!S.project) return;
+  await api('/v1/marketing/enable', { method: 'POST', body: JSON.stringify({ project_id: S.project.id }) });
+  S.project.marketing = true; setMobile('chat');
+  send('Learn my brand from my site and plan my next two weeks of posts.', 'build');
+}
+
 // ------------------------------------------------------------ connections
 async function openProject(pid) {
   const t = await api('/v1/agent/projects/' + pid);
   S.project = t.project;
   renderThread(t.messages);
-  if (isExternal()) { $('stage').hidden = true; setStatus('Webflow · edits staged', 'var(--leaf)'); }
+  if (isExternal()) { $('stage').hidden = true; setStatus(S.project.path === 'market' ? 'Marketing' : 'Webflow · edits staged', 'var(--leaf)'); }
   else { setHasSite(t.site); setStatus('Draft · not published', 'var(--dim)'); }
   setIntent(S.intent);
   refreshPreview();
@@ -686,6 +734,10 @@ async function loadConnections() {
   pane.append(head);
   let list = [];
   try { list = await api('/v1/connections'); } catch (e) { pane.append(el('p', 'err', e.message)); return; }
+  const social = el('div', 'card');
+  social.append(el('p', 'label', 'Social channels'),
+    el('p', 'note', 'Instagram, Facebook, Google Business Profile, LinkedIn, TikTok and X. Connecting them here is coming next; until then CreAI drafts and schedules posts for your approval.'));
+  pane.append(social);
   for (const p of list) {
     const card = el('div', 'card');
     const row = el('div', 'prov');
@@ -781,6 +833,7 @@ function setBalance(n) {
   else show(n);
 }
 
+const NETWORKS = { instagram: 'Instagram', facebook: 'Facebook', google_business: 'Google Business', gmb: 'Google Business', linkedin: 'LinkedIn', tiktok: 'TikTok', x: 'X', threads: 'Threads', youtube: 'YouTube', pinterest: 'Pinterest' };
 const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment' };
 async function loadCredits() {
   if (!S.token) return;

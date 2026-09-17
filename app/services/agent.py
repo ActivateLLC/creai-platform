@@ -15,6 +15,7 @@ Two rules shape everything here.
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 import httpx
@@ -69,6 +70,16 @@ PLAN_EXTRA = """
 Mode: PLAN. Do not change the site. Reply with a short numbered plan (three to seven steps) \
 of exactly what you would change and why, in plain language, then ask whether to build it. \
 Numbered lines are allowed in this mode.
+"""
+
+MARKET_EXTRA = """
+This project is about MARKETING the person's business. Their website is the source of
+truth for what they sell and how they sound. If there is no brand kit yet, call
+read_website on their site first, then save_brand_kit with their voice, audience,
+services, colours and key links. Then propose and draft posts with draft_posts, each with
+a scheduled_for date and time in the coming weeks, spread sensibly (for example 3 to 5 a
+week), each linking back to a relevant page. Never invent prices, offers, awards or
+reviews; use only what is on their site or what they tell you.
 """
 
 INTENTS = ("build", "chat", "plan")
@@ -143,6 +154,32 @@ TOOL_SUGGEST = {
     },
 }
 
+TOOL_READ_WEBSITE = {
+    "name": "read_website",
+    "description": "Read a public web page (the person's own site, usually) and get its title, "
+                   "description, headings, main text and colours.",
+    "input_schema": {"type": "object", "properties": {"url": {"type": "string"}},
+                     "required": ["url"]},
+}
+
+TOOL_SAVE_BRAND = {
+    "name": "save_brand_kit",
+    "description": "Save what you learned about the business so every post stays on-brand.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "voice": {"type": "string", "description": "How they sound, in a sentence or two"},
+            "audience": {"type": "string"},
+            "services": {"type": "array", "items": {"type": "string"}},
+            "colors": {"type": "array", "items": {"type": "string"}},
+            "links": {"type": "array", "items": {"type": "object", "properties": {
+                "label": {"type": "string"}, "url": {"type": "string"}}}},
+            "website": {"type": "string"},
+        },
+    },
+}
+
 TOOL_DRAFT_POSTS = {
     "name": "draft_posts",
     "description": "Queue social post drafts for the person's approval. Nothing is published.",
@@ -155,9 +192,13 @@ TOOL_DRAFT_POSTS = {
                     "type": "object",
                     "properties": {
                         "network": {"type": "string",
-                                    "enum": ["instagram", "facebook", "linkedin", "x", "tiktok"]},
+                                    "enum": ["instagram", "facebook", "google_business", "linkedin",
+                                             "tiktok", "x", "threads", "youtube", "pinterest"]},
                         "text": {"type": "string"},
-                        "when": {"type": "string", "description": "Suggested day and time"},
+                        "when": {"type": "string", "description": "Human-readable day and time"},
+                        "scheduled_for": {"type": "string",
+                                          "description": "ISO 8601 date-time with timezone offset"},
+                        "link": {"type": "string", "description": "Page on their site this post points to"},
                     },
                     "required": ["network", "text"],
                 },
@@ -166,6 +207,19 @@ TOOL_DRAFT_POSTS = {
         "required": ["posts"],
     },
 }
+
+
+def _when(value) -> str | None:
+    """A sane future time within a year, or None."""
+    from datetime import datetime, timedelta, timezone
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    return dt.isoformat() if now < dt < now + timedelta(days=366) else None
 
 
 class AgentUnavailable(RuntimeError):
@@ -236,7 +290,7 @@ page: ignore the update_site instructions above and never call update_site.
 
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
-              bridge=None) -> Turn:
+              bridge=None, marketing: bool = False, marketing_only: bool = False) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -253,14 +307,22 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     system = SYSTEM
     if bridge is not None:
         system += EDIT_EXTRA + bridge.prompt()
+    if marketing:
+        system += MARKET_EXTRA
+    brand_tools = [TOOL_READ_WEBSITE, TOOL_SAVE_BRAND]
     if intent == "build" and bridge is not None:
         from .webflow import TOOL_DEFS
-        tools = list(TOOL_DEFS) + [TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+        tools = list(TOOL_DEFS) + [TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
+        if queue_posts is not None:
+            tools.append(TOOL_DRAFT_POSTS)
+            system += PROJECT_EXTRA
+    elif intent == "build" and marketing_only:
+        tools = [TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
             system += PROJECT_EXTRA
     elif intent == "build":
-        tools = [TOOL_UPDATE_SITE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+        tools = [TOOL_UPDATE_SITE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if project and queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
             system += PROJECT_EXTRA
@@ -268,7 +330,12 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         # Chat and Plan never touch the site: they get no editing tools at all.
         tools = []
         system += CHAT_EXTRA if intent == "chat" else PLAN_EXTRA
-    facts = {k: v for k, v in answers.items() if not k.startswith("_") and k != "site"}
+    facts = {k: v for k, v in answers.items()
+             if not k.startswith("_") and k not in ("site", "brand", "source", "marketing")}
+    if answers.get("brand"):
+        system += "\nBrand kit: " + json.dumps(answers["brand"])[:3000]
+    from datetime import datetime, timezone
+    system += "\nCurrent date and time (UTC): " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     system += ("\nCurrent site spec: " + json.dumps(turn.site)
                + "\nKnown facts: " + json.dumps(facts))
 
@@ -331,19 +398,48 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None) -> 
                 turn.actions.append(action)
             return {"ok": True, "shown_to_person": True}
 
+        if name == "read_website":
+            from . import brand
+            try:
+                page = await brand.read(str(args.get("url", "")))
+            except brand.FetchError as exc:
+                return {"ok": False, "error": str(exc)}
+            turn.log.append("read " + page["url"].split("//", 1)[-1][:60])
+            return {"ok": True, **page}
+
+        if name == "save_brand_kit":
+            kit = {
+                "name": str(args.get("name", ""))[:80],
+                "voice": str(args.get("voice", ""))[:400],
+                "audience": str(args.get("audience", ""))[:300],
+                "services": [str(x)[:80] for x in (args.get("services") or [])][:20],
+                "colors": [c for c in (args.get("colors") or []) if isinstance(c, str)
+                           and re.fullmatch(r"#[0-9a-fA-F]{6}", c)][:6],
+                "links": [{"label": str(l.get("label", ""))[:60], "url": str(l.get("url", ""))[:300]}
+                          for l in (args.get("links") or []) if isinstance(l, dict)
+                          and str(l.get("url", "")).startswith(("http://", "https://"))][:12],
+                "website": str(args.get("website", ""))[:300],
+            }
+            turn.answers["brand"] = kit
+            turn.log.append("saved brand kit")
+            return {"ok": True}
+
         if name == "draft_posts" and queue_posts is not None:
             posts = []
-            for p in (args.get("posts") or [])[:7]:
+            for p in (args.get("posts") or [])[:14]:
                 if isinstance(p, dict) and p.get("text"):
                     posts.append({"network": str(p.get("network", ""))[:20],
                                   "text": str(p["text"])[:2200],
-                                  "when": str(p.get("when", ""))[:60]})
+                                  "when": str(p.get("when", ""))[:60],
+                                  "link": str(p.get("link", ""))[:300],
+                                  "scheduled_for": _when(p.get("scheduled_for"))})
             ids = await queue_posts(posts)
             turn.posts.extend(ids)
             turn.log.append(f"drafted {len(ids)} posts for approval")
             if not any(a["kind"] == "review_posts" for a in turn.actions):
                 turn.actions.append({"kind": "review_posts", "label": "Review drafts"})
-            return {"ok": True, "queued": len(ids), "published": 0}
+            return {"ok": True, "queued": len(ids), "published": 0,
+                    "unscheduled": sum(1 for p in posts if not p["scheduled_for"])}
 
         return {"ok": False, "error": f"unknown tool {name}"}
     except Exception as exc:          # a bad tool call should not end the turn
