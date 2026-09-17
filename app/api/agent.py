@@ -229,6 +229,16 @@ async def project_say(project_id: int, body: SayIn,
 
     app_ctx = (project_id, ctx.org_id) if p_path(p) == "app" else None
 
+    class Ideas:
+        """Improvement ideas for this project's launch checklist."""
+        async def add(self, items):
+            from ..services import readiness
+            return await readiness.add_suggestions(ctx.org_id, project_id, items)
+
+        async def skipped(self):
+            from ..services import readiness
+            return await readiness.skipped_titles(project_id)
+
     class Drafts:
         """This project's drafted posts, bound before the model runs."""
         async def list(self):
@@ -252,6 +262,7 @@ async def project_say(project_id: int, body: SayIn,
     turn = await _run(body.message, answers, project=True, tz=body.timezone,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
                       intent=body.intent, bridge=bridge, app=app_ctx, drafts=Drafts(),
+                      ideas=None if answers.get("source") or p_path(p) == "market" else Ideas(),
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls,

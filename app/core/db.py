@@ -324,6 +324,27 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Launch readiness: the person's decisions on checklist items, and the agent's ideas.
+CREATE TABLE IF NOT EXISTS readiness_decisions (
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  item        TEXT NOT NULL,
+  decision    TEXT NOT NULL,                 -- skip | later
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, item)
+);
+CREATE TABLE IF NOT EXISTS readiness_suggestions (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  why         TEXT NOT NULL,
+  request     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'open',  -- open | applied | skipped
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS readiness_suggestions_idx ON readiness_suggestions(project_id, status);
+
 -- Published site snapshots (rendered HTML — sites never carry script).
 CREATE TABLE IF NOT EXISTS site_releases (
   id          BIGSERIAL PRIMARY KEY,
@@ -410,7 +431,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions",
 )
 
 

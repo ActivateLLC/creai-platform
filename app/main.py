@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
-                  domains, drafts, marketing, orgs, projects, channels, appdata, apps, sites, plans)
+                  domains, drafts, marketing, orgs, projects, channels, appdata, apps, sites, plans, readiness)
 from .core import db
 from .services import social_publish
 from .core.config import settings
@@ -135,7 +135,7 @@ class AppDataCORS:
 app.add_middleware(AppDataCORS)
 app.add_middleware(sites.CustomDomains)
 
-for r in (appdata.router, apps.router, sites.router, plans.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (appdata.router, apps.router, sites.router, plans.router, readiness.router, agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 

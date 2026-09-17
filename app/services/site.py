@@ -155,9 +155,9 @@ def merge(current: dict | None, patch: dict) -> dict:
             if isinstance(v, str) and HEX.match(v):
                 pal[k] = v.upper()
         site["palette"] = pal
-    if isinstance(patch.get("sections"), list):
-        site["sections"] = [s for s in (clean_section(x) for x in patch["sections"]
-                                        if isinstance(x, dict)) if s][:8]
+    raw = patch["sections"] if isinstance(patch.get("sections"), list) else site.get("sections")
+    site["sections"] = [s for s in (clean_section(x) for x in (raw or [])
+                                    if isinstance(x, dict)) if s][:8]
     if isinstance(patch.get("contact"), dict):
         site["contact"] = {k: _text(patch["contact"].get(k), 120)
                            for k in ("email", "phone", "area") if patch["contact"].get(k)}

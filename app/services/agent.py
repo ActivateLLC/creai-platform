@@ -188,6 +188,25 @@ TOOL_REVISE_POST = {
         "required": ["id"]},
 }
 
+TOOL_SUGGEST_IMPROVEMENTS = {
+    "name": "suggest_improvements",
+    "description": "Offer up to three concrete, honest ideas that would clearly improve this project. "
+                   "They appear in the person's launch checklist to accept or skip; nothing changes now.",
+    "input_schema": {"type": "object", "properties": {"ideas": {"type": "array", "maxItems": 3, "items": {
+        "type": "object", "properties": {
+            "title": {"type": "string", "description": "Short, specific, 60 characters max"},
+            "why": {"type": "string", "description": "The benefit for this business, one sentence"},
+            "request": {"type": "string", "description": "The exact instruction to carry it out later"}},
+        "required": ["title", "why", "request"]}}}, "required": ["ideas"]},
+}
+
+IMPROVE_EXTRA = """
+After you change the site or app, you may call suggest_improvements with up to three ideas that
+would clearly help THIS business (not generic advice, nothing already in the launch checklist such
+as contact details, placeholders, hero image, FAQ, publishing or a domain). Skip it when nothing
+stands out. Never suggest inventing facts. Ideas the person already declined: {skipped}
+"""
+
 TOOL_SAVE_ANSWER = {
     "name": "save_answer",
     "description": "Record a fact the person stated about their business.",
@@ -344,6 +363,7 @@ class Turn:
     app_changed: bool = False
     tz: str | None = None
     drafts: object = None
+    ideas: object = None
 
 
 def trim(thread: list) -> list:
@@ -443,7 +463,7 @@ page: ignore the update_site instructions above and never call update_site.
 async def run(text: str, answers: dict | None, *, project: bool = False,
               queue_posts=None, model: str | None = None, intent: str = "build",
               bridge=None, marketing: bool = False, marketing_only: bool = False,
-              app: tuple | None = None, tz: str | None = None, drafts=None) -> Turn:
+              app: tuple | None = None, tz: str | None = None, drafts=None, ideas=None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -475,6 +495,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+        if ideas is not None:
+            tools.append(TOOL_SUGGEST_IMPROVEMENTS)
     elif intent == "build" and bridge is not None:
         from .webflow import TOOL_DEFS
         tools = list(TOOL_DEFS) + [TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
@@ -492,6 +514,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
             system += PROJECT_EXTRA
     elif intent == "build":
         tools = [TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
+        if ideas is not None:
+            tools.append(TOOL_SUGGEST_IMPROVEMENTS)
         if project and queue_posts is not None:
             tools.append(TOOL_DRAFT_POSTS)
             if drafts is not None:
@@ -510,6 +534,9 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     system += ("\nCurrent site spec: " + json.dumps(turn.site)
                + "\nKnown facts: " + json.dumps(facts))
     turn.drafts = drafts
+    turn.ideas = ideas
+    if ideas is not None and TOOL_SUGGEST_IMPROVEMENTS in tools:
+        system += IMPROVE_EXTRA.replace("{skipped}", json.dumps(await ideas.skipped())[:800])
     if drafts is not None and TOOL_REVISE_POST in tools:
         waiting = await drafts.list()
         if waiting:
@@ -560,6 +587,14 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             layout, theme = site_spec.design_of(turn.site)
             return {"ok": True, "site": turn.site, "design": {"layout": layout, "theme": theme},
                     "quality": site_spec.critique(turn.site)}
+
+        if name == "suggest_improvements":
+            if turn.ideas is None:
+                return {"ok": False, "error": "not available here"}
+            added = await turn.ideas.add([i for i in (args.get("ideas") or []) if isinstance(i, dict)])
+            if added:
+                turn.log.append(f"suggested {added} improvement{'s' if added != 1 else ''}")
+            return {"ok": True, "added": added}
 
         if name == "revise_post":
             if turn.drafts is None:

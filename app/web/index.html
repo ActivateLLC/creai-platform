@@ -211,6 +211,109 @@ dialog form{display:flex;flex-direction:column;gap:14px;margin:0}
 label{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream-soft)}
 input[type=email],input[type=text]{height:46px;padding:0 12px;border:1px solid var(--hairline);border-radius:0;background:var(--deep);color:var(--cream);font-size:16px}
 input:focus{outline:none;border-color:var(--leaf)}
+/* ---- launch readiness */
+.readybar{display:block;width:100%;text-align:left;padding:12px 24px 13px;border:0;border-bottom:1px solid var(--hairline);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 70%,transparent),transparent);color:var(--cream);cursor:pointer;
+  transition:background .3s var(--ease)}
+.readybar:hover{background:color-mix(in srgb,var(--leaf) 6%,transparent)}
+.readybar:focus-visible{outline:2px solid var(--leaf);outline-offset:-2px}
+.rb-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.rb-label{font:500 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--cream-soft)}
+.rb-pct{font:400 22px/1 var(--display);font-variant-numeric:tabular-nums}
+.rb-pct small{font-size:13px;color:var(--cream-soft);margin-left:1px}
+.rb-track{display:flex;gap:4px;height:8px;margin:9px 0 8px}
+.rb-seg{position:relative;height:100%;border-radius:99px;overflow:hidden;background:color-mix(in srgb,var(--cream) 10%,transparent);
+  transition:flex-basis .6s var(--ease)}
+.rb-seg i{position:absolute;inset:0;border-radius:inherit;transform-origin:left;transform:scaleX(0);
+  background:linear-gradient(90deg,var(--leaf-deep),var(--leaf));transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.rb-seg[data-level=recommended] i{background:linear-gradient(90deg,color-mix(in srgb,var(--leaf) 55%,var(--cream) 0%),color-mix(in srgb,var(--leaf) 75%,transparent))}
+.rb-seg[data-level=golive] i{background:linear-gradient(90deg,var(--ember),color-mix(in srgb,var(--ember) 70%,#fff 30%))}
+.rb-seg.full i::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.45) 50%,transparent 70%);
+  transform:translateX(-100%);animation:rbShine 2.4s 1s ease-in-out}
+@keyframes rbShine{to{transform:translateX(100%)}}
+.rb-sub{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--cream-soft);min-width:0}
+.rb-sub b{color:var(--cream);font-weight:600}
+.rb-sub .next{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.rb-sub svg{flex:none;transition:transform .25s var(--ease)}
+.readybar:hover .rb-sub svg{transform:translateX(3px)}
+.rtoast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));z-index:60;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;padding:10px 16px 10px 12px;border-radius:99px;background:var(--cream);color:var(--night);
+  font:600 14px/1.2 var(--sans);box-shadow:0 18px 40px -16px rgba(0,0,0,.6);animation:toastIn .45s cubic-bezier(.16,1,.3,1) both}
+.rtoast.out{animation:toastOut .3s ease both}
+.rtoast svg{width:20px;height:20px;flex:none;color:var(--leaf-deep)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,16px) scale(.96)}}
+@keyframes toastOut{to{opacity:0;transform:translate(-50%,10px)}}
+#dReady .sheet-in{max-height:min(88vh,860px);display:flex;flex-direction:column;padding-bottom:0}
+.rd-scroll{overflow-y:auto;overscroll-behavior:contain;margin:0 -22px;padding:0 22px 16px;flex:1;min-height:0}
+.rd-hero{display:flex;align-items:center;gap:18px;margin:4px 0 18px}
+.gauge{position:relative;width:92px;height:92px;flex:none}
+.gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
+.gauge .bg{stroke:color-mix(in srgb,var(--cream) 10%,transparent)}
+.gauge .fg{stroke:var(--leaf);stroke-linecap:round;transition:stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1)}
+.gauge b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:400 28px/1 var(--display);font-variant-numeric:tabular-nums}
+.gauge b small{font-size:13px;margin-left:1px;color:var(--cream-soft)}
+.rd-hero h2{margin:0 0 4px;font:400 28px/1.05 var(--display)}
+.rd-hero p{margin:0;color:var(--cream-soft);font-size:14px;line-height:1.45}
+.rd-legend{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 6px;font-size:12px;color:var(--cream-soft)}
+.rd-legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--c)}
+.rd-group{margin-top:18px}
+.rd-group h3{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 8px;font:500 11px/1 var(--mono);
+  letter-spacing:.18em;text-transform:uppercase;color:var(--cream-soft)}
+.rd-group h3 em{font-style:normal;letter-spacing:0;text-transform:none;font-family:var(--sans);font-size:12px}
+.ri{display:flex;gap:12px;padding:12px;border-radius:14px;border:1px solid transparent;transition:background .25s,border-color .25s,opacity .3s;
+  animation:riIn .45s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 35ms)}
+@keyframes riIn{from{opacity:0;transform:translateY(8px)}}
+.ri + .ri{margin-top:4px}
+.ri.todo{background:color-mix(in srgb,var(--cream) 4%,transparent)}
+.ri.picked{border-color:color-mix(in srgb,var(--leaf) 60%,transparent);background:color-mix(in srgb,var(--leaf) 9%,transparent)}
+.ri.skipped{opacity:.55}
+.ri-check{flex:none;width:26px;height:26px;margin-top:1px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--cream) 35%,transparent);
+  background:transparent;display:grid;place-items:center;padding:0;color:var(--night);transition:background .25s,border-color .25s,transform .2s}
+.ri-check:not(:disabled):hover{border-color:var(--leaf);transform:scale(1.06)}
+.ri-check svg{width:14px;height:14px}
+.ri-check path{stroke:currentColor;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .35s .05s var(--ease)}
+.ri.done .ri-check{background:var(--leaf);border-color:var(--leaf)}
+.ri.picked .ri-check{border:2px solid var(--leaf);color:var(--leaf);box-shadow:0 0 0 4px color-mix(in srgb,var(--leaf) 16%,transparent)}
+.ri.done .ri-check path,.ri.picked .ri-check path{stroke-dashoffset:0}
+.ri.done .ri-check{cursor:default}
+.ri.golive .ri-check{border-style:dashed}
+.ri-body{flex:1;min-width:0}
+.ri-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;font-size:15px;line-height:1.3}
+.ri.done .ri-title{color:var(--cream-soft);font-weight:500}
+.ri-tag{font:600 10px/1 var(--sans);letter-spacing:.04em;padding:4px 7px;border-radius:99px;
+  background:color-mix(in srgb,var(--cream) 10%,transparent);color:var(--cream-soft)}
+.ri-tag.warn{background:color-mix(in srgb,var(--ember) 18%,transparent);color:var(--ember)}
+.ri-why{margin:3px 0 0;font-size:13px;line-height:1.45;color:var(--cream-soft)}
+.ri-detail{margin:4px 0 0;font-size:12px;color:var(--ember)}
+.ri-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.ri-acts button{height:30px;padding:0 11px;border-radius:99px;border:1px solid var(--hairline);background:transparent;
+  font:500 12px/1 var(--sans);color:var(--cream-soft);transition:background .2s,color .2s,border-color .2s}
+.ri-acts button:hover{color:var(--cream);border-color:color-mix(in srgb,var(--cream) 40%,transparent)}
+.ri-acts button.go{background:var(--leaf);border-color:var(--leaf);color:var(--night)}
+.ri.done .ri-acts,.ri.done .ri-why{display:none}
+.rd-foot{position:sticky;bottom:0;margin:0 -22px;padding:12px 22px calc(14px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--hairline);background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(10px);
+  display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rd-foot .paybtn{margin:0;height:50px;font-size:15px}
+.rd-foot .ghostbtn{height:50px;border-radius:14px;border:1px solid var(--hairline);background:transparent;color:var(--cream);font:600 15px/1 var(--sans);
+  transition:background .2s,border-color .2s}
+.rd-foot .ghostbtn:hover:not(:disabled){background:color-mix(in srgb,var(--cream) 8%,transparent)}
+.rd-foot .ghostbtn:disabled{opacity:.45}
+.rd-foot small{grid-column:1/-1;text-align:center;color:var(--cream-soft);font-size:12px;margin-top:-2px}
+.rd-confirm{margin:14px 0 0;padding:14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--ember) 45%,transparent);
+  background:color-mix(in srgb,var(--ember) 9%,transparent);animation:riIn .35s both}
+.rd-confirm p{margin:0 0 10px;font-size:14px}
+.rd-live{text-align:center;padding:10px 0 4px;position:relative}
+.rd-live a{color:var(--leaf);word-break:break-all}
+.burst{position:absolute;left:50%;top:40px;width:0;height:0;pointer-events:none}
+.burst i{position:absolute;width:7px;height:12px;border-radius:2px;background:var(--c);
+  animation:burst 1.1s cubic-bezier(.15,.7,.3,1) forwards;transform:translate(0,0) rotate(0)}
+@keyframes burst{to{transform:translate(var(--x),var(--y)) rotate(var(--r));opacity:0}}
+html[data-theme=terminal] .ri,html[data-theme=terminal] .rd-confirm,html[data-theme=terminal] .rb-seg{border-radius:4px}
+html[data-theme=day] .rtoast{background:#14171a;color:#fff}
+html[data-theme=day] .ri-acts button.go,html[data-theme=day] .ri.done .ri-check{color:#fff}
+@media (max-width:860px){.readybar{padding:11px 16px 12px}}
+@media (prefers-reduced-motion:reduce){.rb-seg i,.gauge .fg,.ri,.rtoast,.burst i{transition:none!important;animation:none!important}}
 /* ---- checkout sheet */
 dialog.sheet{border:0;padding:0;background:transparent;width:min(460px,94vw);max-width:94vw;overflow:visible;color:var(--cream)}
 dialog.sheet::backdrop{background:rgba(4,5,7,.55);backdrop-filter:blur(14px) saturate(120%);-webkit-backdrop-filter:blur(14px) saturate(120%);animation:fadeIn .35s var(--ease) both}
@@ -266,22 +369,22 @@ html[data-theme=day] #payBox,html[data-theme=day] #payBox iframe{color-scheme:li
 
 .payerr{margin:10px 2px 0;font-size:14px;color:var(--rust);min-height:0}
 .payerr:empty{display:none}
-.done{text-align:center;padding:18px 4px 6px}
-.done svg{width:78px;height:78px;margin:6px auto 10px;display:block}
-.done circle{stroke:var(--leaf);stroke-width:3;fill:none;stroke-dasharray:226;stroke-dashoffset:226;animation:draw .7s cubic-bezier(.65,0,.35,1) forwards}
-.done path{stroke:var(--leaf);stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:draw .45s .55s cubic-bezier(.65,0,.35,1) forwards}
-.done .ring{fill:color-mix(in srgb,var(--leaf) 12%,transparent);transform-origin:center;animation:pulse .9s .9s ease-out both}
+.paydone{text-align:center;padding:18px 4px 6px}
+.paydone svg{width:78px;height:78px;margin:6px auto 10px;display:block}
+.paydone circle{stroke:var(--leaf);stroke-width:3;fill:none;stroke-dasharray:226;stroke-dashoffset:226;animation:draw .7s cubic-bezier(.65,0,.35,1) forwards}
+.paydone path{stroke:var(--leaf);stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:draw .45s .55s cubic-bezier(.65,0,.35,1) forwards}
+.paydone .ring{fill:color-mix(in srgb,var(--leaf) 12%,transparent);transform-origin:center;animation:pulse .9s .9s ease-out both}
 @keyframes draw{to{stroke-dashoffset:0}}
 @keyframes pulse{from{transform:scale(.6);opacity:.9}to{transform:scale(1.35);opacity:0}}
-.done h3{margin:4px 0 4px;font:400 30px/1.1 var(--display)}
-.done p{margin:0 0 16px;color:var(--cream-soft)}
-.done .big{font:600 44px/1 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--leaf);margin:6px 0 2px}
+.paydone h3{margin:4px 0 4px;font:400 30px/1.1 var(--display)}
+.paydone p{margin:0 0 16px;color:var(--cream-soft)}
+.paydone .big{font:600 44px/1 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--leaf);margin:6px 0 2px}
 html[data-theme=terminal] .sheet-in{border-radius:8px}
 html[data-theme=terminal] .paybtn,html[data-theme=terminal] .order{border-radius:6px}
 html[data-theme=terminal] .paybtn{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:13px}
 html[data-theme=day] .sheet-in{background:#fff;box-shadow:0 40px 90px -30px rgba(20,23,26,.35)}
 html[data-theme=day] .paybtn{color:#fff}
-@media (prefers-reduced-motion:reduce){.sheet-in,dialog.sheet::backdrop,.skel i,.paybtn::after,.done *{animation:none!important;transition:none!important}.done circle,.done path{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){.sheet-in,dialog.sheet::backdrop,.skel i,.paybtn::after,.paydone *{animation:none!important;transition:none!important}.paydone circle,.paydone path{stroke-dashoffset:0}}
 .secure{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
 .sheet .secure{justify-content:center;margin-top:12px;font:500 12px/1.4 var(--sans);letter-spacing:0;text-transform:none;color:var(--cream-soft)}
 
@@ -344,8 +447,8 @@ html[data-theme=day] .paybtn{color:#fff}
   <button class="btn" id="signBtn" type="button">Sign in</button>
 </header>
 <div class="m-tabs" role="tablist" aria-label="View">
-  <button class="tab" role="tab" id="mChat" aria-selected="true" type="button" data-n="01">Chat</button>
-  <button class="tab" role="tab" id="mWork" aria-selected="false" type="button" data-n="02">Your site</button>
+  <button class="tab" role="tab" id="mChat" aria-selected="true" type="button">Chat</button>
+  <button class="tab" role="tab" id="mWork" aria-selected="false" type="button">Your site</button>
 </div>
 <main>
   <section id="chat" aria-label="Conversation">
@@ -378,13 +481,19 @@ html[data-theme=day] .paybtn{color:#fff}
   </section>
   <section id="work" aria-label="Workspace">
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tSite" aria-selected="true" type="button" data-n="01">Preview</button>
-      <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden data-n="02">Review</button>
-      <button class="tab" role="tab" id="tDomain" aria-selected="false" type="button" hidden data-n="03">Domain</button>
-      <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden data-n="04">Credits</button>
-      <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden data-n="05">Connect</button>
+      <button class="tab" role="tab" id="tSite" aria-selected="true" type="button">Preview</button>
+      <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden>Review</button>
+      <button class="tab" role="tab" id="tDomain" aria-selected="false" type="button" hidden>Domain</button>
+      <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden>Credits</button>
+      <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden>Connect</button>
       <span class="status label"><span class="dot" id="sDot" style="color:var(--dim)"></span><span id="sText">Draft · not published</span></span>
     </div>
+    <button class="readybar" id="readyBar" type="button" hidden aria-haspopup="dialog" aria-controls="dReady">
+      <span class="rb-top"><span class="rb-label">Launch readiness</span><span class="rb-pct"><span id="rbPct">0</span><small>%</small></span></span>
+      <span class="rb-track" id="rbTrack" aria-hidden="true"></span>
+      <span class="rb-sub"><b id="rbStage">Getting there</b><span class="next" id="rbNext"></span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>
+    </button>
     <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><div class="row" id="pubBar" hidden style="padding:8px 12px;border-bottom:1px solid var(--hairline);gap:10px"><span class="note" id="pubState" style="flex:1;margin:0"></span><button class="btn" type="button" id="pubBtn">Publish app</button></div><iframe id="preview" title="Site preview" sandbox=""></iframe>
       <div class="stage" id="stage"><canvas id="lens" aria-hidden="true"></canvas><p class="label"><b>00</b> · Your site appears here</p><h2>Say it. We build it.</h2><p class="muted" style="max-width:34ch;margin:0">Describe your business in the chat. Every answer re-renders this page, live.</p></div></div></div>
     <div class="pane" id="pPosts" hidden></div>
@@ -412,6 +521,29 @@ html[data-theme=day] .paybtn{color:#fff}
   </form>
 </dialog>
 
+<dialog id="dReady" class="sheet" aria-labelledby="rdTitle">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div class="eyebrow">Launch readiness</div>
+      <button class="xbtn" type="button" id="rdClose" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="rd-scroll" id="rdScroll">
+      <div class="rd-hero">
+        <div class="gauge"><svg viewBox="0 0 80 80" aria-hidden="true"><circle class="bg" cx="40" cy="40" r="34" fill="none" stroke-width="7"/><circle class="fg" id="rdRing" cx="40" cy="40" r="34" fill="none" stroke-width="7" stroke-dasharray="213.6" stroke-dashoffset="213.6"/></svg><b><span id="rdPct">0</span><small>%</small></b></div>
+        <div><h2 id="rdTitle">Getting there</h2><p id="rdNote"></p></div>
+      </div>
+      <div class="rd-legend"><span style="--c:var(--leaf)">Needed · 60%</span><span style="--c:color-mix(in srgb,var(--leaf) 60%,transparent)">Recommended · 25%</span><span style="--c:var(--ember)">Go live · 15%</span></div>
+      <div id="rdBody"></div>
+    </div>
+    <div class="rd-foot">
+      <button class="ghostbtn" type="button" id="rdApply" disabled>Select to improve</button>
+      <button class="paybtn" type="button" id="rdLaunch"><span class="spin" aria-hidden="true"></span><span id="rdLaunchLabel">Launch now</span></button>
+      <small id="rdHint">Tick what you'd like CreAI to do. You can launch any time and keep editing.</small>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="dPay" class="sheet" aria-labelledby="payTitle">
   <div class="sheet-in">
     <div class="grab" aria-hidden="true"></div>
@@ -426,7 +558,7 @@ html[data-theme=day] .paybtn{color:#fff}
       <button class="paybtn" id="payGo" type="submit" disabled><span class="spin" aria-hidden="true"></span><span id="payLabel">Pay</span></button>
       <div class="secure row"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secured by Stripe · Apple Pay, Google Pay, card or Klarna</div>
     </form>
-    <div id="payDone" class="done" hidden>
+    <div id="payDone" class="paydone" hidden>
       <svg viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="36"/><circle cx="40" cy="40" r="36"/><path d="M25 41l10 10 20-22"/></svg>
       <h3>Payment complete</h3>
       <div class="big" id="doneCredits">+0</div>
@@ -614,6 +746,7 @@ async function send(text, intentOverride) {
     if (out.credits) { setBalance(out.credits.balance); creditNotice(out.credits.status); }
     if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else setHasSite(out.site);
     refreshEstimate();
+    loadReadiness(true);
     w.remove();
     (out.log || []).forEach(addTool);
     const last = (out.messages || []).filter(m => m.role === 'assistant').pop();
@@ -838,7 +971,7 @@ async function loadDomains() {
       btn.disabled = true;
       try {
         const r = await api('/v1/sites/' + S.project.id + '/publish', { method: 'POST' });
-        show(r); addTool('published · ' + r.url.replace('https://', ''));
+        show(r); addTool('published · ' + r.url.replace('https://', '')); loadReadiness(true);
         if (r.quality && r.quality.length) state.append(el('span', 'note', ' · Worth fixing: ' + r.quality[0]));
       } catch (e) { state.textContent = e.message; }
       btn.disabled = false;
@@ -999,7 +1132,7 @@ async function startPurchase(domain, box) {
       addTool('bought ' + r.domain + ' · ' + r.credits_spent.toLocaleString() + ' credits');
       addAgent(r.domain + ' is yours.' + (r.hosting && r.hosting.ok ? ' It\u2019s pointed at your CreAI site and should work within minutes.' : ' ' + ((r.hosting && r.hosting.message) || '')));
       if (r.hosting && r.hosting.upgrade) { const row2 = el('div', 'acts'); const b2 = el('button', 'btn', 'See plans'); b2.type = 'button'; b2.onclick = openPlans; row2.append(b2); $('thread').append(row2); }
-      loadDomains(); api('/v1/billing').then(b => setBalance(b.balance)).catch(() => {});
+      loadDomains(); loadReadiness(true); api('/v1/billing').then(b => setBalance(b.balance)).catch(() => {});
     } catch (err) { msg.textContent = err.message; btn.disabled = false; }
   };
   box.append(card);
@@ -1108,6 +1241,7 @@ $('pubBtn').onclick = async () => {
   try {
     const r = await api('/v1/apps/' + S.project.id + '/publish', { method: 'POST' });
     addTool('published · ' + r.url.replace('https://', ''));
+    loadReadiness(true);
     const open = Object.keys(r.rules || {}).filter(k => r.rules[k].read === 'public' || r.rules[k].write === 'public');
     addAgent('Your app is live at ' + r.url + (open.length ? '. Visitors can use: ' + open.join(', ') + '; everything else stays private to you.' : '. Visitors can view it, but its data stays private to you until the app allows otherwise.'));
     loadRelease();
@@ -1128,7 +1262,7 @@ async function enableMarketing() {
   if (!S.project) return;
   await api('/v1/marketing/enable', { method: 'POST', body: JSON.stringify({ project_id: S.project.id }) });
   S.project.marketing = true;
-  addTool('marketing switched on');
+  addTool('marketing switched on'); loadReadiness(true);
   addAgent('Marketing is on. Keep building your site as long as you like. When you\u2019re ready, send the message below (or write your own) and I\u2019ll draft posts for you to review and edit.');
   setMobile('chat');
   $('input').value = 'Learn my brand from my site and plan my next two weeks of posts.';
@@ -1181,6 +1315,8 @@ async function openProject(pid) {
   refreshEstimate();
   setIntent(S.intent);
   refreshPreview();
+  RD.report = null; RD.pct = 0;
+  loadReadiness();
 }
 async function loadConnections() {
   if (!S.token) return;
@@ -1530,6 +1666,251 @@ function appearance() {
     }
   };
 }
+// ------------------------------------------------------------ launch readiness
+const RD = { report: null, pick: new Set(), est: null, pct: 0, confirm: false };
+const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg>';
+function readyToast(text) {
+  document.querySelectorAll('.rtoast').forEach(t => t.remove());
+  const t = el('div', 'rtoast'); t.setAttribute('role', 'status');
+  t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" opacity=".18" fill="currentColor" stroke="none"/><path d="M7 12.5l3.2 3.2L17 9"/></svg>';
+  t.append(text); document.body.append(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, 2600);
+}
+function countTo(node, from, to, dur) {
+  if (!window.gsap || reduced) { node.textContent = to; return; }
+  const o = { v: from };
+  gsap.to(o, { v: to, duration: dur || 0.9, ease: 'power3.out', onUpdate: () => { node.textContent = Math.round(o.v); } });
+}
+function renderBar(r) {
+  const track = $('rbTrack');
+  if (track.children.length !== r.segments.length) {
+    track.replaceChildren(...r.segments.map(sg => { const d = el('span', 'rb-seg'); d.dataset.level = sg.level; d.append(el('i')); return d; }));
+  }
+  r.segments.forEach((sg, n) => {
+    const seg = track.children[n];
+    seg.style.flex = '0 0 calc(' + sg.weight + '% - 3px)';
+    requestAnimationFrame(() => { seg.firstChild.style.transform = 'scaleX(' + sg.filled + ')'; });
+    seg.classList.toggle('full', sg.filled >= 1);
+    seg.title = { essential: 'Needed for launch', recommended: 'Recommended', golive: 'Go live' }[sg.level];
+  });
+  countTo($('rbPct'), RD.pct, r.percent);
+  $('rbStage').textContent = r.stage.title;
+  const nextItem = r.items.find(i => !i.done && i.level === 'essential')
+    || r.items.find(i => !i.done && i.counts && i.decision !== 'later' && i.level === 'recommended')
+    || r.items.find(i => !i.done && i.counts && i.level === 'golive');
+  $('rbNext').textContent = r.essentials_left ? ' · ' + r.essentials_left + ' needed · next: ' + nextItem.label
+    : nextItem ? ' · next: ' + nextItem.label : ' · all set';
+  $('readyBar').setAttribute('aria-label', 'Launch readiness ' + r.percent + ' percent. ' + r.stage.title + '. Open checklist.');
+}
+async function loadReadiness(celebrate) {
+  if (!S.token || !S.project) { $('readyBar').hidden = true; return; }
+  let r;
+  try { r = await api('/v1/readiness/' + S.project.id); } catch (_) { return; }
+  if (!r.supported) { $('readyBar').hidden = true; return; }
+  const prev = RD.report;
+  RD.report = r;
+  $('readyBar').hidden = false;
+  renderBar(r);
+  if (celebrate && prev && prev.items) {
+    const was = new Set(prev.items.filter(i => i.done).map(i => i.key));
+    const fresh = r.items.filter(i => i.done && !was.has(i.key));
+    if (fresh.length) readyToast(fresh.length === 1 ? fresh[0].label : fresh.length + ' checklist items done');
+    if (r.percent !== prev.percent) addTool('launch readiness ' + prev.percent + '% → ' + r.percent + '%');
+  }
+  RD.pct = r.percent;
+  if ($('dReady').open) renderSheet();
+}
+async function readyEstimate() {
+  if (RD.est && RD.est.kind === RD.report.kind) return RD.est;
+  const kind = RD.report.kind === 'app' ? 'app' : RD.report.kind === 'market' ? 'market' : 'site';
+  try { const e = await api('/v1/billing/estimate?mode=' + S.mode + '&kind=' + kind); RD.est = { ...e, kind: RD.report.kind }; } catch (_) { RD.est = null; }
+  return RD.est;
+}
+function updateFoot() {
+  const n = RD.pick.size;
+  const btn = $('rdApply');
+  btn.disabled = !n;
+  if (!n) { btn.textContent = 'Select to improve'; $('rdHint').textContent = 'Tick what you\u2019d like CreAI to do. You can launch any time and keep editing.'; return; }
+  btn.textContent = 'Apply ' + n + ' selected';
+  const e = RD.est;
+  $('rdHint').textContent = e ? 'About ' + e.low + '\u2013' + (e.high + (n - 1) * Math.max(1, Math.floor(e.high / 3))) + ' credits, as one message.' : 'Sent as one message.';
+}
+const GO_LABEL = { publish: 'Publish', publish_app: 'Publish app', domain: 'Get a domain', marketing: 'Turn on', review: 'Review posts', channels: 'Connect' };
+function itemRow(it, n) {
+  const row = el('div', 'ri ' + (it.done ? 'done' : 'todo') + (it.level === 'golive' ? ' golive' : ''));
+  row.style.setProperty('--i', n);
+  const key = it.key;
+  const canPick = !it.done && !!it.request;
+  if (it.decision === 'skip' && it.level !== 'essential') row.classList.add('skipped');
+  if (RD.pick.has(key)) row.classList.add('picked');
+  const check = el('button', 'ri-check'); check.type = 'button'; check.innerHTML = CHECK_SVG;
+  check.disabled = !canPick;
+  check.setAttribute('aria-pressed', String(RD.pick.has(key)));
+  check.setAttribute('aria-label', it.done ? it.label + ': done' : canPick ? 'Select: ' + it.label : it.label);
+  check.onclick = () => {
+    if (RD.pick.has(key)) RD.pick.delete(key); else RD.pick.add(key);
+    row.classList.toggle('picked', RD.pick.has(key)); check.setAttribute('aria-pressed', String(RD.pick.has(key)));
+    if (window.gsap && !reduced) gsap.fromTo(check, { scale: .8 }, { scale: 1, duration: .45, ease: 'back.out(3)' });
+    updateFoot();
+  };
+  const body = el('div', 'ri-body');
+  const title = el('div', 'ri-title', it.label);
+  if (it.decision === 'skip') title.append(el('span', 'ri-tag' + (it.level === 'essential' ? ' warn' : ''), it.level === 'essential' ? 'Your call \u00b7 still needed' : 'Skipped'));
+  else if (it.decision === 'later') title.append(el('span', 'ri-tag', 'Later'));
+  else if (it.suggested) title.append(el('span', 'ri-tag', 'CreAI suggests'));
+  body.append(title, el('p', 'ri-why', it.why));
+  if (it.detail && !it.done) body.append(el('p', 'ri-detail', it.detail));
+  if (!it.done) {
+    const acts = el('div', 'ri-acts');
+    if (it.action && GO_LABEL[it.action]) {
+      const go = el('button', 'go', GO_LABEL[it.action]); go.type = 'button';
+      go.onclick = () => goAction(it.action);
+      acts.append(go);
+    }
+    const decide = async (decision) => {
+      RD.pick.delete(key); updateFoot();
+      try { RD.report = await api('/v1/readiness/' + S.project.id + '/decide', { method: 'POST', body: JSON.stringify({ item: key, decision }) }); }
+      catch (e) { readyToast(e.message); return; }
+      renderBar(RD.report); RD.pct = RD.report.percent; renderSheet(true);
+    };
+    if (it.decision) { const u = el('button', null, 'Undo'); u.type = 'button'; u.onclick = () => decide(null); acts.append(u); }
+    else {
+      const sk = el('button', null, 'Skip'); sk.type = 'button'; sk.onclick = () => decide('skip');
+      acts.append(sk);
+      if (!it.suggested) { const lt = el('button', null, 'Later'); lt.type = 'button'; lt.onclick = () => decide('later'); acts.append(lt); }
+    }
+    body.append(acts);
+  }
+  row.append(check, body);
+  return row;
+}
+function renderSheet(quiet) {
+  const r = RD.report;
+  if (!r) return;
+  const ring = $('rdRing');
+  requestAnimationFrame(() => { ring.style.strokeDashoffset = String(213.6 * (1 - r.percent / 100)); });
+  countTo($('rdPct'), quiet ? Number($('rdPct').textContent) || 0 : 0, r.percent, quiet ? 0.5 : 1.1);
+  $('rdTitle').textContent = r.stage.title;
+  $('rdNote').textContent = r.stage.note;
+  const body = $('rdBody'); body.replaceChildren();
+  if (RD.live) body.append(RD.live);
+  const order = it => (it.done ? 2 : it.decision === 'later' || it.decision === 'skip' ? 1 : 0);
+  const groups = [
+    ['essential', 'Needed for launch'],
+    ['recommended', 'Recommended'],
+    ['golive', 'Go live'],
+  ];
+  let n = 0;
+  for (const [level, name] of groups) {
+    const items = r.items.filter(i => i.level === level).sort((a, b) => order(a) - order(b));
+    if (!items.length) continue;
+    const g = el('section', 'rd-group');
+    const done = items.filter(i => i.done).length;
+    const h = el('h3', null, name); h.append(el('em', null, done + ' of ' + items.length));
+    g.append(h);
+    items.forEach(it => g.append(itemRow(it, n++)));
+    body.append(g);
+  }
+  if (r.suggestions.length) {
+    const g = el('section', 'rd-group');
+    const h = el('h3', null, 'CreAI suggests'); h.append(el('em', null, 'optional \u00b7 doesn\u2019t affect the score'));
+    g.append(h);
+    r.suggestions.forEach(sg => g.append(itemRow({ key: 's:' + sg.id, level: 'idea', label: sg.title, why: sg.why,
+      request: sg.request, done: false, suggested: true }, n++)));
+    body.append(g);
+  }
+  if (RD.confirm) body.append(RD.confirm);
+  const launchable = ['site', 'app'].includes(r.kind);
+  $('rdLaunch').hidden = !launchable && r.kind !== 'market';
+  $('rdLaunchLabel').textContent = r.kind === 'market' ? 'Review posts' : r.published ? 'Publish changes' : 'Launch now';
+  updateFoot();
+}
+async function openReady() {
+  if (!RD.report) await loadReadiness();
+  if (!RD.report) return;
+  RD.pick.clear(); RD.confirm = false; RD.live = null;
+  readyEstimate().then(updateFoot);
+  renderSheet();
+  $('dReady').showModal();
+  $('rdScroll').scrollTop = 0;
+}
+function goAction(action) {
+  if (action === 'publish' || action === 'publish_app') return launch(true);
+  closeSheet($('dReady'));
+  if (action === 'domain') { showPane('domain'); loadDomains(); }
+  else if (action === 'marketing') enableMarketing().catch(e => addAgent(e.message));
+  else if (action === 'review' || action === 'channels') { showPane('posts'); loadPosts(); }
+}
+function burst(host) {
+  if (reduced) return;
+  const b = el('div', 'burst');
+  const colors = ['var(--leaf)', 'var(--ember)', 'var(--cream)', 'var(--leaf-deep)'];
+  for (let k = 0; k < 22; k++) {
+    const i = el('i'); const a = (Math.PI * 2 * k) / 22 + Math.random() * .3; const d = 60 + Math.random() * 70;
+    i.style.cssText = '--x:' + Math.cos(a) * d + 'px;--y:' + (Math.sin(a) * d - 20) + 'px;--r:' + (Math.random() * 540 - 270) + 'deg;--c:' + colors[k % 4];
+    b.append(i);
+  }
+  host.append(b); setTimeout(() => b.remove(), 1300);
+}
+async function launch(force) {
+  const r = RD.report;
+  if (!r) return;
+  if (r.kind === 'market') { goAction('review'); return; }
+  if (r.essentials_left && !force) {
+    const box = el('div', 'rd-confirm');
+    box.append(el('p', null, r.essentials_left + ' essential' + (r.essentials_left > 1 ? 's' : '') + ' not done yet: ' + r.essentials_left_labels.join(', ') + '. You can publish now and keep editing, or finish them first.'));
+    const row = el('div', 'ri-acts');
+    const yes = el('button', 'go', 'Publish anyway'); yes.type = 'button'; yes.onclick = () => { RD.confirm = false; launch(true); };
+    const no = el('button', null, 'Keep building'); no.type = 'button'; no.onclick = () => { RD.confirm = false; renderSheet(true); };
+    row.append(yes, no); box.append(row);
+    RD.confirm = box; renderSheet(true);
+    box.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'nearest' });
+    return;
+  }
+  const btn = $('rdLaunch');
+  btn.classList.add('busy'); btn.disabled = true; $('rdLaunchLabel').textContent = 'Publishing…';
+  try {
+    const path = r.kind === 'app' ? '/v1/apps/' + S.project.id + '/publish' : '/v1/sites/' + S.project.id + '/publish';
+    const out = await api(path, { method: 'POST' });
+    const live = el('div', 'rd-live');
+    live.append(el('h3', null, 'You\u2019re live'));
+    const a = el('a', null, out.url.replace('https://', '')); a.href = out.url; a.target = '_blank'; a.rel = 'noopener';
+    live.append(a);
+    if (!r.domain) {
+      const row = el('div', 'ri-acts'); row.style.justifyContent = 'center';
+      const d = el('button', 'go', 'Put it on your own domain'); d.type = 'button'; d.onclick = () => goAction('domain');
+      row.append(d); live.append(row);
+    }
+    RD.live = live; RD.confirm = false;
+    addTool('published · ' + out.url.replace('https://', ''));
+    await loadReadiness(true);
+    renderSheet(true);
+    $('rdScroll').scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+    burst(live);
+    if (r.kind === 'app') loadRelease();
+  } catch (e) { readyToast(e.message); }
+  btn.classList.remove('busy'); btn.disabled = false;
+  if (RD.report) $('rdLaunchLabel').textContent = RD.report.published ? 'Publish changes' : 'Launch now';
+}
+$('readyBar').onclick = openReady;
+$('rdClose').onclick = () => closeSheet($('dReady'));
+$('dReady').addEventListener('cancel', (e) => { e.preventDefault(); closeSheet($('dReady')); });
+$('dReady').addEventListener('click', (e) => { if (e.target === $('dReady')) closeSheet($('dReady')); });
+$('rdLaunch').onclick = () => launch(false);
+$('rdApply').onclick = async () => {
+  const items = [...RD.pick];
+  if (!items.length) return;
+  $('rdApply').disabled = true;
+  let plan;
+  try { plan = await api('/v1/readiness/' + S.project.id + '/plan', { method: 'POST', body: JSON.stringify({ items, mode: S.mode }) }); }
+  catch (e) { readyToast(e.message); $('rdApply').disabled = false; return; }
+  closeSheet($('dReady'));
+  RD.pick.clear();
+  setIntent('build'); setMobile('chat');
+  await send(plan.message);
+  if (plan.suggestion_ids.length) api('/v1/readiness/' + S.project.id + '/applied', { method: 'POST', body: JSON.stringify({ items: plan.suggestion_ids.map(i => 's:' + i) }) }).then(() => loadReadiness()).catch(() => {});
+};
+
 function countUp(node, to, { prefix = '', dur = 0.9 } = {}) {
   if (!window.gsap || reduced) { node.textContent = prefix + to.toLocaleString(); return; }
   const o = { v: 0 };
