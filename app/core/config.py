@@ -83,6 +83,8 @@ class Settings:
             "deploy": bool(self.railway_token),
             "email": bool(self.resend_key),
             "publishing": bool(self.postiz_url and self.postiz_key),
+            "registrar": bool(self.cloudflare_token and self.cloudflare_account_id),
+            "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
             "billing": bool(self.stripe_key and self.stripe_webhook_secret
                             and self.stripe_publishable_key),

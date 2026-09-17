@@ -65,7 +65,8 @@ async def search(q: str, limit: int = 8) -> list[dict]:
     r = await _call("GET", "/domain-search", params={"q": q[:63], "limit": limit})
     data = r.json()
     if not data.get("success"):
-        raise RegistrarError("domain search is unavailable right now")
+        detail = "; ".join(e.get("message", "") for e in data.get("errors") or [])
+        raise RegistrarError("domain search is unavailable right now" + (f" ({detail})" if detail else ""))
     return [_shape(d) for d in (data.get("result") or {}).get("domains", [])]
 
 

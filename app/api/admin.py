@@ -152,3 +152,22 @@ async def social_unassign(body: AssignIn, admin=Depends(T.platform_admin)):
     await T.log_admin(admin["user_id"], "admin.social.unassign",
                       f"{admin['reason']} · {body.integration_id}")
     return {"ok": True}
+
+
+@router.get("/probe")
+async def probe(admin=Depends(T.platform_admin)):
+    """Staff: check that go-live integrations actually work, not just that keys exist."""
+    from ..services import hosting, registrar
+    out = {}
+    try:
+        found = await registrar.search("creai probe", limit=1)
+        out["registrar"] = {"ok": True, "sample": found[0]["domain"] if found else None}
+    except Exception as exc:                        # noqa: BLE001 — report, don't raise
+        out["registrar"] = {"ok": False, "error": str(exc)[:300]}
+    try:
+        doms = await hosting.domains()
+        out["hosting"] = {"ok": True, "custom_domains": len(doms)}
+    except Exception as exc:                        # noqa: BLE001
+        out["hosting"] = {"ok": False, "error": str(exc)[:300]}
+    await T.log_admin(admin["user_id"], "admin.probe", admin["reason"])
+    return out
