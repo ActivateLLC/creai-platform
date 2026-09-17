@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('creai_theme')||'studio'}catch(e){}</script>
+<script>(function(){var t;try{t=localStorage.getItem('creai_theme')}catch(e){}if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'studio':'day';document.documentElement.dataset.theme=t})()</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CreAI — from idea to a live business</title>
 <meta name="description" content="Describe your business. CreAI builds the site, connects your domain and drafts your first campaign — you approve every step.">
@@ -24,6 +24,20 @@
   --ok:var(--leaf);--warn:var(--ember);--err:var(--rust);--ink-3:var(--dim);--accent:var(--leaf);
   --prompt:"";--caret:none;
 }
+html[data-theme=day]{
+  --night:#f4f1ea;--deep:#fbfaf6;--surface:#ffffff;
+  --cream:#14171a;--cream-soft:#555a60;--dim:rgba(20,23,26,.5);
+  --leaf:#2c8168;--leaf-deep:#1f6652;--ember:#b86e14;--rust:#c2412d;
+  --hairline:rgba(20,23,26,.14);--glass:rgba(250,248,243,.72);--glass-2:rgba(255,255,255,.82);
+  --field:44,129,104|20,23,26|217,145,54;
+}
+html[data-theme=day] .veil{background:linear-gradient(180deg,rgba(244,241,234,.35),rgba(244,241,234,.7) 55%,rgba(244,241,234,.88))}
+html[data-theme=day] body::after{opacity:.35;mix-blend-mode:multiply}
+html[data-theme=day] .bar{background:rgba(255,255,255,.85)}
+html[data-theme=day] .msg.u{background:rgba(20,23,26,.04)}
+html[data-theme=day] .btn.primary,html[data-theme=day] .icon.send,html[data-theme=day] .modes button[aria-pressed=true]{color:#fff}
+html[data-theme=day] .btn.primary:hover{background:var(--cream);color:#fff}
+html[data-theme=day] .frame .url{background:var(--deep)}
 html[data-theme=terminal]{
   --night:#030805;--deep:#010402;--surface:#06110a;
   --cream:#b8ffcf;--cream-soft:#5fd48a;--dim:rgba(95,212,138,.6);
@@ -72,6 +86,20 @@ html[data-theme=terminal] .brand::after{content:"_";animation:blink 1s steps(1) 
 .chipbtn{height:36px;padding:0 12px;border:1px solid var(--hairline);border-radius:var(--radius);background:transparent;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase}
 .chipbtn .dot{color:var(--leaf);font-size:9px}
 .chipbtn.low .dot{color:var(--ember)}
+.themebtn{height:36px;padding:0 10px;border:1px solid var(--hairline);background:transparent;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cream)}
+.themebtn .sw{width:12px;height:12px;border:1px solid var(--hairline);background:linear-gradient(135deg,var(--night) 50%,var(--leaf) 50%)}
+.intent{position:relative;flex-shrink:0}
+.intentbtn{height:44px;padding:0 10px;border:1px solid var(--hairline);background:transparent;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cream)}
+.intentbtn:hover{border-color:var(--leaf)}
+.menu{position:absolute;right:0;bottom:52px;width:280px;border:1px solid var(--hairline);background:var(--surface);box-shadow:0 24px 60px -20px rgba(0,0,0,.6);z-index:20;padding:6px}
+.menu button{width:100%;display:grid;grid-template-columns:1fr 18px;gap:2px 8px;padding:12px;border:0;background:none;text-align:left}
+.menu button:hover{background:rgba(127,127,127,.08)}
+.menu strong{font-weight:500;font-size:15px}
+.menu small{grid-column:1;color:var(--cream-soft);font-size:13px}
+.menu .tick{grid-row:1/3;grid-column:2;align-self:center;color:var(--leaf);visibility:hidden}
+.menu [aria-checked=true] .tick{visibility:visible}
+.menu .sep{border-top:1px solid var(--hairline);margin:6px 0;padding:8px 12px 2px;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--cream-soft)}
+.menu .free{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--leaf);margin-left:8px;border:1px solid currentColor;padding:1px 6px}
 .theme{display:flex;border:1px solid var(--hairline)}
 .theme button{height:36px;padding:0 10px;border:0;background:transparent;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cream-soft)}
 .theme button[aria-pressed=true]{background:var(--leaf);color:var(--night)}
@@ -110,7 +138,7 @@ html[data-theme=terminal] .hero h1{font-size:72px;color:var(--leaf)}
 .msg.a{display:flex;gap:12px}
 .msg.a .pip{width:26px;height:26px;flex-shrink:0;margin-top:2px}
 .msg.a .pip img{width:100%;height:100%}
-.msg.a .body{font-size:16px;line-height:1.6}
+.msg.a .body{font-size:16px;line-height:1.6;white-space:pre-line}
 html[data-theme=terminal] .msg.a .pip{display:none}
 html[data-theme=terminal] .msg.a .body::before{content:"creai$ ";color:var(--leaf)}
 .msg.u{align-self:flex-end;max-width:86%;padding:10px 14px;border:1px solid var(--hairline);background:rgba(242,239,232,.04);white-space:pre-wrap}
@@ -145,7 +173,7 @@ html[data-theme=terminal] .working{margin-left:0}
 .bar:focus-within{border-color:var(--leaf)}
 html[data-theme=terminal] .bar::before{content:"$";font-family:var(--mono);color:var(--leaf);padding:9px 0;align-self:center}
 textarea{flex:1;min-width:0;border:0;background:transparent;color:var(--cream);font:16px/22px var(--sans);resize:none;max-height:140px;padding:9px 0;outline:none;caret-color:var(--leaf)}
-textarea::placeholder{color:var(--dim)}
+textarea::placeholder{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .icon{width:44px;height:44px;flex-shrink:0;border:1px solid var(--hairline);background:transparent;color:var(--cream-soft);display:flex;align-items:center;justify-content:center;transition:border-color .25s,color .25s}
 .icon:hover{border-color:var(--leaf);color:var(--leaf)}
 .icon.send{background:var(--leaf);border-color:var(--leaf);color:var(--night)}
@@ -214,10 +242,7 @@ input:focus{outline:none;border-color:var(--leaf)}
   <img class="mark" src="/logo-mark.png" alt="">
   <span class="brand">CreAI</span>
   <span class="spacer"></span>
-  <div class="theme" role="group" aria-label="Interface theme">
-    <button type="button" id="thStudio" aria-pressed="true">Studio</button>
-    <button type="button" id="thTerm" aria-pressed="false">Term</button>
-  </div>
+  <button class="themebtn" id="thBtn" type="button" aria-label="Change theme"><span class="sw" aria-hidden="true"></span><span id="thName">Day</span></button>
   <button class="chipbtn" id="credBtn" type="button" hidden aria-label="Credits"><span class="dot">●</span><span id="credTxt">–</span></button>
   <span class="who" id="who"></span>
   <button class="btn" id="signBtn" type="button">Sign in</button>
@@ -231,13 +256,20 @@ input:focus{outline:none;border-color:var(--leaf)}
     <div id="thread" aria-live="polite"></div>
     <div id="composer">
       <div class="chips" id="starters"></div>
-      <div class="modes" role="group" aria-label="Response mode">
-        <button type="button" id="modeBest" aria-pressed="true">Best</button>
-        <button type="button" id="modeFast" aria-pressed="false">Fast · ⅕ credit</button>
-      </div>
       <div class="bar">
         <label for="input" class="sr">Message CreAI</label>
         <textarea id="input" rows="1" placeholder="Describe your business…"></textarea>
+        <div class="intent">
+          <button class="intentbtn" id="intentBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span id="intentName">Build</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
+          <div class="menu" id="intentMenu" role="menu" hidden>
+            <button role="menuitemradio" data-intent="build" aria-checked="true"><strong>Build</strong><small>Make changes directly</small><span class="tick">✓</span></button>
+            <button role="menuitemradio" data-intent="chat" aria-checked="false"><strong>Chat<span class="free">≈1 cr</span></strong><small>Ask anything — nothing changes</small><span class="tick">✓</span></button>
+            <button role="menuitemradio" data-intent="plan" aria-checked="false"><strong>Plan</strong><small>Discuss before building</small><span class="tick">✓</span></button>
+            <div class="sep">Quality</div>
+            <button role="menuitemradio" id="modeBest" data-mode="best" aria-checked="true"><strong>Best</strong><small>Our most capable model</small><span class="tick">✓</span></button>
+            <button role="menuitemradio" id="modeFast" data-mode="fast" aria-checked="false"><strong>Fast</strong><small>Quicker replies · ⅕ the credits</small><span class="tick">✓</span></button>
+          </div>
+        </div>
         <button class="icon" id="mic" type="button" aria-label="Speak instead of typing" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
         </button>
@@ -306,7 +338,7 @@ input:focus{outline:none;border-color:var(--leaf)}
 (() => {
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const S = { token: null, me: null, project: null, busy: false, mode: 'best', balance: null };
+const S = { token: null, me: null, project: null, busy: false, mode: 'best', intent: 'build', balance: null };
 try { S.mode = localStorage.getItem('creai_mode') || 'best'; } catch (_) {}
 try { S.token = localStorage.getItem('creai_token'); } catch (_) {}
 
@@ -382,17 +414,18 @@ async function refreshPreview() {
 function setStatus(text, color) { $('sText').textContent = text; $('sDot').style.color = color; }
 
 // ------------------------------------------------------------ talking
-async function send(text) {
+async function send(text, intentOverride) {
+  if (intentOverride) setIntent(intentOverride);
   text = (text || '').trim();
   if (!text || S.busy) return;
   S.busy = true; $('send').disabled = true; $('starters').replaceChildren();
   $('thread').querySelector('.hero')?.remove();
   addUser(text);
-  const w = el('div', 'working msg'); const d = el('span', 'dot pulse'); w.append(d, el('span', null, document.documentElement.dataset.theme === 'terminal' ? 'building… ▍' : 'Building your site'));
+  const w = el('div', 'working msg'); const d = el('span', 'dot pulse'); w.append(d, el('span', null, document.documentElement.dataset.theme === 'terminal' ? ({ build: 'building', chat: 'thinking', plan: 'planning' }[S.intent] + '… ▍') : ({ build: 'Building your site', chat: 'Thinking', plan: 'Drafting a plan' }[S.intent])));
   $('thread').append(w); scroll();
   try {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
-    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode }) });
+    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent }) });
     if (out.credits) setBalance(out.credits.balance);
     setHasSite(out.site);
     w.remove();
@@ -438,6 +471,7 @@ if (SR) {
 
 // ------------------------------------------------------------ actions
 function runAction(a) {
+  if (a.kind === 'build_plan') return send('Build the plan you just proposed.', 'build');
   if (a.kind === 'sign_in' || !S.token) return openSign(a.kind === 'sign_in' ? null : a);
   if (a.kind === 'connect_domain') { $('dname').value = a.domain || ''; $('domErr').textContent = ''; $('dDomain').showModal(); }
   if (a.kind === 'review_posts') { showPane('posts'); loadPosts(); }
@@ -559,14 +593,33 @@ async function loadPosts() {
 }
 
 // ------------------------------------------------------------ modes
+const PLACEHOLDER = { build: 'Describe your business…', chat: 'Ask anything…', plan: 'What should we plan?' };
 function setMode(m) {
   S.mode = m; try { localStorage.setItem('creai_mode', m); } catch (_) {}
-  $('modeBest').setAttribute('aria-pressed', String(m === 'best'));
-  $('modeFast').setAttribute('aria-pressed', String(m === 'fast'));
+  $('modeBest').setAttribute('aria-checked', String(m === 'best'));
+  $('modeFast').setAttribute('aria-checked', String(m === 'fast'));
 }
-$('modeBest').onclick = () => setMode('best');
-$('modeFast').onclick = () => setMode('fast');
-setMode(S.mode);
+function setIntent(i) {
+  S.intent = i;
+  document.querySelectorAll('#intentMenu [data-intent]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.intent === i)));
+  $('intentName').textContent = i.charAt(0).toUpperCase() + i.slice(1);
+  $('input').placeholder = PLACEHOLDER[i];
+}
+function toggleMenu(open) {
+  const m = $('intentMenu'), want = open ?? m.hidden;
+  m.hidden = !want; $('intentBtn').setAttribute('aria-expanded', String(want));
+  if (want && window.gsap && !reduced) gsap.from(m, { opacity: 0, y: 8, duration: .25, ease: 'power2.out' });
+}
+$('intentBtn').onclick = (e) => { e.stopPropagation(); toggleMenu(); };
+$('intentMenu').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.intent) setIntent(b.dataset.intent);
+  if (b.dataset.mode) setMode(b.dataset.mode);
+  toggleMenu(false); $('input').focus();
+};
+document.addEventListener('click', (e) => { if (!e.target.closest('.intent')) toggleMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleMenu(false); });
+setMode(S.mode); setIntent('build');
 
 // ------------------------------------------------------------ credits
 function setBalance(n) {
@@ -632,10 +685,11 @@ function loadPayJs() {
   return payJs;
 }
 function appearance() {
-  const term = document.documentElement.dataset.theme === 'terminal';
-  const c = term ? { p: '#39ff88', bg: '#030805', t: '#b8ffcf', t2: '#5fd48a', line: 'rgba(57,255,136,.3)', f: 'IBM Plex Mono, monospace' }
-                 : { p: '#3da183', bg: '#0a0c0e', t: '#f2efe8', t2: '#b9b4a8', line: 'rgba(242,239,232,.14)', f: 'Space Grotesk, system-ui, sans-serif' };
-  return { theme: 'night', variables: { colorPrimary: c.p, colorBackground: c.bg, colorText: c.t, colorTextSecondary: c.t2,
+  const th = document.documentElement.dataset.theme;
+  const c = th === 'terminal' ? { p: '#39ff88', bg: '#030805', t: '#b8ffcf', t2: '#5fd48a', line: 'rgba(57,255,136,.3)', f: 'IBM Plex Mono, monospace', base: 'night' }
+          : th === 'day' ? { p: '#2c8168', bg: '#ffffff', t: '#14171a', t2: '#555a60', line: 'rgba(20,23,26,.16)', f: 'Space Grotesk, system-ui, sans-serif', base: 'stripe' }
+          : { p: '#3da183', bg: '#0a0c0e', t: '#f2efe8', t2: '#b9b4a8', line: 'rgba(242,239,232,.14)', f: 'Space Grotesk, system-ui, sans-serif', base: 'night' };
+  return { theme: c.base, variables: { colorPrimary: c.p, colorBackground: c.bg, colorText: c.t, colorTextSecondary: c.t2,
       colorDanger: '#e2725b', colorSuccess: c.p, fontFamily: c.f, borderRadius: '0px', spacingUnit: '4px', fontSizeBase: '15px' },
     rules: { '.Input': { border: '1px solid ' + c.line, boxShadow: 'none' }, '.Input:focus': { border: '1px solid ' + c.p, boxShadow: 'none' },
       '.Tab': { border: '1px solid ' + c.line, backgroundColor: c.bg }, '.Tab--selected': { borderColor: c.p },
@@ -812,14 +866,15 @@ const lens = (() => {
       brackets.add(new T.Line(g, bm));
     }
     rig.add(brackets);
-    function theme(term) {
+    function theme(name) {
+      const term = name === 'terminal', day = name === 'day';
       paintArc(term);
       ball.material.color.set(term ? 0x0b2a16 : 0xeceef2);
       ball.material.wireframe = term; arc.material.wireframe = term;
       pupil.material.color.set(term ? 0x39ff88 : 0x15171b);
-      bm.color.set(term ? 0x39ff88 : 0xc9ccd2);
+      bm.color.set(term ? 0x39ff88 : day ? 0x3a3f45 : 0xc9ccd2);
     }
-    theme(document.documentElement.dataset.theme === 'terminal');
+    theme(document.documentElement.dataset.theme);
     const ptr = { x: 0, y: 0 };
     addEventListener('pointermove', e => { ptr.x = e.clientX / innerWidth - .5; ptr.y = e.clientY / innerHeight - .5; });
     function size() { const r = cv.getBoundingClientRect(); if (r.width) { renderer.setSize(r.width, r.height, false); cam.aspect = r.width / r.height; cam.updateProjectionMatrix(); } }
@@ -842,7 +897,7 @@ const lens = (() => {
     api = { theme };
     return api;
   }
-  return { start, async theme(term) { if (api) api.theme(term); } };
+  return { start, async theme(name) { if (api) api.theme(name); } };
 })();
 
 function setHasSite(site) {
@@ -855,22 +910,23 @@ function setHasSite(site) {
 }
 
 // ------------------------------------------------------------ theme
+const THEMES = ['day', 'studio', 'terminal'], THEME_NAME = { day: 'Day', studio: 'Night', terminal: 'Term' };
 function setTheme(t) {
   const root = document.documentElement;
+  if (!THEMES.includes(t)) t = 'day';
   const apply = () => {
     root.dataset.theme = t;
     try { localStorage.setItem('creai_theme', t); } catch (_) {}
-    $('thStudio').setAttribute('aria-pressed', String(t === 'studio'));
-    $('thTerm').setAttribute('aria-pressed', String(t === 'terminal'));
-    field.repaint(); lens.theme(t === 'terminal');
+    $('thName').textContent = THEME_NAME[t];
+    $('thBtn').setAttribute('aria-label', 'Theme: ' + THEME_NAME[t] + '. Change theme');
+    field.repaint(); lens.theme(t);
   };
   if (window.gsap && !reduced && root.dataset.theme !== t) {
     gsap.timeline().to('body', { opacity: 0, duration: .18 }).add(apply).to('body', { opacity: 1, duration: .35 });
   } else apply();
 }
-$('thStudio').onclick = () => setTheme('studio');
-$('thTerm').onclick = () => setTheme('terminal');
-setTheme(document.documentElement.dataset.theme || 'studio');
+$('thBtn').onclick = () => setTheme(THEMES[(THEMES.indexOf(document.documentElement.dataset.theme) + 1) % THEMES.length]);
+setTheme(document.documentElement.dataset.theme);
 
 // ------------------------------------------------------------ boot
 (async () => {

@@ -198,3 +198,22 @@ def test_thread_trim_starts_on_a_user_message():
     finally:
         agent.MAX_THREAD = old
     assert t == [{"role": "user", "content": "second"}]
+
+
+async def test_chat_and_plan_never_edit_the_site(api, monkeypatch):
+    fake = FakeModel([text("A tagline is a short promise.")],
+                     [text("1. Tighten the headline\n2. Add pricing\nShall I build it?")])
+    monkeypatch.setattr(agent, "_call", fake)
+    chat = (await api.post("/v1/agent/draft", json={"message": "what is a tagline", "intent": "chat"})).json()
+    assert fake.calls[0]["tools"] == [] and fake.calls[0]["model"] == settings.agent_fast_model
+    assert "Mode: CHAT" in fake.calls[0]["system"] and chat["actions"] == []
+
+    plan = (await api.post("/v1/agent/draft", json={"message": "improve it", "intent": "plan"})).json()
+    assert fake.calls[1]["tools"] == [] and "Mode: PLAN" in fake.calls[1]["system"]
+    assert plan["actions"] == [{"kind": "build_plan", "label": "Build this plan"}]
+    assert plan["log"] == []                       # nothing was changed
+
+
+async def test_unknown_intent_is_rejected(api):
+    r = await api.post("/v1/agent/draft", json={"message": "hi", "intent": "deploy"})
+    assert r.status_code == 422

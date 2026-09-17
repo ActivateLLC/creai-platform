@@ -30,6 +30,7 @@ MAX_THREAD = 40          # messages kept per draft or project
 MAX_USER_CHARS = 4000
 
 ACTIONS = {
+    "build_plan": "Build the plan just proposed",
     "sign_in": "Create an account (needed before anything is registered or published)",
     "connect_domain": "Connect a domain the person already owns",
     "review_posts": "Open the post drafts waiting for approval",
@@ -57,6 +58,20 @@ offer what is available now.
 - Style: plain, specific and calm. Short replies — two or three sentences. No \
 exclamation marks. No markdown headings or bullet lists.
 """
+
+CHAT_EXTRA = """
+Mode: CHAT. The person wants to talk things through. Answer questions and give advice \
+about their business, site or marketing. You have no tools in this mode, so do not claim \
+to have changed anything; if they want a change, tell them to switch to Build.
+"""
+
+PLAN_EXTRA = """
+Mode: PLAN. Do not change the site. Reply with a short numbered plan (three to seven steps) \
+of exactly what you would change and why, in plain language, then ask whether to build it. \
+Numbered lines are allowed in this mode.
+"""
+
+INTENTS = ("build", "chat", "plan")
 
 PROJECT_EXTRA = """
 The person is signed in and working on a project in their own workspace. You can also \
@@ -195,15 +210,18 @@ def visible(thread: list) -> list:
 async def _call(messages: list, tools: list, system: str, model: str) -> dict:
     if not settings.anthropic_key:
         raise AgentUnavailable("the agent is not configured on this deployment")
+    body = {"model": model, "max_tokens": 2048,
+            # automatic prompt caching: repeated prefixes bill at the cache rate
+            "cache_control": {"type": "ephemeral"},
+            "system": system, "messages": messages}
+    if tools:
+        body["tools"] = tools
     async with httpx.AsyncClient(timeout=90) as x:
         r = await x.post(API, headers={
             "x-api-key": settings.anthropic_key,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
-        }, json={"model": model, "max_tokens": 2048,
-                 # automatic prompt caching: repeated prefixes bill at the cache rate
-                 "cache_control": {"type": "ephemeral"},
-                 "system": system, "tools": tools, "messages": messages})
+        }, json=body)
     if r.status_code != 200:
         log.warning("agent model call failed: %s %s", r.status_code, r.text[:300])
         raise AgentUnavailable("The assistant is temporarily unavailable. Please try again in a moment.")
@@ -211,7 +229,7 @@ async def _call(messages: list, tools: list, system: str, model: str) -> dict:
 
 
 async def run(text: str, answers: dict | None, *, project: bool = False,
-              queue_posts=None, model: str | None = None) -> Turn:
+              queue_posts=None, model: str | None = None, intent: str = "build") -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -224,11 +242,17 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
                 site=site_spec.merge(answers.get("site"), {}),
                 thread=trim(list(answers.get("_thread") or [])))
 
-    tools = [TOOL_UPDATE_SITE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+    intent = intent if intent in INTENTS else "build"
     system = SYSTEM
-    if project and queue_posts is not None:
-        tools.append(TOOL_DRAFT_POSTS)
-        system += PROJECT_EXTRA
+    if intent == "build":
+        tools = [TOOL_UPDATE_SITE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+        if project and queue_posts is not None:
+            tools.append(TOOL_DRAFT_POSTS)
+            system += PROJECT_EXTRA
+    else:
+        # Chat and Plan never touch the site: they get no editing tools at all.
+        tools = []
+        system += CHAT_EXTRA if intent == "chat" else PLAN_EXTRA
     facts = {k: v for k, v in answers.items() if not k.startswith("_") and k != "site"}
     system += ("\nCurrent site spec: " + json.dumps(turn.site)
                + "\nKnown facts: " + json.dumps(facts))
@@ -254,6 +278,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     else:
         turn.reply = turn.reply or "I've made those changes — have a look at the preview."
 
+    if intent == "plan" and turn.reply:
+        turn.actions.append({"kind": "build_plan", "label": "Build this plan"})
     turn.answers["site"] = turn.site
     turn.answers["_thread"] = trim(turn.thread)
     return turn

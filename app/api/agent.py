@@ -30,10 +30,14 @@ _hits: dict[str, deque] = defaultdict(deque)
 class SayIn(BaseModel):
     message: str = Field(min_length=1, max_length=agent.MAX_USER_CHARS)
     mode: str = Field("best", pattern="^(best|fast)$")
+    intent: str = Field("build", pattern="^(build|chat|plan)$")
 
 
-def _model(mode: str) -> str:
-    return settings.agent_fast_model if mode == "fast" else settings.agent_model
+def _model(mode: str, intent: str = "build") -> str:
+    # Chat is conversation only, so it always runs on the light model.
+    if intent == "chat" or mode == "fast":
+        return settings.agent_fast_model
+    return settings.agent_model
 
 
 def _limit(ip: str) -> None:
@@ -102,7 +106,8 @@ async def draft_say(body: SayIn, request: Request, response: Response,
                                  "keep building — your draft is saved and you get "
                                  f"{billing.SIGNUP_CREDITS} free credits.")
 
-    turn = await _run(body.message, answers, model=_model(body.mode))
+    turn = await _run(body.message, answers, model=_model(body.mode, body.intent),
+                      intent=body.intent)
     turn.answers["_turns"] = turns + 1
     async with conn() as c:
         await c.execute("UPDATE drafts SET answers=$2, updated_at=now() WHERE id=$1",
@@ -147,7 +152,8 @@ async def project_say(project_id: int, body: SayIn,
 
     await billing.ensure_signup_grant(ctx.org_id)
     have = await billing.balance(ctx.org_id)
-    if have < billing.MIN_TO_START[body.mode]:
+    tier = "fast" if body.intent == "chat" else body.mode
+    if have < billing.MIN_TO_START[tier]:
         raise HTTPException(402, "You're out of credits. Top up to keep building — "
                                  "everything you've made is saved.")
 
@@ -163,7 +169,8 @@ async def project_say(project_id: int, body: SayIn,
         return ids
 
     turn = await _run(body.message, p["answers"] or {}, project=True,
-                      queue_posts=queue_posts, model=_model(body.mode))
+                      queue_posts=queue_posts, model=_model(body.mode, body.intent),
+                      intent=body.intent)
     spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls)
     async with conn() as c:
         await c.execute(
