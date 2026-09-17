@@ -304,7 +304,7 @@ input:focus{outline:none;border-color:var(--leaf)}
       <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden data-n="05">Connect</button>
       <span class="status label"><span class="dot" id="sDot" style="color:var(--dim)"></span><span id="sText">Draft · not published</span></span>
     </div>
-    <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><iframe id="preview" title="Site preview" sandbox=""></iframe>
+    <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><div class="row" id="pubBar" hidden style="padding:8px 12px;border-bottom:1px solid var(--hairline);gap:10px"><span class="note" id="pubState" style="flex:1;margin:0"></span><button class="btn" type="button" id="pubBtn">Publish app</button></div><iframe id="preview" title="Site preview" sandbox=""></iframe>
       <div class="stage" id="stage"><canvas id="lens" aria-hidden="true"></canvas><p class="label"><b>00</b> · Your site appears here</p><h2>Say it. We build it.</h2><p class="muted" style="max-width:34ch;margin:0">Describe your business in the chat. Every answer re-renders this page, live.</p></div></div></div>
     <div class="pane" id="pPosts" hidden></div>
     <div class="pane" id="pDomain" hidden></div>
@@ -513,7 +513,8 @@ async function send(text, intentOverride) {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
     const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent }) });
     if (out.credits) setBalance(out.credits.balance);
-    if (S.project && S.project.path === 'app') refreshPreview(); else setHasSite(out.site);
+    if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else setHasSite(out.site);
+    refreshEstimate();
     w.remove();
     (out.log || []).forEach(addTool);
     const last = (out.messages || []).filter(m => m.role === 'assistant').pop();
@@ -621,7 +622,7 @@ async function loadProviders() {
 var lastAppError = '';
 window.addEventListener('message', (ev) => {
   if (ev.source !== $('preview').contentWindow || !ev.data || ev.data.type !== 'creai-app-error') return;
-  const msg = String(ev.data.message || '').slice(0, 600);
+  const msg = String(ev.data.message || '').trim().slice(0, 500);
   if (!msg || msg === lastAppError) return;
   lastAppError = msg;
   setStatus('App error · tap Fix it', 'var(--err)');
@@ -631,6 +632,19 @@ window.addEventListener('message', (ev) => {
   addTool('the app reported an error: ' + msg);
   row.append(b); $('thread').append(row);
 });
+async function loadRelease() {
+  if (!S.project || S.project.path !== 'app') return;
+  $('pubBar').hidden = false;
+  try {
+    const r = await api('/v1/apps/' + S.project.id + '/release');
+    $('pubState').replaceChildren();
+    if (r.published) {
+      const a = el('a', 'mono', r.url.replace('https://', '')); a.href = r.url; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--leaf)';
+      $('pubState').append('Live at ', a);
+      $('pubBtn').textContent = 'Publish changes';
+    } else { $('pubState').textContent = 'Not published yet.'; $('pubBtn').textContent = 'Publish app'; }
+  } catch (_) {}
+}
 function openExternal(url) {
   const B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
   if (B) B.open({ url, presentationStyle: 'popover' }); else window.open(url, '_blank');
@@ -795,6 +809,18 @@ async function loadPosts() {
   await loadCalendar(pane);
 }
 
+$('pubBtn').onclick = async () => {
+  if (!S.project) return;
+  $('pubBtn').disabled = true;
+  try {
+    const r = await api('/v1/apps/' + S.project.id + '/publish', { method: 'POST' });
+    addTool('published · ' + r.url.replace('https://', ''));
+    const open = Object.keys(r.rules || {}).filter(k => r.rules[k].read === 'public' || r.rules[k].write === 'public');
+    addAgent('Your app is live at ' + r.url + (open.length ? '. Visitors can use: ' + open.join(', ') + '; everything else stays private to you.' : '. Visitors can view it, but its data stays private to you until the app allows otherwise.'));
+    loadRelease();
+  } catch (e) { addAgent(e.message); }
+  $('pubBtn').disabled = false;
+};
 $('fGrow').onsubmit = async (e) => {
   e.preventDefault(); $('growErr').textContent = '';
   try {
@@ -821,7 +847,8 @@ async function openProject(pid) {
   if (S.project && S.project.path === 'app') { $('stage').hidden = true; setStatus('App · running in a sandbox', 'var(--leaf)'); }
   else if (isExternal()) { $('stage').hidden = true; setStatus(S.project.path === 'market' ? 'Marketing' : 'Webflow · edits staged', 'var(--leaf)'); }
   else { setHasSite(t.site); setStatus('Draft · not published', 'var(--dim)'); }
-  if (S.project && S.project.path === 'app') refreshPreview();
+  if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else $('pubBar').hidden = true;
+  refreshEstimate();
   setIntent(S.intent);
   refreshPreview();
 }
@@ -908,8 +935,19 @@ async function loadConnections() {
 
 // ------------------------------------------------------------ modes
 const PLACEHOLDER = { build: 'Describe your business…', chat: 'Ask anything…', plan: 'What should we plan?' };
+async function refreshEstimate() {
+  if (!S.token) { $('hint').textContent = 'Nothing is registered, published or posted without your approval.'; return; }
+  const kind = S.intent === 'chat' ? 'chat' : S.project && S.project.path === 'app' ? 'app'
+    : S.project && S.project.path === 'market' ? 'market' : 'site';
+  const mode = S.intent === 'chat' ? 'fast' : S.mode;
+  try {
+    const e = await api('/v1/billing/estimate?mode=' + mode + '&kind=' + kind);
+    $('hint').textContent = 'About ' + (e.low === e.high ? e.low : e.low + '–' + e.high) + ' credits a message · nothing goes live without your OK';
+  } catch (_) {}
+}
 function setMode(m) {
   S.mode = m; try { localStorage.setItem('creai_mode', m); } catch (_) {}
+  refreshEstimate();
   $('modeBest').setAttribute('aria-checked', String(m === 'best'));
   $('modeFast').setAttribute('aria-checked', String(m === 'fast'));
 }
@@ -917,6 +955,7 @@ function setIntent(i) {
   S.intent = i;
   document.querySelectorAll('#intentMenu [data-intent]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.intent === i)));
   $('intentName').textContent = i.charAt(0).toUpperCase() + i.slice(1);
+  refreshEstimate();
   $('input').placeholder = (i === 'build' && S.project && S.project.path === 'app') ? 'Describe the app or a change…'
     : (i === 'build' && S.project && S.project.source === 'webflow') ? 'What should we change?' : PLACEHOLDER[i];
 }
@@ -947,7 +986,7 @@ function setBalance(n) {
 }
 
 const NETWORKS = { instagram: 'Instagram', facebook: 'Facebook', google_business: 'Google Business', gmb: 'Google Business', linkedin: 'LinkedIn', tiktok: 'TikTok', x: 'X', threads: 'Threads', youtube: 'YouTube', pinterest: 'Pinterest' };
-const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment' };
+const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment', waived: 'On us' };
 async function loadCredits() {
   if (!S.token) return;
   let b;
@@ -963,6 +1002,23 @@ async function loadCredits() {
   head.append(el('h2', null, b.balance.toLocaleString() + ' credits'),
     el('p', 'muted', 'Best uses about 20 credits a message; Fast about 4.' + (NATIVE ? '' : ' Bigger packs come with bonus credits.')));
   pane.append(head);
+  const capCard = el('div', 'card');
+  capCard.append(el('p', 'label', 'Monthly limit'));
+  api('/v1/billing/cap').then(cap => {
+    const used = el('p', 'note', cap.used_this_month.toLocaleString() + ' credits used this month' +
+      (cap.monthly_cap ? ' of your ' + cap.monthly_cap.toLocaleString() + ' limit.' : '. No limit set.'));
+    const row = el('div', 'row');
+    const inp = el('input'); inp.type = 'number'; inp.min = '10'; inp.placeholder = 'e.g. 2000'; inp.style.maxWidth = '160px';
+    if (cap.monthly_cap) inp.value = cap.monthly_cap;
+    const save = el('button', 'btn', 'Save limit'); save.type = 'button';
+    save.onclick = async () => {
+      try { await api('/v1/billing/cap', { method: 'POST', body: JSON.stringify({ monthly_cap: inp.value ? parseInt(inp.value, 10) : null }) }); loadCredits(); }
+      catch (e) { used.textContent = e.message; }
+    };
+    row.append(inp, save);
+    capCard.append(used, row, el('p', 'note', 'CreAI stops before a message would go over it. Fixing errors in apps CreAI built is free (up to three tries per error).'));
+  }).catch(() => {});
+  pane.append(capCard);
   if (NATIVE) {
     pane.append(el('p', 'note', 'Your balance is shared across all your devices.'));
     return;
@@ -984,8 +1040,8 @@ async function loadCredits() {
     const led = el('div', 'ledger'); led.append(el('h3', null, 'Recent activity'));
     for (const h of b.history.slice(0, 12)) {
       const row = el('div');
-      row.append(el('span', null, (LEDGER[h.reason] || h.reason) + (h.pack ? ' · ' + h.pack : '') + ' · ' + new Date(h.at).toLocaleDateString()),
-        el('span', null, (h.delta > 0 ? '+' : '') + h.delta.toLocaleString()));
+      row.append(el('span', null, (LEDGER[h.reason] || h.reason) + (h.pack ? ' · ' + h.pack : '') + (h.note ? ' · ' + h.note : '') + ' · ' + new Date(h.at).toLocaleDateString()),
+        el('span', null, h.reason === 'waived' ? '0 (saved ' + (h.saved || 0) + ')' : (h.delta > 0 ? '+' : '') + h.delta.toLocaleString()));
       led.append(row);
     }
     pane.append(led);

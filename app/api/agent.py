@@ -128,6 +128,10 @@ async def draft_preview(creai_draft: str | None = Depends(draft_token)):
 
 # ---------------------------------------------------------------- signed in
 
+FIX_PREFIX = "The preview shows this error, please fix it: "
+FREE_FIXES = 3
+
+
 def p_path(p) -> str:
     return p["path"] if "path" in p.keys() else ""
 
@@ -159,11 +163,34 @@ async def project_say(project_id: int, body: SayIn,
         p = await _project(c, project_id, ctx.org_id)
 
     await billing.ensure_signup_grant(ctx.org_id)
-    have = await billing.balance(ctx.org_id)
     tier = "fast" if body.intent == "chat" else body.mode
-    if have < billing.MIN_TO_START[tier]:
+    kind = ("chat" if body.intent == "chat" else "app" if p_path(p) == "app"
+            else "market" if p_path(p) == "market" else "site")
+
+    # Fixing an error the preview reported is on us — a few times per error.
+    waived = None
+    fix = FIX_PREFIX and body.message.startswith(FIX_PREFIX) and p_path(p) == "app"
+    if fix:
+        err = body.message[len(FIX_PREFIX):]
+        async with conn() as c:
+            row = await c.fetchrow(
+                """UPDATE app_errors SET free_fixes = free_fixes + 1
+                   WHERE project_id=$1 AND org_id=$2 AND message=$3 AND free_fixes < $4
+                     AND created_at > now() - interval '1 day' RETURNING id""",
+                project_id, ctx.org_id, err, FREE_FIXES)
+        if row:
+            waived = "fixing an error in the app CreAI built"
+
+    have = await billing.balance(ctx.org_id)
+    if not waived and have < billing.MIN_TO_START[tier]:
         raise HTTPException(402, "You're out of credits. Top up to keep building — "
                                  "everything you've made is saved.")
+    cap = await billing.cap_status(ctx.org_id)
+    if not waived and cap["monthly_cap"] is not None:
+        est = await billing.estimate(ctx.org_id, tier, kind)
+        if cap["remaining"] < est["low"]:
+            raise HTTPException(402, f"This workspace has reached its monthly limit of "
+                                     f"{cap['monthly_cap']:,} credits. An owner can raise it under Credits.")
 
     async def queue_posts(posts: list[dict]) -> list[int]:
         # Bound to this workspace and project before the model ever runs.
@@ -200,16 +227,20 @@ async def project_say(project_id: int, body: SayIn,
                       intent=body.intent, bridge=bridge, app=app_ctx,
                       marketing=bool(answers.get("marketing")) or p_path(p) == "market",
                       marketing_only=p_path(p) == "market")
-    spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls)
+    spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls,
+                                             kind=f"{tier}:{kind}", waived=waived)
+    business = ((turn.answers or {}).get("site") or {}).get("business")
     async with conn() as c:
         await c.execute(
-            "UPDATE projects SET answers=$3, updated_at=now() WHERE id=$1 AND org_id=$2",
-            project_id, ctx.org_id, turn.answers)
+            """UPDATE projects SET answers=$3, updated_at=now(),
+                 name = CASE WHEN name IN ('New app', 'Site') AND $4 <> '' THEN $4 ELSE name END
+               WHERE id=$1 AND org_id=$2""",
+            project_id, ctx.org_id, turn.answers, business or "")
     if turn.posts:
         await log_event(ctx.org_id, "agent.posts_drafted", str(len(turn.posts)),
                         project_id, ctx.user_id)
     return _payload(turn.answers, turn.actions, turn.log, turn.posts) | {
-        "credits": {"spent": spent, "balance": left}}
+        "credits": {"spent": spent, "balance": left, "waived": bool(waived)}}
 
 
 @router.get("/projects/{project_id}/preview", response_class=HTMLResponse)

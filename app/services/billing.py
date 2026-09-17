@@ -102,18 +102,70 @@ async def balance(org_id: int) -> int:
 
 
 async def charge_usage(org_id: int, actor_id: int, project_id: int,
-                       calls: list[tuple[str, dict]]) -> tuple[int, int]:
-    """Deduct a turn's usage. Returns (credits charged, new balance)."""
+                       calls: list[tuple[str, dict]], *, kind: str = "",
+                       waived: str | None = None) -> tuple[int, int]:
+    """Deduct a turn's usage. Returns (credits charged, new balance).
+
+    A waived turn is still recorded, at zero, so the owner can see what CreAI
+    absorbed and why (for example: fixing an error the AI introduced)."""
     credits, cost = credits_for(calls)
     if credits:
-        detail = {"project_id": project_id, "cost_usd": round(cost, 6),
-                  "models": sorted({m for m, _ in calls})}
+        detail = {"project_id": project_id, "cost_usd": round(cost, 6), "kind": kind,
+                  "credits": credits, "models": sorted({m for m, _ in calls})}
+        if waived:
+            detail["waived"] = waived
         async with conn() as c:
             await c.execute(
                 """INSERT INTO credit_ledger (org_id, delta, reason, detail, actor_id)
-                   VALUES ($1, $2, 'usage', $3, $4)""",
-                org_id, -credits, detail, actor_id)
-    return credits, await balance(org_id)
+                   VALUES ($1, $2, $3, $4, $5)""",
+                org_id, 0 if waived else -credits, "waived" if waived else "usage", detail, actor_id)
+    return (0 if waived else credits), await balance(org_id)
+
+
+# ---------------------------------------------------------------- estimates and caps
+
+# Typical credits per message before a workspace has its own history.
+TYPICAL = {
+    ("best", "site"): (15, 35), ("fast", "site"): (3, 8),
+    ("best", "app"): (40, 150), ("fast", "app"): (8, 30),
+    ("best", "chat"): (3, 10), ("fast", "chat"): (1, 3),
+    ("best", "market"): (15, 45), ("fast", "market"): (3, 10),
+}
+
+
+async def estimate(org_id: int, mode: str, kind: str) -> dict:
+    """Likely credits for the next message: this workspace's own recent median and
+    upper range when it has enough history, otherwise a typical range."""
+    lo, hi = TYPICAL.get((mode, kind), TYPICAL[(mode if mode in ("best", "fast") else "best", "site")])
+    async with conn() as c:
+        rows = await c.fetch(
+            """SELECT (detail->>'credits')::int AS n FROM credit_ledger
+               WHERE org_id=$1 AND reason IN ('usage','waived') AND detail->>'kind'=$2
+                 AND (detail->>'credits') IS NOT NULL
+               ORDER BY id DESC LIMIT 30""", org_id, f"{mode}:{kind}")
+    ns = sorted(r["n"] for r in rows if r["n"])
+    if len(ns) >= 5:
+        lo, hi = ns[len(ns) // 2], ns[min(len(ns) - 1, int(len(ns) * 0.8))]
+    return {"low": lo, "high": max(hi, lo), "based_on": "your recent messages" if len(ns) >= 5 else "typical use"}
+
+
+async def cap_status(org_id: int) -> dict:
+    async with conn() as c:
+        cap = await c.fetchval("SELECT monthly_cap FROM org_settings WHERE org_id=$1", org_id)
+        used = await c.fetchval(
+            """SELECT COALESCE(-SUM(delta),0) FROM credit_ledger
+               WHERE org_id=$1 AND reason='usage' AND created_at >= date_trunc('month', now())""", org_id)
+    return {"monthly_cap": cap, "used_this_month": int(used or 0),
+            "remaining": None if cap is None else max(0, cap - int(used or 0))}
+
+
+async def set_cap(org_id: int, cap: int | None) -> dict:
+    async with conn() as c:
+        await c.execute(
+            """INSERT INTO org_settings (org_id, monthly_cap) VALUES ($1,$2)
+               ON CONFLICT (org_id) DO UPDATE SET monthly_cap=EXCLUDED.monthly_cap, updated_at=now()""",
+            org_id, cap)
+    return await cap_status(org_id)
 
 
 async def history(org_id: int, limit: int = 20) -> list[dict]:
@@ -123,6 +175,8 @@ async def history(org_id: int, limit: int = 20) -> list[dict]:
                WHERE org_id=$1 ORDER BY created_at DESC, id DESC LIMIT $2""", org_id, limit)
     return [{"delta": r["delta"], "reason": r["reason"],
              "pack": (r["detail"] or {}).get("pack"),
+             "saved": (r["detail"] or {}).get("credits") if r["reason"] == "waived" else None,
+             "note": (r["detail"] or {}).get("waived"),
              "at": r["created_at"].isoformat()} for r in rows]
 
 

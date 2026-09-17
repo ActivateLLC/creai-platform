@@ -69,7 +69,8 @@ def test_file_rules():
 def test_app_token_is_scoped_and_signed():
     object.__setattr__(settings, "secret_key", "test-secret-key-" + "x" * 16)
     t = appfs.token(12, 34)
-    assert appfs.verify(t) == (12, 34)
+    assert appfs.verify(t) == (12, 34, "owner")
+    assert appfs.verify(appfs.token(12, 34, "public")) == (12, 34, "public")
     for forged in (t[:-2] + "AA", appfs.token(12, 34).replace("E", "F"), "garbage"):
         if forged != t:
             with pytest.raises(appfs.AppError):
@@ -156,3 +157,122 @@ async def test_app_data_rate_limit(api, monkeypatch):
     h = {"X-App-Token": appfs.token(pid, org)}
     codes = [(await api.get("/v1/appdata/tasks", headers=h)).status_code for _ in range(5)]
     assert codes[:3] == [200, 200, 200] and codes[3] == 429
+
+
+APP_JS = TODO.replace("./components/row.js", "./row.js")
+ROW_JS = "import { html } from 'htm/preact';\nexport const Row = ({ item }) => html`<div>${item.title}</div>`;"
+
+
+async def build(api, tok, pid):
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await appfs.write(pid, org, {"app.js": APP_JS, "row.js": ROW_JS, "app.json": json.dumps(
+        {"collections": {"bookings": {"read": "owner", "write": "public"},
+                         "menu": {"read": "public"}}})})
+    return org
+
+
+async def test_publish_serves_isolated_page_with_visitor_rules(api):
+    tok, pid = await new_app(api)
+    r = await api.post(f"/v1/apps/{pid}/publish", headers=auth(tok))
+    assert r.status_code == 409 and "starter" in r.json()["detail"]
+    org = await build(api, tok, pid)
+    r = await api.post(f"/v1/apps/{pid}/publish", headers=auth(tok))
+    assert r.status_code == 200, r.text
+    url = r.json()["url"]
+    slug = url.rsplit("/", 1)[1]
+    assert r.json()["rules"]["bookings"] == {"read": "owner", "write": "public", "manage": "owner"}
+
+    page = await api.get(f"/a/{slug}")
+    assert page.status_code == 200
+    assert page.headers["content-security-policy"].startswith("sandbox allow-scripts")
+    assert "allow-same-origin" not in page.headers["content-security-policy"]
+    import re
+    public_tok = re.search(r'const API = [^,]+, TOKEN = "([^"]+)"', page.text).group(1)
+    assert appfs.verify(public_tok) == (pid, org, "public")
+    v = {"X-App-Token": public_tok}
+    owner = {"X-App-Token": appfs.token(pid, org)}
+
+    booked = await api.post("/v1/appdata/bookings", headers=v, json={"data": {"name": "Pat", "time": "3pm"}})
+    assert booked.status_code == 200
+    assert (await api.get("/v1/appdata/bookings", headers=v)).status_code == 403        # can't read others
+    bid = booked.json()["id"]
+    assert (await api.patch(f"/v1/appdata/bookings/{bid}", headers=v, json={"data": {"time": "4pm"}})).status_code == 403
+    assert (await api.delete(f"/v1/appdata/bookings/{bid}", headers=v)).status_code == 403
+    assert (await api.get("/v1/appdata/bookings", headers=owner)).json()["items"][0]["name"] == "Pat"
+    await api.post("/v1/appdata/menu", headers=owner, json={"data": {"dish": "Tacos"}})
+    assert (await api.get("/v1/appdata/menu", headers=v)).json()["items"][0]["dish"] == "Tacos"
+    assert (await api.post("/v1/appdata/menu", headers=v, json={"data": {"dish": "spam"}})).status_code == 403
+    assert (await api.get("/v1/appdata/secrets", headers=v)).status_code == 403          # undeclared = owner-only
+
+    # editing after publishing doesn't change the live app until republished
+    await appfs.write(pid, org, {"app.json": json.dumps({"collections": {"bookings": {"read": "public"}}})})
+    assert (await api.get("/v1/appdata/bookings", headers=v)).status_code == 403
+    again = await api.post(f"/v1/apps/{pid}/publish", headers=auth(tok))
+    assert again.json()["url"] == url                                                   # same address
+    assert (await api.get("/v1/appdata/bookings", headers=v)).status_code == 200
+
+    other, _ = await new_app(api)
+    assert (await api.post(f"/v1/apps/{pid}/publish", headers=auth(other))).status_code == 404
+    assert (await api.post(f"/v1/apps/{pid}/unpublish", headers=auth(tok))).status_code == 200
+    assert (await api.get(f"/a/{slug}")).status_code == 404
+    assert (await api.get("/a/../etc")).status_code == 404
+
+
+async def test_publish_blocked_while_app_reports_errors(api):
+    tok, pid = await new_app(api)
+    org = await build(api, tok, pid)
+    await api.post("/v1/appdata/_report", headers={"X-App-Token": appfs.token(pid, org)},
+                   json={"message": "TypeError: x is undefined"})
+    r = await api.post(f"/v1/apps/{pid}/publish", headers=auth(tok))
+    assert r.status_code == 409 and "error" in r.json()["detail"]
+    # public visitors can't file error reports that affect the owner
+    await api.post("/v1/appdata/_report", headers={"X-App-Token": appfs.token(pid, org, "public")},
+                   json={"message": "fake"})
+    async with db.conn() as c:
+        assert await c.fetchval("SELECT count(*) FROM app_errors WHERE project_id=$1", pid) == 1
+
+
+async def test_fixing_reported_errors_is_free_a_few_times(api, monkeypatch):
+    from app.api.agent import FIX_PREFIX
+    tok, pid = await new_app(api)
+    org = await build(api, tok, pid)
+    err = "Error: taskRow is not ready"
+    await api.post("/v1/appdata/_report", headers={"X-App-Token": appfs.token(pid, org)}, json={"message": err})
+    monkeypatch.setattr(agent, "_call", FakeModel(*[[text("fixed")]] * 6))
+    before = (await api.get("/v1/billing", headers=auth(tok))).json()["balance"]
+    for _ in range(3):
+        r = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": FIX_PREFIX + err})).json()
+        assert r["credits"]["spent"] == 0 and r["credits"]["waived"] is True
+    assert (await api.get("/v1/billing", headers=auth(tok))).json()["balance"] == before
+    fourth = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": FIX_PREFIX + err})).json()
+    assert fourth["credits"]["spent"] > 0                          # capped
+    # extra work tacked onto a fix, or an error that was never reported, is charged
+    padded = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok),
+                             json={"message": FIX_PREFIX + err + ". Also build a CRM"})).json()
+    assert padded["credits"]["spent"] > 0
+    made_up = (await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok),
+                              json={"message": FIX_PREFIX + "Error: invented"})).json()
+    assert made_up["credits"]["spent"] > 0
+    async with db.conn() as c:
+        waived = await c.fetchval("SELECT count(*) FROM credit_ledger WHERE org_id=$1 AND reason='waived'", org)
+    assert waived == 3
+
+
+async def test_estimates_and_monthly_cap(api, monkeypatch):
+    tok, pid = await new_app(api)
+    est = (await api.get("/v1/billing/estimate?mode=best&kind=app", headers=auth(tok))).json()
+    assert est["low"] >= 1 and est["high"] >= est["low"] and est["based_on"] == "typical use"
+    assert (await api.get("/v1/billing/estimate?mode=turbo&kind=app", headers=auth(tok))).status_code == 400
+    assert (await api.post("/v1/billing/cap", headers=auth(tok), json={"monthly_cap": 5})).status_code == 400
+    cap = (await api.post("/v1/billing/cap", headers=auth(tok), json={"monthly_cap": 10})).json()
+    assert cap["monthly_cap"] == 10 and cap["used_this_month"] == 0
+    monkeypatch.setattr(agent, "_call", FakeModel(*[[text("ok")]] * 10))
+    r = await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "build it"})
+    assert r.status_code == 402 and "monthly limit" in r.json()["detail"]      # estimate exceeds what's left
+    await api.post("/v1/billing/cap", headers=auth(tok), json={"monthly_cap": None})
+    r = await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "build it"})
+    assert r.status_code == 200
+    for _ in range(5):
+        await api.post(f"/v1/agent/projects/{pid}", headers=auth(tok), json={"message": "again", "mode": "best"})
+    learned = (await api.get("/v1/billing/estimate?mode=best&kind=app", headers=auth(tok))).json()
+    assert learned["based_on"] == "your recent messages"

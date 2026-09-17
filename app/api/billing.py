@@ -80,3 +80,28 @@ async def webhook(request: Request, stripe_signature: str | None = Header(None))
             await log_event(int(meta["org_id"]), "billing.credited", meta.get("pack", ""))
     # Always 200 for events we have verified, so Stripe stops retrying.
     return {"received": True}
+
+
+class CapIn(BaseModel):
+    monthly_cap: int | None = None
+
+
+@router.get("/estimate")
+async def estimate(mode: str = "best", kind: str = "site", ctx: T.Ctx = Depends(T.current_ctx)):
+    if mode not in ("best", "fast") or kind not in ("site", "app", "chat", "market"):
+        raise HTTPException(400, "unknown mode or kind")
+    return await billing.estimate(ctx.org_id, mode, kind)
+
+
+@router.get("/cap")
+async def get_cap(ctx: T.Ctx = Depends(T.current_ctx)):
+    return await billing.cap_status(ctx.org_id)
+
+
+@router.post("/cap")
+async def update_cap(body: CapIn, ctx: T.Ctx = Depends(T.requires("approve"))):
+    if body.monthly_cap is not None and not (10 <= body.monthly_cap <= 1_000_000):
+        raise HTTPException(400, "the cap must be between 10 and 1,000,000 credits")
+    out = await billing.set_cap(ctx.org_id, body.monthly_cap)
+    await log_event(ctx.org_id, "billing.cap", str(body.monthly_cap), None, ctx.user_id)
+    return out

@@ -282,6 +282,39 @@ CREATE TABLE IF NOT EXISTS app_records (
 );
 CREATE INDEX IF NOT EXISTS app_records_idx ON app_records(project_id, collection, id);
 
+-- Workspace spending cap (credits per calendar month; NULL = no cap).
+CREATE TABLE IF NOT EXISTS org_settings (
+  org_id       BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  monthly_cap  INTEGER,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Errors reported by app previews, so fixing them can be free.
+CREATE TABLE IF NOT EXISTS app_errors (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  message     TEXT NOT NULL,
+  free_fixes  INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, message)
+);
+
+-- Published app snapshots and their public addresses.
+CREATE TABLE IF NOT EXISTS app_releases (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  slug        TEXT NOT NULL,
+  files       JSONB NOT NULL,
+  site        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  live        BOOLEAN NOT NULL DEFAULT true,
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS app_releases_slug_idx ON app_releases(slug, id DESC);
+CREATE INDEX IF NOT EXISTS app_releases_project_idx ON app_releases(project_id, id DESC);
+
 -- Social accounts connected through Postiz, each owned by exactly one workspace.
 CREATE TABLE IF NOT EXISTS social_channels (
   id          BIGSERIAL PRIMARY KEY,
@@ -325,7 +358,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases",
 )
 
 

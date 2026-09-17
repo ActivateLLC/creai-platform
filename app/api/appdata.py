@@ -29,11 +29,11 @@ class RecordIn(BaseModel):
     data: dict
 
 
-def _auth(tok: str | None, collection: str) -> tuple[int, int]:
+def _auth(tok: str | None, collection: str) -> tuple[int, int, str]:
     if not tok:
         raise HTTPException(401, "missing app token")
     try:
-        pid, oid = appfs.verify(tok)
+        pid, oid, role = appfs.verify(tok)
     except appfs.AppError as exc:
         raise HTTPException(401, str(exc))
     if not NAME.match(collection):
@@ -44,7 +44,41 @@ def _auth(tok: str | None, collection: str) -> tuple[int, int]:
     if len(q) >= RATE[0]:
         raise HTTPException(429, "too many requests from this app; slow down")
     q.append(now)
-    return pid, oid
+    return pid, oid, role
+
+
+async def _allow(pid: int, role: str, collection: str, action: str) -> None:
+    """Owners (the preview) can do anything. Visitors to a published app can only
+    do what the app's app.json allows for that collection."""
+    if role == "owner":
+        return
+    async with conn() as c:
+        files = await c.fetchval(
+            "SELECT files FROM app_releases WHERE project_id=$1 AND live ORDER BY id DESC LIMIT 1", pid)
+    rule = appfs.rules(files or {}).get(collection, {"read": "owner", "write": "owner", "manage": "owner"})
+    if rule[action] != "public":
+        raise HTTPException(403, f"visitors can't {action} {collection} in this app")
+
+
+class ReportIn(BaseModel):
+    message: str
+
+
+@router.post("/_report")
+async def report_error(body: ReportIn, x_app_token: str | None = Header(None)):
+    """The preview reports an error; fixing it later can be free."""
+    pid, oid, role = _auth(x_app_token, "errors")
+    if role != "owner":
+        return {"ok": True}
+    async with conn() as c:
+        n = await c.fetchval(
+            "SELECT count(*) FROM app_errors WHERE project_id=$1 AND created_at > now() - interval '1 day'", pid)
+        if n < 30:
+            await c.execute(
+                """INSERT INTO app_errors (org_id, project_id, message) VALUES ($1,$2,$3)
+                   ON CONFLICT (project_id, message) DO NOTHING""",
+                oid, pid, body.message.strip()[:500])
+    return {"ok": True}
 
 
 def _row(r) -> dict:
@@ -59,7 +93,8 @@ def _size(data: dict) -> None:
 
 @router.get("/{collection}")
 async def list_records(collection: str, x_app_token: str | None = Header(None)):
-    pid, oid = _auth(x_app_token, collection)
+    pid, oid, role = _auth(x_app_token, collection)
+    await _allow(pid, role, collection, "read")
     async with conn() as c:
         rows = await c.fetch(
             """SELECT id, data, created_at FROM app_records
@@ -70,7 +105,8 @@ async def list_records(collection: str, x_app_token: str | None = Header(None)):
 
 @router.post("/{collection}")
 async def add_record(collection: str, body: RecordIn, x_app_token: str | None = Header(None)):
-    pid, oid = _auth(x_app_token, collection)
+    pid, oid, role = _auth(x_app_token, collection)
+    await _allow(pid, role, collection, "write")
     _size(body.data)
     async with conn() as c:
         n = await c.fetchval("SELECT count(*) FROM app_records WHERE project_id=$1", pid)
@@ -85,7 +121,8 @@ async def add_record(collection: str, body: RecordIn, x_app_token: str | None = 
 
 @router.get("/{collection}/{record_id}")
 async def get_record(collection: str, record_id: int, x_app_token: str | None = Header(None)):
-    pid, oid = _auth(x_app_token, collection)
+    pid, oid, role = _auth(x_app_token, collection)
+    await _allow(pid, role, collection, "read")
     async with conn() as c:
         r = await c.fetchrow(
             """SELECT id, data, created_at FROM app_records
@@ -99,7 +136,8 @@ async def get_record(collection: str, record_id: int, x_app_token: str | None = 
 @router.patch("/{collection}/{record_id}")
 async def update_record(collection: str, record_id: int, body: RecordIn,
                         x_app_token: str | None = Header(None)):
-    pid, oid = _auth(x_app_token, collection)
+    pid, oid, role = _auth(x_app_token, collection)
+    await _allow(pid, role, collection, "manage")
     _size(body.data)
     async with conn() as c:
         r = await c.fetchrow(
@@ -114,7 +152,8 @@ async def update_record(collection: str, record_id: int, body: RecordIn,
 
 @router.delete("/{collection}/{record_id}")
 async def delete_record(collection: str, record_id: int, x_app_token: str | None = Header(None)):
-    pid, oid = _auth(x_app_token, collection)
+    pid, oid, role = _auth(x_app_token, collection)
+    await _allow(pid, role, collection, "manage")
     async with conn() as c:
         res = await c.execute(
             "DELETE FROM app_records WHERE id=$1 AND project_id=$2 AND org_id=$3 AND collection=$4",

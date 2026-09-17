@@ -120,23 +120,41 @@ async def seed(project_id: int, org_id: int) -> None:
 
 # ---------------------------------------------------------------- app tokens
 
-def token(project_id: int, org_id: int) -> str:
-    body = f"{project_id}.{org_id}.{int(time.time()) + TOKEN_TTL}"
+ROLES = ("owner", "public")
+PUBLIC_TTL = 7 * 24 * 3600
+
+
+def token(project_id: int, org_id: int, role: str = "owner") -> str:
+    ttl = PUBLIC_TTL if role == "public" else TOKEN_TTL
+    body = f"{project_id}.{org_id}.{role}.{int(time.time()) + ttl}"
     sig = hmac.new(settings.secret_key.encode(), b"appdata:" + body.encode(), hashlib.sha256).hexdigest()[:32]
     return base64.urlsafe_b64encode(f"{body}.{sig}".encode()).decode().rstrip("=")
 
 
-def verify(tok: str) -> tuple[int, int]:
+def verify(tok: str) -> tuple[int, int, str]:
     try:
         raw = base64.urlsafe_b64decode(tok + "=" * (-len(tok) % 4)).decode()
-        pid, oid, exp, sig = raw.split(".")
+        pid, oid, role, exp, sig = raw.split(".")
     except (ValueError, UnicodeDecodeError):
         raise AppError("invalid app token")
-    want = hmac.new(settings.secret_key.encode(), f"appdata:{pid}.{oid}.{exp}".encode(),
+    want = hmac.new(settings.secret_key.encode(), f"appdata:{pid}.{oid}.{role}.{exp}".encode(),
                     hashlib.sha256).hexdigest()[:32]
-    if not hmac.compare_digest(sig, want) or int(exp) < time.time():
+    if not hmac.compare_digest(sig, want) or int(exp) < time.time() or role not in ROLES:
         raise AppError("invalid or expired app token")
-    return int(pid), int(oid)
+    return int(pid), int(oid), role
+
+
+def rules(app_files: dict[str, str]) -> dict:
+    """Access rules from app.json. Anything not declared is owner-only when published."""
+    try:
+        raw = json.loads(app_files.get("app.json") or "{}")
+    except ValueError:
+        return {}
+    out = {}
+    for name, r in (raw.get("collections") or {}).items():
+        if isinstance(r, dict) and re.match(r"^[a-z][a-z0-9_]{0,40}$", str(name)):
+            out[name] = {k: ("public" if r.get(k) == "public" else "owner") for k in ("read", "write", "manage")}
+    return out
 
 
 # ---------------------------------------------------------------- preview
@@ -208,13 +226,20 @@ const collection = (name) => ({
   update: (id, data) => call('PATCH', '/' + name + '/' + id, { data }),
   remove: (id) => call('DELETE', '/' + name + '/' + id),
 });
-window.creai = { db: { collection } };
+const report = (message) => fetch(API + '/_report', { method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-App-Token': TOKEN },
+  body: JSON.stringify({ message }) }).catch(() => {});
+window.creai = { db: { collection }, report };
 """
 
 RUNNER = """
 const files = JSON.parse(document.getElementById('files').textContent);
 const urls = {};
-const report = (msg) => parent.postMessage({ type: 'creai-app-error', message: String(msg).slice(0, 800) }, '*');
+const report = (msg) => {
+  const message = String(msg).slice(0, 500);
+  parent.postMessage({ type: 'creai-app-error', message }, '*');
+  if (window.creai && window.creai.report) window.creai.report(message);
+};
 window.addEventListener('error', e => report(e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => report(e.reason && e.reason.message || e.reason));
 function resolve(from, spec) {

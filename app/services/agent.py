@@ -367,6 +367,12 @@ Rules for the code:
 - Make it feel finished: real screens for the core flow, validation on forms, helpful
   empty states, and specific copy. No lorem ipsum, no fake data presented as real; sample
   data only if the person asks, and label it.
+- Access when published: visitors can only do what app.json allows. Write it as
+  {"collections": {"bookings": {"read": "owner", "write": "public"}}}. read = list/get,
+  write = add new records, manage = edit/delete. Anything not listed is owner-only.
+  Public forms (bookings, sign-ups, orders): write public, read owner. Public listings
+  (menu, catalogue): read public. Never make personal data publicly readable. Visitor
+  calls that aren't allowed fail with a clear error, so show a friendly message.
 Workflow: list_files, then write_files with complete file contents (you may write several
 files in one call), then reply briefly with what the app does and one question. If the
 person reports a preview error, read the file named in it and fix the cause.
