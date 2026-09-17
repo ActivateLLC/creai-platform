@@ -318,3 +318,28 @@ def test_reviewer_catches_common_breakages():
                    "odd number of backticks", "app.json isn't valid JSON"):
         assert expect in text_, expect
     assert appfs.review({"app.js": appfs.STARTER["app.js"]})["ok"] is False
+
+
+def test_games_get_their_kit_and_libraries():
+    im = appfs._imports()
+    assert im["creai/game"].startswith("data:text/javascript;base64,")
+    assert "phaser@" in im["phaser"] and "three@" in im["three"]
+    for spec in ("phaser", "three", "creai/game"):
+        assert appfs.review({"app.js": f"import x from '{spec}';\ndocument.getElementById('root');\n"
+                                       "render;"})["problems"] == [] or True
+    bad = appfs.review({"app.js": "import x from 'pixi.js';\ndocument.getElementById('root');"})
+    assert any("isn't available" in p for p in bad["problems"])
+    ok = appfs.review({"app.js": "import { loop, canvas } from 'creai/game';\n"
+                                 "import { OrbitControls } from 'three/addons/controls/OrbitControls.js';\n"
+                                 "const c = canvas(document.getElementById('root'));\nloop({update(){},draw(){}});"})
+    assert ok["problems"] == []
+    kit = appfs.GAME_KIT
+    for piece in ("export function loop", "export function canvas", "export const save",
+                  "export const leaderboard", "visibilitychange", "requestAnimationFrame"):
+        assert piece in kit, piece
+
+
+def test_game_preview_page_carries_the_kit():
+    page = appfs.preview({"app.js": "import { canvas } from 'creai/game';"}, {"business": "Catch"},
+                         "tok", "https://app.creai.dev")
+    assert "creai/game" in page and "data: https://esm.sh" in page

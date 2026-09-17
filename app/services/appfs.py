@@ -23,10 +23,17 @@ from . import site as site_spec
 PREACT = "10.29.8"
 HTM = "3.1.1"
 ESM = "https://esm.sh"
+PHASER = "3.90.0"
+THREE = "0.170.0"
 IMPORTS = {
     "preact": f"{ESM}/preact@{PREACT}",
     "preact/hooks": f"{ESM}/preact@{PREACT}/hooks",
     "htm/preact": f"{ESM}/htm@{HTM}/preact?external=preact",
+    # games: 2D and 3D, pinned like everything else
+    "phaser": f"{ESM}/phaser@{PHASER}",
+    "three": f"{ESM}/three@{THREE}",
+    "three/addons/": f"{ESM}/three@{THREE}/examples/jsm/",
+    "creai/game": "",                        # filled in per preview from GAME_KIT
 }
 
 PATH = re.compile(r"^(?:[a-z0-9][a-z0-9_-]{0,40}/){0,3}[a-z0-9][a-z0-9_.-]{0,60}\.(js|css|json|md)$")
@@ -287,7 +294,7 @@ def preview(app_files: dict[str, str], site: dict, app_token: str, api_base: str
     blob = json.dumps(code).replace("</", "<\\/")
     sdk = SDK.replace("__API__", json.dumps(api_base.rstrip("/") + "/v1/appdata")) \
              .replace("__TOKEN__", json.dumps(app_token))
-    csp = ("default-src 'none'; script-src 'unsafe-inline' blob: https://esm.sh; "
+    csp = ("default-src 'none'; script-src 'unsafe-inline' blob: data: https://esm.sh; "
            "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
            f"img-src data: blob: https:; media-src blob: https:; connect-src {api_base.rstrip('/')} https://esm.sh; "
            "form-action 'none'; base-uri 'none'")
@@ -297,12 +304,20 @@ def preview(app_files: dict[str, str], site: dict, app_token: str, api_base: str
 <title>{site_spec.html.escape(s['business'] or 'App')}</title>
 {site_spec._fonts(t)}
 <style>{kit_css(s)}</style>
-<script type="importmap">{json.dumps({"imports": IMPORTS})}</script>
+<script type="importmap">{json.dumps({"imports": _imports()})}</script>
 </head><body><div id="root"></div>
 <script id="files" type="application/json">{blob}</script>
 <script>{sdk}</script>
 <script type="module">{RUNNER}</script>
 </body></html>"""
+
+
+def _imports() -> dict:
+    """The sandbox's module map. The game kit rides along as a pinned data module so a
+    game can `import { loop, canvas } from 'creai/game'` with no network call."""
+    import base64
+    return dict(IMPORTS, **{"creai/game": "data:text/javascript;base64,"
+                            + base64.b64encode(GAME_KIT.encode()).decode()})
 
 
 # ---------------------------------------------------------------- self-review
@@ -380,8 +395,9 @@ def review(app_files: dict[str, str]) -> dict:
                         name = item.strip().split(" as ")[0].strip()
                         if name and name not in names:
                             problems.append(f"{path}: imports {{ {name} }} from {target}, which doesn't export it.")
-            elif spec not in IMPORTS:
-                problems.append(f"{path}: '{spec}' isn't available. Use only preact, preact/hooks and htm/preact.")
+            elif spec not in IMPORTS and not spec.startswith("three/addons/"):
+                problems.append(f"{path}: '{spec}' isn't available. Use preact, preact/hooks, htm/preact, "
+                                "phaser, three or creai/game.")
             for item in re.split(r"[,{}\s]+", what):
                 item = item.strip()
                 if item and item not in ("*", "as"):
@@ -425,3 +441,113 @@ def review(app_files: dict[str, str]) -> dict:
     if used and not re.search(r"[Ll]oading", code_all):
         notes.append("No loading state found while data loads.")
     return {"ok": not problems, "problems": problems[:20], "notes": notes[:10]}
+
+
+# ---------------------------------------------------------------- games
+
+GAME_KIT = r"""
+// creai/game — the plumbing every browser game needs, so the agent writes the game.
+const listeners = new Set();
+export const keys = Object.create(null);
+const pressed = Object.create(null);
+addEventListener('keydown', (e) => { keys[e.key] = true; pressed[e.key] = true; if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault(); });
+addEventListener('keyup', (e) => { keys[e.key] = false; });
+export function tapped(key) { const was = pressed[key]; pressed[key] = false; return !!was; }
+
+export function pointer(canvas) {
+  const p = { x: 0, y: 0, down: false, tapped: false };
+  const at = (e) => { const r = canvas.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e;
+    p.x = (t.clientX - r.left) * (canvas.width / r.width); p.y = (t.clientY - r.top) * (canvas.height / r.height); };
+  canvas.addEventListener('pointerdown', (e) => { at(e); p.down = true; p.tapped = true; });
+  canvas.addEventListener('pointermove', at);
+  addEventListener('pointerup', () => { p.down = false; });
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); at(e); p.down = true; p.tapped = true; }, { passive: false });
+  return p;
+}
+
+// A fixed-step loop: the same speed on every machine, paused when the tab is hidden.
+export function loop({ update, draw, step = 1 / 60 }) {
+  let last = performance.now(), acc = 0, raf = 0, running = true, fps = 60, frames = 0, fpsAt = last;
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    if (!running) { last = now; return; }
+    acc += Math.min(0.25, (now - last) / 1000); last = now;
+    while (acc >= step) { update(step); acc -= step; }
+    draw(acc / step);
+    frames++; if (now - fpsAt > 1000) { fps = frames * 1000 / (now - fpsAt); frames = 0; fpsAt = now; }
+  }
+  raf = requestAnimationFrame(frame);
+  const onVis = () => { running = document.visibilityState === 'visible'; };
+  document.addEventListener('visibilitychange', onVis);
+  const api = { stop() { cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); },
+                pause() { running = false; }, resume() { running = true; }, get fps() { return fps; },
+                get running() { return running; } };
+  listeners.add(api);
+  return api;
+}
+
+// A canvas that fills its box, stays sharp on phones, and reports its own size.
+export function canvas(host, { width = 480, height = 800, fit = 'contain' } = {}) {
+  const box = host || document.getElementById('root');
+  // the game fills the screen, letterboxed, with nothing to scroll
+  document.documentElement.style.height = '100%';
+  document.body.style.cssText += ';margin:0;height:100%;overflow:hidden;background:var(--bg,#0b0d10)';
+  box.style.cssText += ';display:grid;place-items:center;height:100dvh;width:100%';
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  c.style.cssText = `display:block;max-width:100%;max-height:100dvh;aspect-ratio:${width}/${height};` +
+                    `object-fit:${fit};touch-action:none`;
+  box.append(c);
+  return c;
+}
+
+export function sprite(url) {
+  const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url;
+  return new Promise((ok, no) => { img.onload = () => ok(img); img.onerror = () => no(new Error('could not load ' + url)); });
+}
+
+export async function loadAll(map) {
+  const out = {};
+  await Promise.all(Object.entries(map).map(async ([k, url]) => { out[k] = await sprite(url); }));
+  return out;
+}
+
+// Sound without files: short tones for jumps, hits and points.
+let audio;
+export function beep({ freq = 440, ms = 90, type = 'square', gain = 0.05 } = {}) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = gain;
+    o.connect(g); g.connect(audio.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + ms / 1000);
+    o.stop(audio.currentTime + ms / 1000);
+  } catch (e) {}
+}
+
+// Saves and scores go through the app's own data, so the owner's rules apply.
+const saves = window.creai.db.collection('saves');
+const scores = window.creai.db.collection('scores');
+export const save = {
+  async load(slot = 'default') {
+    const all = await saves.list();
+    return (all.items || all || []).find((r) => r.slot === slot) || null;
+  },
+  async put(data, slot = 'default') {
+    const found = await save.load(slot);
+    return found ? saves.update(found.id, { ...data, slot }) : saves.add({ ...data, slot });
+  },
+};
+export const leaderboard = {
+  async top(n = 10) {
+    const all = await scores.list();
+    return (all.items || all || []).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, n);
+  },
+  add: (name, score) => scores.add({ name: String(name).slice(0, 24), score: Math.round(score) }),
+};
+
+export const rand = (a, b) => a + Math.random() * (b - a);
+export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+export const hits = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+"""

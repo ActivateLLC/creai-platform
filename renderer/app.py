@@ -217,6 +217,23 @@ SMOKE = """async (clicks) => {
 }"""
 
 
+CANVAS_CHECK = """async () => {
+  const c = document.querySelector('canvas');
+  if (!c) return null;
+  const frames = await new Promise((ok) => { let n = 0; const t = performance.now();
+    const step = () => { n++; performance.now() - t < 700 ? requestAnimationFrame(step) : ok(n); };
+    requestAnimationFrame(step); });
+  let drew = false;
+  try {
+    const ctx = c.getContext('2d');
+    if (ctx) { const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 0; i < d.length; i += 4000) { if (d[i] !== d[0] || d[i+1] !== d[1] || d[i+2] !== d[2]) { drew = true; break; } } }
+    else drew = true;                                   // webgl: assume drawn, the screenshot shows it
+  } catch (e) { drew = true; }
+  return { width: c.width, height: c.height, fps: Math.round(frames / 0.7), drew };
+}"""
+
+
 @app.post("/smoke")
 async def smoke(body: SmokeIn, x_render_token: str | None = Header(None)):
     check(x_render_token)
@@ -232,6 +249,7 @@ async def smoke(body: SmokeIn, x_render_token: str | None = Header(None)):
         await page.wait_for_timeout(2500)                       # modules load and first render
         out["rendered"] = bool((await page.inner_html("#root")).strip()) if await page.query_selector("#root") else False
         out["text"] = (await page.inner_text("body"))[:1200]
+        out["canvas"] = await page.evaluate(CANVAS_CHECK)
         out["interactions"] = await page.evaluate(SMOKE, body.clicks)
         if body.fill_form:
             form = await page.query_selector("form")

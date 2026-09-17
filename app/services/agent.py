@@ -468,6 +468,17 @@ Platform rules (the preview enforces them):
   Public forms: write public, read owner. Public listings: read public. Never make personal data
   publicly readable, and show a friendly message when a visitor call isn't allowed.
 
+Games:
+- For a game, import { canvas, loop, keys, tapped, pointer, sprite, loadAll, beep, save, leaderboard,
+  rand, clamp, hits } from 'creai/game'. It gives you a fixed-step loop (same speed on every machine,
+  paused with the tab), keyboard, pointer and touch input, image loading, simple sound, saves and a
+  leaderboard through the app's own data.
+- Phaser ('phaser') suits tile and physics games; three ('three', plus 'three/addons/...') suits 3D.
+  Plain canvas through the kit is the lightest and usually the right choice.
+- A game still needs the things people forget: a start screen that says how to play, a pause, a
+  game-over with the score and a way to play again, touch controls that work with one thumb, and a
+  score saved so it survives a refresh. Keep the first playable loop small and make it feel good.
+
 Craft:
 - Every data call has a loading state, an empty state that says what to do next, and error handling
   that tells the person what went wrong in plain words.

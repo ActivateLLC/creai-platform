@@ -89,6 +89,12 @@ def _app_facts(run: dict) -> list[str]:
     form = run.get("form")
     if form and form.get("submitted") and not form.get("page_changed"):
         facts.append("the form submitted but nothing on the page changed — saving may not work")
+    c = run.get("canvas")
+    if c:
+        if not c.get("drew"):
+            facts.append("the game canvas never drew anything — the loop may not be running")
+        elif c.get("fps", 60) < 25:
+            facts.append(f"the game ran at about {c['fps']} frames per second — too slow to feel good")
     for b in (run.get("blocked_requests") or [])[:2]:
         facts.append(f"a request was blocked: {b}")
     return facts
