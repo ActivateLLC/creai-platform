@@ -238,3 +238,23 @@ async def test_balances_are_per_workspace(api):
 async def test_apple_pay_domain_file_is_served(api):
     r = await api.get("/.well-known/apple-developer-merchantid-domain-association")
     assert r.status_code == 200 and len(r.content) > 1000
+
+
+async def test_payments_still_work_if_klarna_is_off(api, monkeypatch):
+    tok, _ = await new_user(api)
+    tried = []
+
+    def stripe(req):
+        form = dict(httpx.QueryParams(req.content.decode()))
+        methods = [v for k, v in form.items() if k.startswith("payment_method_types")]
+        tried.append(methods)
+        if "klarna" in methods:
+            return httpx.Response(400, json={"error": {"message":
+                "The payment method type \"klarna\" is invalid. Please ensure it is activated."}})
+        return httpx.Response(200, json={"id": "pi_2", "client_secret": "pi_2_secret"})
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(stripe), **kw))
+    r = await api.post("/v1/billing/pay", headers=auth(tok), json={"pack": "starter"})
+    assert r.status_code == 200 and r.json()["client_secret"] == "pi_2_secret"
+    assert tried == [["card", "klarna"], ["card"]]

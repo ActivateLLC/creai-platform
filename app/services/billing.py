@@ -190,7 +190,7 @@ async def create_payment(org_id: int, user_id: int, email: str, pack_id: str) ->
         raise BillingError("unknown pack")
     if settings.missing_for("billing") or not settings.stripe_publishable_key:
         raise BillingError("payments are not switched on yet")
-    intent = await _stripe("POST", "/payment_intents", {
+    params = {
         "amount": pack["price_cents"],
         "currency": "usd",
         "payment_method_types": PAYMENT_METHODS,
@@ -199,7 +199,16 @@ async def create_payment(org_id: int, user_id: int, email: str, pack_id: str) ->
         "statement_descriptor_suffix": STATEMENT_SUFFIX,
         "metadata": {"app": "creai", "org_id": org_id, "pack": pack_id,
                      "user_id": user_id, "credits": pack["credits"]},
-    })
+    }
+    try:
+        intent = await _stripe("POST", "/payment_intents", params)
+    except BillingError as exc:
+        # If Klarna isn't activated on the account, the processor rejects the
+        # whole intent. Fall back to cards and wallets rather than blocking sales.
+        if "klarna" not in str(exc).lower():
+            raise
+        intent = await _stripe("POST", "/payment_intents",
+                               params | {"payment_method_types": ["card"]})
     return {"client_secret": intent["client_secret"],
             "publishable_key": settings.stripe_publishable_key,
             "amount": pack["price_cents"], "credits": pack["credits"],
