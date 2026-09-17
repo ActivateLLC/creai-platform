@@ -28,7 +28,7 @@ class RegistrarError(RuntimeError):
 
 
 def configured() -> bool:
-    return bool(settings.cloudflare_token and settings.cloudflare_account_id)
+    return bool(settings.cloudflare_registrar_token and settings.cloudflare_account_id)
 
 
 def credits_for(cost_usd: float) -> int:
@@ -40,7 +40,8 @@ def _url(path: str) -> str:
 
 
 def _headers() -> dict:
-    return {"Authorization": f"Bearer {settings.cloudflare_token}", "Content-Type": "application/json"}
+    return {"Authorization": f"Bearer {settings.cloudflare_registrar_token}",
+            "Content-Type": "application/json"}
 
 
 def _shape(d: dict) -> dict:

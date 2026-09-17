@@ -35,9 +35,16 @@ class Settings:
     railway_token: str = _req("RAILWAY_TOKEN", "")
     railway_project_id: str = _req("RAILWAY_PROJECT_ID", "")
 
-    # DNS — Cloudflare
-    cloudflare_token: str = _req("CLOUDFLARE_API_TOKEN", "")
-    cloudflare_account_id: str = _req("CLOUDFLARE_ACCOUNT_ID", "")
+    # DNS — Cloudflare, a zone-scoped token (Zone:Zone:Read, Zone:DNS:Edit)
+    cloudflare_token: str = _token("CLOUDFLARE_API_TOKEN")
+    cloudflare_account_id: str = _token("CLOUDFLARE_ACCOUNT_ID")
+
+    # Buying domains — a different token, and necessarily so: Registrar lives on an
+    # account-owned token (Registrar Domains: Admin) and a zone token cannot reach it,
+    # while this one cannot edit DNS. Falls back to the DNS token so an older
+    # deployment keeps working, but they are not interchangeable.
+    cloudflare_registrar_token: str = (_token("CLOUDFLARE_REGISTRAR_TOKEN")
+                                       or _token("CLOUDFLARE_API_TOKEN"))
 
     # where a customer domain points
     origin_ip: str = _req("ORIGIN_IP", "76.76.21.21")
@@ -112,7 +119,7 @@ class Settings:
             "games": bool(self.build_url and self.build_token),
             "review": bool(self.render_url and self.render_token),
             "uploads": bool(self.assets_bucket and self.assets_key_id and self.assets_secret and self.assets_endpoint),
-            "registrar": bool(self.cloudflare_token and self.cloudflare_account_id),
+            "registrar": bool(self.cloudflare_registrar_token and self.cloudflare_account_id),
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
             "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,

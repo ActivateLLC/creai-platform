@@ -30,6 +30,7 @@ SITE = {"business": "Shine Detailing", "headline": "Your car, spotless", "layout
 async def api(monkeypatch):
     object.__setattr__(settings, "secret_key", "test-secret-key-" + "x" * 16)
     object.__setattr__(settings, "cloudflare_token", "cf-test")
+    object.__setattr__(settings, "cloudflare_registrar_token", "cf-registrar-test")
     object.__setattr__(settings, "cloudflare_account_id", "acct")
     from app.api import sites
     sites._cache.clear()
@@ -38,6 +39,7 @@ async def api(monkeypatch):
         yield c
     await db.disconnect()
     object.__setattr__(settings, "cloudflare_token", "")
+    object.__setattr__(settings, "cloudflare_registrar_token", "")
 
 
 class Registry:
@@ -94,6 +96,7 @@ def test_pricing_and_host_record_translation():
 
 async def test_search_when_registrar_off(api, monkeypatch):
     object.__setattr__(settings, "cloudflare_token", "")
+    object.__setattr__(settings, "cloudflare_registrar_token", "")
     tok, _ = await workspace(api)
     r = (await api.get("/v1/domains/search?q=shine", headers=auth(tok))).json()
     assert r["registrar_connected"] is False and r["results"] == []
