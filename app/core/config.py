@@ -51,6 +51,11 @@ class Settings:
     google_client_id: str = _req("GOOGLE_CLIENT_ID", "")
     google_client_secret: str = _req("GOOGLE_CLIENT_SECRET", "")
 
+    # social publishing — CreAI's self-hosted Postiz
+    postiz_url: str = _req("POSTIZ_URL",
+                           "https://postiz-v2113-production-ed5a.up.railway.app/api/public/v1")
+    postiz_api_key: str = _req("POSTIZ_API_KEY", "")
+
     # agent — Anthropic, called over HTTP
     anthropic_key: str = _req("ANTHROPIC_API_KEY", "")
     agent_model: str = _req("AGENT_MODEL", "claude-fable-5-1")          # "Best"

@@ -100,3 +100,55 @@ async def audit(limit: int = 100, admin=Depends(T.platform_admin)):
                FROM admin_access_log l JOIN users u ON u.id = l.admin_id
                ORDER BY l.at DESC LIMIT $1""", min(limit, 500))
     return [dict(r) | {"at": r["at"].isoformat()} for r in rows]
+
+
+# ---------------------------------------------------------------- social channels
+
+from pydantic import BaseModel  # noqa: E402
+
+from ..services import social_publish  # noqa: E402
+
+
+class AssignIn(BaseModel):
+    integration_id: str
+    org_id: int
+
+
+@router.get("/social")
+async def social_overview(admin=Depends(T.platform_admin)):
+    """Postiz health and which connected account belongs to which workspace."""
+    try:
+        listed = await social_publish.integrations()
+    except social_publish.PostizError as exc:
+        raise HTTPException(503, str(exc))
+    async with conn() as c:
+        owned = {r["postiz_id"]: dict(r) for r in await c.fetch(
+            """SELECT s.postiz_id, s.org_id, o.name AS workspace FROM social_channels s
+               JOIN organizations o ON o.id=s.org_id""")}
+    await T.log_admin(admin["user_id"], "admin.social", admin["reason"])
+    return {"connected": True, "channels": [{
+        "id": i["id"], "platform": i.get("identifier"), "name": i.get("name"),
+        "disabled": i.get("disabled"), "owner": owned.get(i["id"]),
+    } for i in listed]}
+
+
+@router.post("/social/assign")
+async def social_assign(body: AssignIn, admin=Depends(T.platform_admin)):
+    async with conn() as c:
+        if not await c.fetchval("SELECT 1 FROM organizations WHERE id=$1", body.org_id):
+            raise HTTPException(404, "no such workspace")
+    try:
+        row = await social_publish.assign(body.integration_id, body.org_id)
+    except social_publish.PostizError as exc:
+        raise HTTPException(400, str(exc))
+    await T.log_admin(admin["user_id"], "admin.social.assign",
+                      f"{admin['reason']} · {body.integration_id} → {body.org_id}")
+    return {"network": row["network"], "org_id": row["org_id"]}
+
+
+@router.post("/social/unassign")
+async def social_unassign(body: AssignIn, admin=Depends(T.platform_admin)):
+    await social_publish.unassign(body.integration_id)
+    await T.log_admin(admin["user_id"], "admin.social.unassign",
+                      f"{admin['reason']} · {body.integration_id}")
+    return {"ok": True}

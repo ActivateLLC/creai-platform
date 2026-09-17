@@ -64,7 +64,8 @@ async def calendar(project_id: int | None = None, days: int = 60,
     async with conn() as c:
         rows = await c.fetch(
             """SELECT id, project_id, payload, state, scheduled_for, created_at FROM approvals
-               WHERE org_id=$1 AND kind='post' AND state IN ('pending','approved')
+               WHERE org_id=$1 AND kind='post'
+                 AND state IN ('pending','approved','held','sending','scheduled','failed')
                  AND ($2::bigint IS NULL OR project_id=$2)
                  AND (scheduled_for IS NULL OR scheduled_for <= $3)
                ORDER BY scheduled_for NULLS LAST, created_at""",
@@ -75,4 +76,6 @@ async def calendar(project_id: int | None = None, days: int = 60,
         "text": (r["payload"] or {}).get("text"),
         "link": (r["payload"] or {}).get("link"),
         "scheduled_for": r["scheduled_for"].isoformat() if r["scheduled_for"] else None,
+        "delivery": {k: v for k, v in ((r["payload"] or {}).get("delivery") or {}).items()
+                     if k in ("reason", "channel", "at")},
     } for r in rows]}

@@ -262,6 +262,21 @@ CREATE TABLE IF NOT EXISTS identities (
   PRIMARY KEY (provider, subject)
 );
 
+-- Social accounts connected through Postiz, each owned by exactly one workspace.
+CREATE TABLE IF NOT EXISTS social_channels (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  postiz_id   TEXT NOT NULL UNIQUE,
+  network     TEXT NOT NULL,
+  identifier  TEXT NOT NULL,
+  name        TEXT,
+  picture     TEXT,
+  status      TEXT NOT NULL DEFAULT 'active',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS social_channels_org_idx ON social_channels(org_id, network);
+
 -- Short-lived sign-in handshakes and one-time handoff codes (no org yet).
 CREATE TABLE IF NOT EXISTS login_states (
   id          TEXT PRIMARY KEY,
@@ -290,7 +305,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels",
 )
 
 

@@ -685,6 +685,28 @@ async function loadDomains() {
 }
 
 // posts
+const STATE_LABEL = { approved: ['Approved', 'var(--leaf)'], sending: ['Sending', 'var(--leaf)'],
+  scheduled: ['Scheduled', 'var(--leaf)'], held: ['Waiting', 'var(--warn)'], failed: ['Didn\'t send', 'var(--err)'] };
+async function loadCalendar(pane) {
+  let cal = [];
+  try { cal = (await api('/v1/marketing/calendar' + (S.project ? '?project_id=' + S.project.id : ''))).posts; } catch (_) { return; }
+  cal = cal.filter(p => p.state !== 'pending');
+  if (!cal.length) return;
+  pane.append(el('p', 'label', 'Calendar'));
+  for (const p of cal) {
+    const c = el('div', 'card');
+    const when = p.scheduled_for ? new Date(p.scheduled_for).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'As soon as possible';
+    const top = el('div', 'row'); top.append(el('strong', null, (NETWORKS[p.network] || p.network || 'Post') + ' · ' + when));
+    const [label, color] = STATE_LABEL[p.state] || [p.state, 'var(--dim)'];
+    const tag = el('span', 'tag', label); tag.style.color = color; tag.style.marginLeft = 'auto'; top.append(tag);
+    c.append(top, el('div', null, p.text || ''));
+    if (p.delivery && p.delivery.reason) c.append(el('p', 'note', p.delivery.reason));
+    else if (p.delivery && p.delivery.channel) c.append(el('p', 'note', 'Going out on ' + p.delivery.channel + '.'));
+    const pull = el('button', 'btn', 'Cancel post'); pull.type = 'button';
+    pull.onclick = async () => { pull.disabled = true; await api('/v1/approvals/' + p.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
+    c.append(pull); pane.append(c);
+  }
+}
 async function loadPosts() {
   if (!S.token) return;
   const pane = $('pPosts'); pane.replaceChildren();
@@ -719,7 +741,7 @@ async function loadPosts() {
   }
   rows = rows.filter(r => r.kind === 'post')
     .sort((a, b) => (a.scheduled_for || '9') < (b.scheduled_for || '9') ? -1 : 1);
-  if (rows.length) pane.append(el('p', 'note', 'Approved posts publish on schedule once your social accounts are connected under Connect.'));
+  if (rows.length) pane.append(el('p', 'note', 'Approved posts go out on schedule to your connected accounts.'));
   for (const r of rows) {
     const p = r.payload || {}, c = el('div', 'card');
     const whenTxt = r.scheduled_for ? new Date(r.scheduled_for).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : (p.when || 'Not scheduled');
@@ -734,6 +756,7 @@ async function loadPosts() {
     no.onclick = async () => { await api('/v1/approvals/' + r.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
     acts.append(ok, no); c.append(acts); pane.append(c);
   }
+  await loadCalendar(pane);
 }
 
 $('fGrow').onsubmit = async (e) => {
@@ -773,9 +796,21 @@ async function loadConnections() {
   let list = [];
   try { list = await api('/v1/connections'); } catch (e) { pane.append(el('p', 'err', e.message)); return; }
   const social = el('div', 'card');
-  social.append(el('p', 'label', 'Social channels'),
-    el('p', 'note', 'Instagram, Facebook, Google Business Profile, LinkedIn, TikTok and X. Connecting them here is coming next; until then CreAI drafts and schedules posts for your approval.'));
+  social.append(el('p', 'label', 'Social channels'));
   pane.append(social);
+  api('/v1/channels').then(r => {
+    if (r.channels.length) {
+      for (const ch of r.channels) {
+        const row = el('div', 'siteRow');
+        const g = el('div', 'grow'); g.append(el('strong', null, NETWORKS[ch.network] || ch.network), el('div', 'note', ch.name || ''));
+        const t = el('span', 'tag', 'Connected'); t.style.color = 'var(--leaf)';
+        row.append(g, t); social.append(row);
+      }
+    }
+    social.append(el('p', 'note', r.channels.length
+      ? 'Approved posts publish to these accounts on schedule. To add another account, email contact@creai.dev — self-serve connecting is on the way.'
+      : 'Instagram, Facebook, Google Business Profile, LinkedIn, TikTok and X. To connect your accounts now, email contact@creai.dev and we\'ll set it up with you; self-serve connecting is on the way.'));
+  }).catch(() => {});
   for (const p of list) {
     const card = el('div', 'card');
     const row = el('div', 'prov');

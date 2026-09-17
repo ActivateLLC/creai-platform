@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from ..core import tenancy as T
 from ..core.db import conn, log_event
-from ..services import webflow
+from ..services import social_publish, webflow
 
 router = APIRouter(prefix="/v1/approvals", tags=["approvals"])
 KINDS = {"post", "dns_change", "filing"}
@@ -26,6 +26,8 @@ class DraftIn(BaseModel):
 
 @router.get("")
 async def queue(state: str = "pending", ctx: T.Ctx = Depends(T.current_ctx)):
+    if state not in ("pending", "approved", "held", "scheduled", "failed", "done", "discarded"):
+        raise HTTPException(400, "unknown state")
     async with conn() as c:
         rows = await c.fetch(
             """SELECT id, kind, payload, state, scheduled_for, created_at
@@ -65,6 +67,9 @@ async def approve(approval_id: int, ctx: T.Ctx = Depends(T.requires("approve")))
     if not row:
         raise HTTPException(404, "nothing pending with that id")
     await log_event(ctx.org_id, f"{row['kind']}.approved", "", row["project_id"], ctx.user_id)
+    if row["kind"] == "post":
+        state = await social_publish.deliver(approval_id) if social_publish.configured() else "approved"
+        return {"id": approval_id, "state": state}
     if row["kind"] == "webflow_action":
         # A change to the customer's own site: the person is waiting on it, so
         # it runs now, once, and the outcome is recorded either way.
@@ -92,10 +97,16 @@ async def approve(approval_id: int, ctx: T.Ctx = Depends(T.requires("approve")))
 @router.post("/{approval_id}/discard")
 async def discard(approval_id: int, ctx: T.Ctx = Depends(T.requires("approve"))):
     async with conn() as c:
+        # a post can still be pulled after approval, until it has gone out
         row = await c.fetchrow(
             """UPDATE approvals SET state='discarded', decided_at=now(), decided_by=$3
-               WHERE id=$1 AND org_id=$2 AND state='pending' RETURNING id""",
+               WHERE id=$1 AND org_id=$2
+                 AND (state='pending'
+                      OR (kind='post' AND state IN ('approved','held','scheduled','failed')))
+               RETURNING id, kind, state""",
             approval_id, ctx.org_id, ctx.user_id)
     if not row:
         raise HTTPException(404, "nothing pending with that id")
+    if row["kind"] == "post":
+        await social_publish.cancel(approval_id, ctx.org_id)
     return {"id": approval_id, "state": "discarded"}

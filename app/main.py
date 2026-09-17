@@ -6,6 +6,8 @@ Phase 0 is the launch chain — domains, DNS and deploy — because if that cann
 made reliable, the product's whole wedge does not hold.
 """
 
+import asyncio
+
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,8 +17,9 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
-                  domains, drafts, marketing, orgs, projects)
+                  domains, drafts, marketing, orgs, projects, channels)
 from .core import db
+from .services import social_publish
 from .core.config import settings
 
 logging.basicConfig(level=logging.INFO,
@@ -26,7 +29,12 @@ logging.basicConfig(level=logging.INFO,
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.connect()
+    sweeper = None
+    if social_publish.configured() and settings.env != "development":
+        sweeper = asyncio.create_task(social_publish.sweeper())
     yield
+    if sweeper:
+        sweeper.cancel()
     await db.disconnect()
 
 
@@ -43,7 +51,7 @@ app.add_middleware(
     expose_headers=["X-Draft-Token"],
 )
 
-for r in (agent.router, billing.router, connections.router, marketing.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (agent.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 
