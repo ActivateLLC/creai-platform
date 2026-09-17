@@ -79,6 +79,10 @@ class Settings:
     render_url: str = _req("RENDER_URL", "")
     render_token: str = _token("RENDER_TOKEN")
 
+    # the game builder (Godot web exports)
+    build_url: str = _req("BUILD_URL", "")
+    build_token: str = _token("BUILD_TOKEN")
+
     # file uploads — Railway Bucket (S3-compatible)
     assets_bucket: str = _token("ASSETS_BUCKET")
     assets_key_id: str = _token("ASSETS_ACCESS_KEY_ID")
@@ -99,6 +103,7 @@ class Settings:
             "deploy": bool(self.railway_token),
             "email": bool(self.resend_key),
             "publishing": bool(self.postiz_url and self.postiz_key),
+            "games": bool(self.build_url and self.build_token),
             "review": bool(self.render_url and self.render_token),
             "uploads": bool(self.assets_bucket and self.assets_key_id and self.assets_secret and self.assets_endpoint),
             "registrar": bool(self.cloudflare_token and self.cloudflare_account_id),
