@@ -15,6 +15,7 @@ from app.main import app                                  # noqa: E402
 from app.services import appfs, dns, hosting, registrar   # noqa: E402
 
 from tests.test_isolation import auth, sign_in            # noqa: E402
+from tests.test_social_publish import grant_plan         # noqa: E402
 
 pytestmark = pytest.mark.asyncio
 
@@ -76,7 +77,9 @@ async def balance(api, tok):
 
 @pytest.mark.filterwarnings("ignore")
 def test_pricing_and_host_record_translation():
-    assert registrar.credits_for(10.11) == 1263            # 10.11 * 1.15 + 1.00 = 12.6265 -> 1263
+    assert registrar.credits_for(10.11) == 2022            # retail: max(2x, +$10) -> $20.22
+    assert registrar.credits_for(3.00) == 1300             # cheap endings still carry +$10
+    assert registrar.credits_for(40.00) == 8000
     recs = dns.hosting_records("shine.example", [
         {"fqdn": "shine.example", "recordType": "DNS_RECORD_TYPE_CNAME", "requiredValue": "abc.up.railway.app."},
         {"fqdn": "www.shine.example", "recordType": "DNS_RECORD_TYPE_CNAME", "requiredValue": "def.up.railway.app"},
@@ -100,9 +103,10 @@ async def test_buy_a_domain_end_to_end(api, monkeypatch):
     reg = Registry(); use(monkeypatch, reg)
     tok, org = await workspace(api)
     found = (await api.get("/v1/domains/search?q=shine detailing", headers=auth(tok))).json()
-    assert found["results"][0]["credits"] == 1263
+    assert found["results"][0]["credits"] == 2022
     q = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "https://www.ShineDetailing.com/"})).json()
-    assert q["domain"] == "shinedetailing.com" and q["credits"] == 1263 and "refund" in q["terms"]
+    assert q["domain"] == "shinedetailing.com" and q["credits"] == 2022 and "refund" in q["terms"]
+    assert q["included"] is False and q["hosting_included"] is False
 
     # needs consent, contact and enough credits
     r = await api.post("/v1/domains/purchase", headers=auth(tok), json={"quote_id": q["quote_id"], "accept_terms": False})
@@ -111,19 +115,19 @@ async def test_buy_a_domain_end_to_end(api, monkeypatch):
     assert r.status_code == 400 and "contact" in r.json()["detail"]
     r = await api.post("/v1/domains/purchase", headers=auth(tok),
                        json={"quote_id": q["quote_id"], "accept_terms": True, "contact": CONTACT})
-    assert r.status_code == 402                                           # 150 signup credits < 1263
+    assert r.status_code == 402                                           # 150 signup credits < 2022
     assert not reg.registered
 
     async with db.conn() as c:
-        await c.execute("INSERT INTO credit_ledger (org_id, delta, reason) VALUES ($1, 2000, 'adjustment')", org)
+        await c.execute("INSERT INTO credit_ledger (org_id, delta, reason) VALUES ($1, 3000, 'adjustment')", org)
     before = await balance(api, tok)
     q = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "shinedetailing.com"})).json()
     pid = (await api.post("/v1/projects", headers=auth(tok), json={"name": "Site", "path": "launch"})).json()["id"]
     r = await api.post("/v1/domains/purchase", headers=auth(tok),
                        json={"quote_id": q["quote_id"], "accept_terms": True, "contact": CONTACT, "project_id": pid})
     assert r.status_code == 200, r.text
-    assert r.json()["credits_spent"] == 1263 and r.json()["hosting"]["ok"] is False
-    assert await balance(api, tok) == before - 1263
+    assert r.json()["credits_spent"] == 2022 and r.json()["hosting"]["upgrade"] == "launch"
+    assert await balance(api, tok) == before - 2022
     assert reg.registered == [("shinedetailing.com", CONTACT)]            # in the customer's name
 
     # the same quote can't buy twice
@@ -197,6 +201,7 @@ async def test_hosting_writes_the_records_the_host_asks_for(api, monkeypatch):
     monkeypatch.setattr(dns, "ensure_zone", zone)
     monkeypatch.setattr(dns, "write_records", write)
     tok, org = await workspace(api)
+    await grant_plan(org, "launch")
     async with db.conn() as c:
         await c.execute("INSERT INTO credit_ledger (org_id, delta, reason) VALUES ($1, 5000, 'adjustment')", org)
     q = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "shinehost.com"})).json()
@@ -211,7 +216,8 @@ async def test_hosting_writes_the_records_the_host_asks_for(api, monkeypatch):
     c1 = (await api.post("/v1/domains/connect", headers=auth(tok), json={"name": "mine-unverified.com"})).json()
     ids = {d["name"]: d["id"] for d in (await api.get("/v1/domains", headers=auth(tok))).json()}
     assert (await api.post(f"/v1/domains/{ids['mine-unverified.com']}/host", headers=auth(tok))).status_code == 409
-    other, _ = await workspace(api)
+    other, other_org = await workspace(api)
+    await grant_plan(other_org, "launch")
     await api.post("/v1/domains/connect", headers=auth(other), json={"name": "shinehost.com"})
     oid = (await api.get("/v1/domains", headers=auth(other))).json()[0]["id"]
     async with db.conn() as c:
@@ -230,6 +236,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     slug = pub["url"].rsplit("/", 1)[1]
     page = await api.get(f"/s/{slug}")
     assert page.status_code == 200 and "Your car, spotless" in page.text
+    assert "Made with CreAI" in page.text                               # free plan shows the badge
     assert "script-src 'none'" in page.headers["content-security-policy"]
     assert (await api.get("/s/nope-000000")).status_code == 404
 
@@ -238,6 +245,8 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     assert (await api.post(f"/v1/sites/{pid}/publish", headers=auth(other))).status_code == 404
 
     # attach a domain and request it by Host
+    await grant_plan(org, "launch")
+    assert "Made with CreAI" not in (await api.get(f"/s/{slug}")).text
     async with db.conn() as c:
         await c.execute("""INSERT INTO domains (org_id, project_id, name, source, status)
                            VALUES ($1,$2,$3,'registered','registered')""", org, pid, served)
@@ -269,6 +278,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
 
 async def test_published_app_on_custom_domain_is_sandboxed(api):
     tok, org = await workspace(api)
+    await grant_plan(org, "growth")
     pid = (await api.post("/v1/projects", headers=auth(tok), json={"name": "App", "path": "app"})).json()["id"]
     await appfs.write(pid, org, {"app.js": "import { html, render } from 'htm/preact';\nrender(html`<p>Hi</p>`, document.getElementById('root'));"})
     assert (await api.post(f"/v1/apps/{pid}/publish", headers=auth(tok))).status_code == 200
@@ -284,7 +294,7 @@ async def test_published_app_on_custom_domain_is_sandboxed(api):
 async def test_renewals_charge_once_per_term(api):
     tok, org = await workspace(api)
     async with db.conn() as c:
-        await c.execute("INSERT INTO credit_ledger (org_id, delta, reason) VALUES ($1, 1500, 'adjustment')", org)
+        await c.execute("INSERT INTO credit_ledger (org_id, delta, reason) VALUES ($1, 1150, 'adjustment')", org)
         did = await c.fetchval(
             """INSERT INTO domains (org_id, name, source, status, expires_at, renewal_credits)
                VALUES ($1,$2,'registered','live', now() + interval '2 hours', 1263) RETURNING id""",
@@ -302,3 +312,80 @@ async def test_renewals_charge_once_per_term(api):
     async with db.conn() as c:
         unpaid = await c.fetchval("SELECT count(*) FROM events WHERE org_id=$1 AND kind='domain.renewal_unpaid'", org)
     assert unpaid == 1
+
+
+
+async def test_yearly_plan_includes_one_domain_and_renewals(api, monkeypatch):
+    reg = Registry(); use(monkeypatch, reg)
+    tok, org = await workspace(api)
+    await grant_plan(org, "launch", "yearly")
+    q = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "yearly-one.com"})).json()
+    assert q["included"] is True and q["credits"] == 0 and q["list_credits"] == 2022 and q["includable"]
+    assert "included while your yearly plan" in q["terms"]
+    before = await balance(api, tok)
+    r = await api.post("/v1/domains/purchase", headers=auth(tok),
+                       json={"quote_id": q["quote_id"], "accept_terms": True, "contact": CONTACT})
+    assert r.status_code == 200 and r.json()["credits_spent"] == 0
+    assert await balance(api, tok) == before
+    hist = (await api.get("/v1/billing", headers=auth(tok))).json()["history"]
+    assert hist[0]["reason"] == "waived" and "yearly plan" in hist[0]["note"]
+
+    # the second domain that year is charged
+    q2 = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "yearly-two.com"})).json()
+    assert q2["included"] is False and q2["credits"] == 2022
+    # two quotes taken while the domain was still unclaimed can't both be free
+    await grant_plan(org, "launch", "yearly")
+    a = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "race-a.com"})).json()
+    b = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "race-b.com"})).json()
+    assert a["included"] and b["included"]
+    ok = await api.post("/v1/domains/purchase", headers=auth(tok), json={"quote_id": a["quote_id"], "accept_terms": True})
+    no = await api.post("/v1/domains/purchase", headers=auth(tok), json={"quote_id": b["quote_id"], "accept_terms": True})
+    assert ok.status_code == 200 and no.status_code == 409
+
+    # an expensive ending isn't covered
+    reg.price = 30.0
+    pricey = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "pricey.io"})).json()
+    assert pricey["included"] is False and pricey["includable"] is False
+
+    # a failed registration gives the included domain back
+    reg.price, reg.fail = 10.11, True
+    await grant_plan(org, "launch", "yearly")
+    f = (await api.post("/v1/domains/quote", headers=auth(tok), json={"domain": "fails.com"})).json()
+    assert (await api.post("/v1/domains/purchase", headers=auth(tok),
+                           json={"quote_id": f["quote_id"], "accept_terms": True})).status_code == 502
+    assert (await api.get("/v1/plans", headers=auth(tok))).json()["current"]["domain_included"] is True
+
+    # renewals are waived while the yearly plan is active
+    async with db.conn() as c:
+        did = await c.fetchval(
+            """INSERT INTO domains (org_id, name, source, status, expires_at, renewal_credits)
+               VALUES ($1,$2,'registered','live', now() + interval '1 hour', 2022) RETURNING id""",
+            org, f"renew-inc-{secrets.token_hex(3)}.com")
+    before = await balance(api, tok)
+    await registrar.renewal_sweep()
+    assert await balance(api, tok) == before
+    async with db.conn() as c:
+        assert (await c.fetchval("SELECT expires_at - now() FROM domains WHERE id=$1", did)).days >= 364
+
+
+async def test_lapsed_plan_falls_back_to_free_address(api):
+    tok, org = await workspace(api)
+    await grant_plan(org, "launch")
+    pid = (await api.post("/v1/projects", headers=auth(tok), json={"name": "Site", "path": "launch"})).json()["id"]
+    async with db.conn() as c:
+        await c.execute("UPDATE projects SET answers=$1 WHERE id=$2", {"site": SITE}, pid)
+    url = (await api.post(f"/v1/sites/{pid}/publish", headers=auth(tok))).json()["url"]
+    host = f"lapse-{secrets.token_hex(3)}.com"
+    async with db.conn() as c:
+        await c.execute("""INSERT INTO domains (org_id, project_id, name, source, status)
+                           VALUES ($1,$2,$3,'registered','live')""", org, pid, host)
+    from app.api import sites
+    sites._cache.clear()
+    assert "Your car, spotless" in (await api.get("/", headers={"Host": host})).text
+    async with db.conn() as c:
+        await c.execute("UPDATE subscriptions SET status='canceled' WHERE org_id=$1", org)
+    sites._cache.clear()
+    r = await api.get("/", headers={"Host": host}, follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].endswith(url.split("/s/")[1])
+    d = (await api.get("/v1/domains", headers=auth(tok))).json()[0]
+    assert (await api.post(f"/v1/domains/{d['id']}/host", headers=auth(tok))).status_code == 402

@@ -732,6 +732,12 @@ async function loadDomains() {
         btn.textContent = 'Publish changes';
       } else { state.textContent = 'Not published yet. You get a free address right away.'; btn.textContent = 'Publish site'; }
     };
+    api('/v1/plans').then(p => {
+      if (p.current.plan !== 'free') return;
+      const up = el('p', 'note', 'Free sites show a small “Made with CreAI” badge. ');
+      const l = el('button', 'btn ghost', 'Remove it with Launch'); l.type = 'button'; l.onclick = openPlans;
+      up.append(l); pubCard.append(up);
+    }).catch(() => {});
     api('/v1/sites/' + S.project.id + '/release').then(show).catch(() => { state.textContent = ''; });
     btn.onclick = async () => {
       btn.disabled = true;
@@ -813,7 +819,16 @@ async function loadDomains() {
       host.onclick = async () => {
         host.disabled = true;
         try {
-          const r = await api('/v1/domains/' + d.id + '/host', { method: 'POST' });
+          let r;
+          try { r = await api('/v1/domains/' + d.id + '/host', { method: 'POST' }); }
+          catch (err) {
+            if (/Launch plan/.test(err.message)) {
+              note.textContent = 'Using your own domain is part of Launch. ';
+              const see = el('button', 'btn ghost', 'See plans'); see.type = 'button'; see.onclick = openPlans;
+              note.append(see); host.disabled = false; return;
+            }
+            throw err;
+          }
           note.textContent = r.ok ? 'Records set. Your address usually works within minutes; the certificate follows shortly after.' : r.message;
           if (r.ok && r.records && !r.written?.length) note.textContent = 'Add these at your registrar: ' + r.records.map(x => x.type + ' ' + x.name + ' → ' + x.content).join(' · ');
         } catch (err) { note.textContent = err.message; }
@@ -838,9 +853,19 @@ async function startPurchase(domain, box) {
   box.replaceChildren();
   if (!quote.available) { box.append(el('p', 'note', quote.message)); return; }
   const card = el('form', 'stack');
-  card.append(el('h3', null, quote.domain),
-    el('p', null, quote.credits.toLocaleString() + ' credits for the first year' + (quote.renewal_credits ? ', then about ' + quote.renewal_credits.toLocaleString() + ' a year.' : '.')),
-    el('p', 'note', quote.terms));
+  card.append(el('h3', null, quote.domain));
+  if (quote.included) card.append(el('p', null, 'Included with your yearly plan — no credits needed.'));
+  else card.append(el('p', null, quote.credits.toLocaleString() + ' credits for the first year.'));
+  card.append(el('p', 'note', quote.terms));
+  if (!quote.hosting_included) {
+    const nudge = el('div', 'card'); nudge.style.borderColor = 'var(--leaf)';
+    nudge.append(el('strong', null, quote.includable ? 'Get this domain free with Launch yearly' : 'Put your site on this domain with Launch'),
+      el('p', 'note', 'Launch puts your site on your own domain, removes the badge and adds 1,000 credits a month.'
+        + (quote.includable ? ' Yearly plans include a domain like this one every year, renewals covered.' : ' Yearly plans include a standard domain (like a .com) every year.')));
+    const see = el('button', 'btn primary', 'See Launch'); see.type = 'button'; see.onclick = openPlans;
+    nudge.append(see); card.append(nudge);
+    card.append(el('p', 'note', 'Or buy just the domain now. Your site stays on its free CreAI address until you add a plan.'));
+  }
   const inputs = {};
   const fields = el('div', 'formgrid');
   for (const [k, label] of CONTACT_FIELDS) {
@@ -861,7 +886,8 @@ async function startPurchase(domain, box) {
   } else card.append(el('p', 'note', 'The domain is registered to you, so the registry needs these details.'));
   card.append(fields);
   const agree = el('label', 'consent'); const cb = el('input'); cb.type = 'checkbox'; cb.required = true;
-  agree.append(cb, 'I understand this costs ' + quote.credits.toLocaleString() + ' credits and can\u2019t be refunded once registered.');
+  agree.append(cb, quote.included ? 'Register ' + quote.domain + ' in my name. I understand registrations can\u2019t be undone.'
+    : 'I understand this costs ' + quote.credits.toLocaleString() + ' credits and can\u2019t be refunded once registered.');
   const btn = el('button', 'btn primary', 'Buy ' + quote.domain); btn.type = 'submit';
   const msg = el('p', 'note', '');
   card.append(agree, btn, msg);
@@ -877,6 +903,7 @@ async function startPurchase(domain, box) {
         contact: (saved && fields.hidden) ? null : contact }) });
       addTool('bought ' + r.domain + ' · ' + r.credits_spent.toLocaleString() + ' credits');
       addAgent(r.domain + ' is yours.' + (r.hosting && r.hosting.ok ? ' It\u2019s pointed at your CreAI site and should work within minutes.' : ' ' + ((r.hosting && r.hosting.message) || '')));
+      if (r.hosting && r.hosting.upgrade) { const row2 = el('div', 'acts'); const b2 = el('button', 'btn', 'See plans'); b2.type = 'button'; b2.onclick = openPlans; row2.append(b2); $('thread').append(row2); }
       loadDomains(); api('/v1/billing').then(b => setBalance(b.balance)).catch(() => {});
     } catch (err) { msg.textContent = err.message; btn.disabled = false; }
   };
@@ -901,7 +928,10 @@ async function loadCalendar(pane) {
     c.append(top);
     if (p.image) { const im = el('img'); im.src = p.image; im.alt = ''; im.loading = 'lazy'; im.style.cssText = 'width:120px;aspect-ratio:1;object-fit:cover;border:1px solid var(--hairline)'; c.append(im); }
     c.append(el('div', null, p.text || ''));
-    if (p.delivery && p.delivery.reason) c.append(el('p', 'note', p.delivery.reason));
+    if (p.delivery && p.delivery.reason) {
+      c.append(el('p', 'note', p.delivery.reason));
+      if (p.delivery.upgrade && !NATIVE) { const g = el('button', 'btn primary', 'See Growth'); g.type = 'button'; g.onclick = openPlans; c.append(g); }
+    }
     else if (p.delivery && p.delivery.channel) c.append(el('p', 'note', 'Going out on ' + p.delivery.channel + '.'));
     const pull = el('button', 'btn', 'Cancel post'); pull.type = 'button';
     pull.onclick = async () => { pull.disabled = true; await api('/v1/approvals/' + p.id + '/discard', { method: 'POST' }).catch(() => {}); loadPosts(); };
@@ -1140,7 +1170,74 @@ function setBalance(n) {
 }
 
 const NETWORKS = { instagram: 'Instagram', facebook: 'Facebook', google_business: 'Google Business', gmb: 'Google Business', linkedin: 'LinkedIn', tiktok: 'TikTok', x: 'X', threads: 'Threads', youtube: 'YouTube', pinterest: 'Pinterest' };
-const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment', waived: 'On us', domain: 'Domain' };
+function openPlans() { showPane('credits'); loadCredits(); }
+async function planCard() {
+  const card = el('div', 'card');
+  let p;
+  try { p = await api('/v1/plans'); } catch (_) { return card; }
+  const cur = p.current;
+  const name = (p.plans.find(x => x.id === cur.plan) || {}).name || 'Free';
+  card.append(el('p', 'label', 'Your plan'));
+  const top = el('div', 'row'); top.append(el('h3', null, name + (cur.interval ? ' · ' + cur.interval : '')));
+  card.append(top);
+  if (cur.plan !== 'free') {
+    const when = cur.renews_at ? new Date(cur.renews_at).toLocaleDateString() : '';
+    card.append(el('p', 'note', cur.cancel_at_period_end ? 'Ends ' + when + '. Your site moves to its free CreAI address after that — nothing goes offline.'
+      : 'Renews ' + when + '. We email you a week before.' + (cur.domain_included ? ' Your included domain is ready to claim under Domain.' : '')));
+    if (NATIVE) card.append(el('p', 'note', 'Manage your plan at app.creai.dev.'));
+    else {
+      const m = el('button', 'btn', 'Manage or cancel plan'); m.type = 'button';
+      m.onclick = async () => { try { location.href = (await api('/v1/plans/portal', { method: 'POST' })).url; } catch (e) { m.textContent = e.message; } };
+      card.append(m);
+    }
+    return card;
+  }
+  card.append(el('p', 'note', 'Build free with credits. Upgrade to put your site on your own domain, drop the badge, and get credits every month.'));
+  let interval = 'yearly';
+  const toggle = el('div', 'row');
+  const yb = el('button', 'btn primary', 'Yearly · 2 months free'), mb = el('button', 'btn', 'Monthly');
+  yb.type = mb.type = 'button';
+  const grid = el('div', 'packs');
+  const draw = () => {
+    yb.className = 'btn' + (interval === 'yearly' ? ' primary' : ''); mb.className = 'btn' + (interval === 'monthly' ? ' primary' : '');
+    grid.replaceChildren();
+    for (const plan of p.plans.filter(x => x.id !== 'free')) {
+      const cents = plan[interval];
+      const c = el('div', 'pack' + (plan.id === 'launch' ? ' best' : ''));
+      c.append(el('span', 'muted', plan.name),
+        el('span', 'price', '$' + (interval === 'yearly' ? (cents / 1200).toFixed(0) : (cents / 100).toFixed(0))),
+        el('span', 'note', interval === 'yearly' ? 'a month, billed $' + (cents / 100).toFixed(0) + ' yearly' : 'a month'));
+      const ul = el('ul'); ul.style.cssText = 'margin:8px 0;padding-left:18px;text-align:left';
+      for (const f of plan.features) {
+        if (interval === 'monthly' && f.startsWith('Yearly')) continue;
+        if (interval === 'monthly' && f.includes('on yearly')) continue;
+        ul.append(el('li', null, f));
+      }
+      c.append(ul);
+      if (NATIVE) c.append(el('span', 'note', 'Upgrade at app.creai.dev'));
+      else {
+        const b = el('button', 'btn' + (plan.id === 'launch' ? ' primary' : ''), 'Choose ' + plan.name); b.type = 'button';
+        b.disabled = !p.can_buy || !p.payments_enabled;
+        b.onclick = async () => {
+          b.disabled = true; b.textContent = 'Opening checkout…';
+          try { location.href = (await api('/v1/plans/checkout', { method: 'POST', body: JSON.stringify({ plan: plan.id, interval }) })).url; }
+          catch (e) { b.textContent = e.message; b.disabled = false; }
+        };
+        c.append(b);
+      }
+      grid.append(c);
+    }
+  };
+  yb.onclick = () => { interval = 'yearly'; draw(); };
+  mb.onclick = () => { interval = 'monthly'; draw(); };
+  toggle.append(yb, mb); card.append(toggle, grid);
+  if (!p.payments_enabled) card.append(el('p', 'note', 'Plans open shortly.'));
+  else if (!p.can_buy) card.append(el('p', 'note', 'Ask your workspace owner to upgrade.'));
+  card.append(el('p', 'note', 'Cancel any time in one tap. If a plan ends, your site stays up on its free CreAI address.'));
+  draw();
+  return card;
+}
+const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment', waived: 'On us', domain: 'Domain', plan: 'Plan credits' };
 async function loadCredits() {
   if (!S.token) return;
   let b;
@@ -1156,6 +1253,7 @@ async function loadCredits() {
   head.append(el('h2', null, b.balance.toLocaleString() + ' credits'),
     el('p', 'muted', 'Best uses about 20 credits a message; Fast about 4.' + (NATIVE ? '' : ' Bigger packs come with bonus credits.')));
   pane.append(head);
+  pane.append(await planCard());
   const capCard = el('div', 'card');
   capCard.append(el('p', 'label', 'Monthly limit'));
   api('/v1/billing/cap').then(cap => {
@@ -1479,12 +1577,18 @@ setTheme(document.documentElement.dataset.theme);
     } catch (e) { S.token = null; }
   }
   const back = qs.get('topup');
+  const planBack = qs.get('plan');
+  if (planBack) history.replaceState(null, '', '/');
   const cn = qs.get('connect') === 'webflow' ? (qs.get('status') || 'ok') : null;
   if (back || cn) history.replaceState(null, '', '/');
   if (S.token) {
     try {
       await afterSignIn(false);
       if (back === 'done') { showPane('credits'); awaitCredit(); }
+      if (planBack === 'started') {
+        addAgent('Thanks for upgrading. Your plan switches on in a few seconds — your own domain, no badge, and monthly credits.');
+        setTimeout(() => { showPane('credits'); loadCredits(); }, 3000);
+      } else if (planBack === 'managed') { showPane('credits'); loadCredits(); }
       if (cn) {
         showPane('connect'); loadConnections();
         addAgent(cn === 'ok' ? 'Webflow is connected. Pick the site you want to work on.' : cn === 'cancelled' ? 'No problem — Webflow wasn\'t connected.' : 'Webflow didn\'t finish connecting. Please try again.');

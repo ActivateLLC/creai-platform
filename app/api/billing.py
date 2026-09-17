@@ -78,6 +78,21 @@ async def webhook(request: Request, stripe_signature: str | None = Header(None))
         if await billing.credit_purchase(intent):
             meta = intent.get("metadata") or {}
             await log_event(int(meta["org_id"]), "billing.credited", meta.get("pack", ""))
+    obj = (event.get("data") or {}).get("object") or {}
+    if kind in ("customer.subscription.created", "customer.subscription.updated",
+                "customer.subscription.deleted"):
+        from ..services import plans
+        if kind.endswith("deleted"):
+            obj = {**obj, "_deleted": True}
+        org = await plans.apply_subscription(obj)
+        if org:
+            await log_event(org, "plan." + kind.rsplit(".", 1)[1], obj.get("status", ""))
+    elif kind == "invoice.paid":
+        from ..services import plans
+        await plans.grant_for_invoice(obj)
+    elif kind == "invoice.upcoming":
+        from ..services import plans
+        await plans.remind_upcoming(obj)
     # Always 200 for events we have verified, so Stripe stops retrying.
     return {"received": True}
 

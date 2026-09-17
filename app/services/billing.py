@@ -120,6 +120,14 @@ async def spend(org_id: int, actor_id: int, credits: int, reason: str, ref: str,
     return True
 
 
+async def record_waived(org_id: int, actor_id: int, ref: str, delta: int, detail: dict) -> None:
+    async with conn() as c:
+        await c.execute(
+            """INSERT INTO credit_ledger (org_id, delta, reason, ref, detail, actor_id)
+               VALUES ($1, 0, 'waived', $2, $3, $4) ON CONFLICT (ref) DO NOTHING""",
+            org_id, ref, detail, actor_id)
+
+
 async def refund(org_id: int, credits: int, ref: str, detail: dict) -> None:
     async with conn() as c:
         await c.execute(

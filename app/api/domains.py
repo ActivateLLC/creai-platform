@@ -14,7 +14,7 @@ from pydantic import BaseModel, EmailStr, Field
 from ..core import tenancy as T
 from ..core.config import settings
 from ..core.db import conn, log_event
-from ..services import billing, dns, hosting, registrar, vault
+from ..services import billing, dns, hosting, plans, registrar, vault
 
 router = APIRouter(prefix="/v1/domains", tags=["domains"])
 
@@ -91,18 +91,26 @@ async def quote(body: QuoteIn, ctx: T.Ctx = Depends(T.requires("billing"))):
                    "extension_not_supported": "That ending isn't supported.",
                    "extension_disallows_registration": "That ending doesn't allow new registrations."}
         return {"domain": name, "available": False, "message": reasons.get(d["reason"], "That domain isn't available.")}
+    cur = await plans.current(ctx.org_id)
+    included = cur["domain_included"] and d["cost_usd"] <= plans.INCLUDED_DOMAIN_MAX_USD
+    price = 0 if included else d["credits"]
     qid = secrets.token_urlsafe(16)
     async with conn() as c:
         await c.execute(
-            """INSERT INTO domain_quotes (id, org_id, domain, cost_usd, credits, renewal_credits, expires_at)
-               VALUES ($1,$2,$3,$4,$5,$6, now() + make_interval(mins => $7))""",
-            qid, ctx.org_id, name, d["cost_usd"], d["credits"], d["renewal_credits"], QUOTE_MINUTES)
-    return {"domain": name, "available": True, "quote_id": qid, "credits": d["credits"],
+            """INSERT INTO domain_quotes (id, org_id, domain, cost_usd, credits, renewal_credits, included, expires_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7, now() + make_interval(mins => $8))""",
+            qid, ctx.org_id, name, d["cost_usd"], price, d["renewal_credits"], included, QUOTE_MINUTES)
+    renew = ("Renewals are included while your yearly plan is active."
+             if cur["interval"] == "yearly" else
+             f"Renews yearly for {d['renewal_credits']:,} credits; we email you first.")
+    return {"domain": name, "available": True, "quote_id": qid, "credits": price,
+            "list_credits": d["credits"], "included": included,
             "renewal_credits": d["renewal_credits"], "cost_usd": d["cost_usd"],
+            "plan": cur["plan"], "hosting_included": cur["plan"] in plans.PAID,
+            "includable": d["cost_usd"] <= plans.INCLUDED_DOMAIN_MAX_USD,
             "expires_in_minutes": QUOTE_MINUTES,
             "terms": "Registered in your name for one year. Registrations can't be refunded once "
-                     "complete. CreAI renews it yearly from your credits and emails you first; you can "
-                     "move it to another registrar any time."}
+                     f"complete. {renew} You can move it to another registrar any time."}
 
 
 @router.get("/contact")
@@ -151,21 +159,32 @@ async def purchase(body: PurchaseIn, ctx: T.Ctx = Depends(T.requires("billing"))
     except registrar.RegistrarError as exc:
         await _quote_state(q["id"], "failed")
         raise HTTPException(503, str(exc))
-    if not fresh["available"] or fresh["credits"] > cost:
+    if not fresh["available"] or fresh["cost_usd"] > float(q["cost_usd"]) + 0.005:
         await _quote_state(q["id"], "failed")
         raise HTTPException(409, "That domain's availability or price just changed. Check it again.")
 
     ref = f"domain:{q['id']}"
-    if not await billing.spend(ctx.org_id, ctx.user_id, cost, "domain", ref, {"domain": name}):
+    if q["included"]:
+        if not await plans.claim_included_domain(ctx.org_id):
+            await _quote_state(q["id"], "failed")
+            raise HTTPException(409, "Your plan's included domain was already used. Check the domain again.")
+        await billing.record_waived(ctx.org_id, ctx.user_id, ref, q["credits"] or 0,
+                                    {"domain": name, "credits": registrar.credits_for(float(q["cost_usd"])),
+                                     "waived": "domain included in your yearly plan"})
+    elif not await billing.spend(ctx.org_id, ctx.user_id, cost, "domain", ref, {"domain": name}):
         await _quote_state(q["id"], "failed")
         raise HTTPException(402, f"This domain costs {cost:,} credits. Top up to buy it.")
     try:
         reg = await registrar.register(name, contact)
     except registrar.RegistrarError as exc:
-        await billing.refund(ctx.org_id, cost, f"refund:{q['id']}", {"domain": name, "why": str(exc)})
+        if q["included"]:
+            await plans.release_included_domain(ctx.org_id)
+        elif cost:
+            await billing.refund(ctx.org_id, cost, f"refund:{q['id']}", {"domain": name, "why": str(exc)})
         await _quote_state(q["id"], "failed")
         await log_event(ctx.org_id, "domain.purchase_failed", name, body.project_id, ctx.user_id)
-        raise HTTPException(502, f"{exc}. Your {cost:,} credits have been returned.")
+        back = f" Your {cost:,} credits have been returned." if cost else " Your included domain is still available."
+        raise HTTPException(502, f"{exc}.{back}")
 
     await _quote_state(q["id"], "bought")
     if body.contact:
@@ -180,7 +199,12 @@ async def purchase(body: PurchaseIn, ctx: T.Ctx = Depends(T.requires("billing"))
             ctx.org_id, body.project_id, name, dns.verify_token(),
             _ts(reg.get("expires_at")), q["renewal_credits"])
     await log_event(ctx.org_id, "domain.purchased", name, body.project_id, ctx.user_id)
-    hosted = await _host(did, ctx.org_id)
+    if await plans.has(ctx.org_id, "custom_domain"):
+        hosted = await _host(did, ctx.org_id)
+    else:
+        hosted = {"ok": False, "upgrade": "launch",
+                  "message": "Your domain is yours. Add a Launch plan to put your site on it — until then your "
+                             "site stays on its free CreAI address."}
     return {"domain": name, "id": did, "status": "registered", "credits_spent": cost,
             "expires_at": reg.get("expires_at"), "hosting": hosted}
 
@@ -287,6 +311,8 @@ async def host_domain(domain_id: int, ctx: T.Ctx = Depends(T.requires("write")))
         raise HTTPException(409, "Another workspace already uses this domain.")
     if d["source"] == "connected" and d["status"] == "pending":
         raise HTTPException(409, "Verify you own this domain first.")
+    if not await plans.has(ctx.org_id, "custom_domain"):
+        raise HTTPException(402, "Using your own domain is part of the Launch plan.")
     out = await _host(domain_id, ctx.org_id)
     await log_event(ctx.org_id, "domain.hosted", d["name"], d["project_id"], ctx.user_id)
     return out

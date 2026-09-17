@@ -108,15 +108,25 @@ def _site_response(html: str, status: int = 200) -> HTMLResponse:
         "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin"})
 
 
+BADGE = ('<a href="https://www.creai.dev/?ref=badge" rel="noopener" style="position:fixed;right:14px;bottom:14px;'
+         'z-index:99;display:inline-flex;gap:6px;align-items:center;padding:7px 12px;border-radius:999px;'
+         'background:#141414;color:#F4F1EA;font:600 12px/1 system-ui,sans-serif;text-decoration:none;'
+         'box-shadow:0 4px 16px #0003">Made with CreAI</a>')
+
+
 @router.get("/s/{slug}", response_class=HTMLResponse, include_in_schema=False)
 async def serve(slug: str):
     if not SLUG.match(slug):
         raise HTTPException(404)
     async with conn() as c:
-        html = await c.fetchval(
-            "SELECT html FROM site_releases WHERE slug=$1 AND live ORDER BY id DESC LIMIT 1", slug)
-    if not html:
+        r = await c.fetchrow(
+            "SELECT html, org_id FROM site_releases WHERE slug=$1 AND live ORDER BY id DESC LIMIT 1", slug)
+    if not r:
         return _site_response(PLACEHOLDER.replace("{msg}", "This site isn't published."), 404)
+    from ..services import plans
+    html = r["html"]
+    if not await plans.has(r["org_id"], "no_badge"):
+        html = html.replace("</body>", BADGE + "</body>", 1)
     return _site_response(html)
 
 
@@ -141,13 +151,23 @@ async def _release_for_host(host: str):
     hit = _cache.get(name)
     if hit and hit[0] > time.monotonic():
         return hit[1]
+    from ..services import plans
     async with conn() as c:
         d = await c.fetchrow(
             """SELECT org_id, project_id FROM domains WHERE name=$1
                AND status IN ('registered','verifying','live')
                ORDER BY (status = 'live') DESC, id DESC LIMIT 1""", name)
         out = None
-        if d:
+        if d and not await plans.has(d["org_id"], "custom_domain"):
+            # No plan: never go dark — send visitors to the free CreAI address.
+            slug = await c.fetchval(
+                """SELECT slug FROM (SELECT slug, id FROM site_releases WHERE project_id=$1 AND live
+                   UNION ALL SELECT slug, id FROM app_releases WHERE project_id=$1 AND live) r
+                   ORDER BY id DESC LIMIT 1""", d["project_id"]) if d["project_id"] else None
+            kind = await c.fetchval("SELECT path FROM projects WHERE id=$1", d["project_id"]) if slug else None
+            out = ("redirect", f"{settings.public_url.rstrip('/')}/{'a' if kind == 'app' else 's'}/{slug}") \
+                if slug else ("none",)
+        elif d:
             out = ("none",)
             if d["project_id"]:
                 site = await c.fetchval(
@@ -188,6 +208,9 @@ class CustomDomains:
             resp = HTMLResponse("", status_code=404 if scope["path"] != "/robots.txt" else 200)
         elif release[0] == "site":
             resp = _site_response(release[1])
+        elif release[0] == "redirect":
+            from fastapi.responses import RedirectResponse
+            resp = RedirectResponse(release[1], status_code=302)
         elif release[0] == "app":
             _, files, spec, pid, oid = release
             page = appfs.preview(files, spec, appfs.token(pid, oid, "public"), settings.public_url)

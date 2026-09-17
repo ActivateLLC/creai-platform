@@ -63,3 +63,7 @@ def send_domain_live(to: str, domain: str) -> bool:
     return _send(to, f"{domain} is live",
                  f"{domain} now resolves and its certificate is issued.\n\n"
                  f"https://{domain}\n")
+
+
+def send_notice(to: str, subject: str, text: str) -> bool:
+    return _send(to, subject, text)

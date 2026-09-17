@@ -16,8 +16,9 @@ import httpx
 from ..core.config import settings
 
 API = "https://api.cloudflare.com/client/v4"
-MARGIN = 1.15          # covers card fees and support
-FLAT_FEE_USD = 1.00
+# Retail: about what mainstream builders charge (a .com lands near $20/year).
+RETAIL_MULTIPLE = 2.0
+RETAIL_MIN_MARKUP_USD = 10.00
 POLL = 2.0
 POLL_LIMIT = 60
 
@@ -31,7 +32,7 @@ def configured() -> bool:
 
 
 def credits_for(cost_usd: float) -> int:
-    return math.ceil((cost_usd * MARGIN + FLAT_FEE_USD) * 100)
+    return math.ceil(round(max(cost_usd * RETAIL_MULTIPLE, cost_usd + RETAIL_MIN_MARKUP_USD) * 100, 6))
 
 
 def _url(path: str) -> str:
@@ -128,10 +129,21 @@ async def renewal_sweep() -> dict:
             """SELECT id, org_id, name, expires_at, renewal_credits FROM domains
                WHERE source='registered' AND expires_at IS NOT NULL AND renewal_credits IS NOT NULL
                  AND expires_at < now() + interval '1 day'""")
+    from . import plans
     for d in due:
         term = d["expires_at"].isoformat()
-        ok = await billing.spend(d["org_id"], None, d["renewal_credits"], "domain",
-                                 f"renew:{d['id']}:{term}", {"domain": d["name"], "renewal": term})
+        ref = f"renew:{d['id']}:{term}"
+        if await plans.renewals_included(d["org_id"]):
+            async with conn() as c:
+                await c.execute(
+                    """INSERT INTO credit_ledger (org_id, delta, reason, ref, detail)
+                       VALUES ($1, 0, 'waived', $2, $3) ON CONFLICT (ref) DO NOTHING""",
+                    d["org_id"], ref, {"domain": d["name"], "credits": d["renewal_credits"],
+                                       "waived": "domain renewal included in your yearly plan"})
+            ok = True
+        else:
+            ok = await billing.spend(d["org_id"], None, d["renewal_credits"], "domain",
+                                     ref, {"domain": d["name"], "renewal": term})
         if ok:
             async with conn() as c:
                 await c.execute("UPDATE domains SET expires_at = expires_at + interval '1 year' WHERE id=$1", d["id"])

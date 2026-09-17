@@ -70,7 +70,18 @@ async def workspace(api):
     tok = await sign_in(api, f"s{secrets.token_hex(3)}@example-shop.io")
     me = (await api.get("/v1/auth/me", headers=auth(tok))).json()
     pid = (await api.post("/v1/projects", headers=auth(tok), json={"name": "Shop"})).json()["id"]
+    await grant_plan(me["active_org"], "growth")
     return tok, me["active_org"], pid
+
+
+async def grant_plan(org_id, plan, interval="monthly"):
+    async with db.conn() as c:
+        await c.execute(
+            """INSERT INTO subscriptions (org_id, plan, interval, status, current_period_end)
+               VALUES ($1,$2,$3,'active', now() + interval '30 days')
+               ON CONFLICT (org_id) DO UPDATE SET plan=$2, interval=$3, status='active',
+                 current_period_end = now() + interval '30 days', domain_claimed=false""",
+            org_id, plan, interval)
 
 
 async def draft_post(org_id, pid, network, text="Hello", when=None, link="", media=None):

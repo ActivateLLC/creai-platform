@@ -145,6 +145,14 @@ async def deliver(approval_id: int) -> str:
             return "skipped"
         p = row["payload"] or {}
         network = p.get("network", "")
+        plan = await c.fetchval(
+            """SELECT plan FROM subscriptions WHERE org_id=$1
+               AND status IN ('active','trialing','past_due')""", row["org_id"])
+        if plan != "growth":
+            await _mark(c, approval_id, "held",
+                        {"reason": "Scheduled posting is part of the Growth plan. Upgrade and this goes out "
+                                   "on its own, or copy the text and post it yourself.", "upgrade": "growth"})
+            return "held"
         has_image = any(x.get("type") == "image" for x in p.get("media") or [])
         needs = NEEDS_MEDIA.get(network)
         if needs and not (network == "instagram" and has_image):

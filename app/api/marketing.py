@@ -79,5 +79,5 @@ async def calendar(project_id: int | None = None, days: int = 60,
                        if m.get("type") == "image"), None),
         "scheduled_for": r["scheduled_for"].isoformat() if r["scheduled_for"] else None,
         "delivery": {k: v for k, v in ((r["payload"] or {}).get("delivery") or {}).items()
-                     if k in ("reason", "channel", "at")},
+                     if k in ("reason", "channel", "at", "upgrade")},
     } for r in rows]}

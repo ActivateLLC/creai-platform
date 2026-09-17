@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS org_settings (
 );
 ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS registrant_enc TEXT;
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ;
+ALTER TABLE domain_quotes ADD COLUMN IF NOT EXISTS included BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS hosting JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS renewal_credits INTEGER;
@@ -305,6 +306,20 @@ CREATE TABLE IF NOT EXISTS app_errors (
   free_fixes  INTEGER NOT NULL DEFAULT 0,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, message)
+);
+
+-- Plans (Stripe subscriptions). One row per workspace; only webhooks change it.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  org_id               BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  stripe_customer      TEXT,
+  stripe_subscription  TEXT,
+  plan                 TEXT NOT NULL DEFAULT 'free',
+  interval             TEXT,
+  status               TEXT NOT NULL DEFAULT 'none',
+  current_period_end   TIMESTAMPTZ,
+  cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
+  domain_claimed       BOOLEAN NOT NULL DEFAULT false,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Published site snapshots (rendered HTML — sites never carry script).
@@ -393,7 +408,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions",
 )
 
 
