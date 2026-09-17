@@ -86,6 +86,23 @@ dialog form{display:flex;flex-direction:column;gap:12px;margin:0}
 label{font-size:13px;font-weight:500;color:var(--ink-2)}
 input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);font-size:15px}
 
+.chipbtn{height:36px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:var(--panel-2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.chipbtn .dot{color:var(--ok)}
+.chipbtn.low .dot{color:var(--warn)}
+.modes{display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line);align-self:flex-start}
+.modes button{height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--ink-2);font-size:13px;font-weight:500}
+.modes button[aria-pressed=true]{background:var(--accent);color:#fff}
+.packs{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.pack{padding:20px;border-radius:14px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;text-align:left}
+.pack:hover{border-color:var(--accent)}
+.pack .price{font-family:var(--display);font-weight:800;font-size:32px;letter-spacing:-.03em}
+.pack .bonus{color:var(--ok);font-size:13px;font-weight:600}
+.pack.best{border-color:var(--accent)}
+.ledger{font-size:13px;color:var(--ink-2)}
+.ledger div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+#payBox{min-height:120px}
+.paysum{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--line-soft)}
+.secure{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)}
 .m-tabs{display:none}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -98,6 +115,9 @@ input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px
   #work{flex:1;min-height:0}
   body[data-m=chat] #work,body[data-m=work] #chat{display:none}
   .who{display:none}
+  .tabs{overflow-x:auto;padding:0 12px;gap:6px}
+  .tabs .tab{white-space:nowrap;flex-shrink:0}
+  .tabs .status{display:none}
 }
 </style>
 </head>
@@ -106,6 +126,7 @@ input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px
   <img src="/logo.svg" alt="">
   <span class="brand">CreAI</span>
   <span class="spacer"></span>
+  <button class="chipbtn" id="credBtn" type="button" hidden aria-label="Credits"><span class="dot">●</span><span id="credTxt">–</span></button>
   <span class="who" id="who"></span>
   <button class="btn" id="signBtn" type="button">Sign in</button>
 </header>
@@ -118,6 +139,10 @@ input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px
     <div id="thread" aria-live="polite"></div>
     <div id="composer">
       <div class="chips" id="starters"></div>
+      <div class="modes" role="group" aria-label="Response mode">
+        <button type="button" id="modeBest" aria-pressed="true">Best</button>
+        <button type="button" id="modeFast" aria-pressed="false">Fast · ⅕ credits</button>
+      </div>
       <div class="bar">
         <label for="input" class="sr">Message CreAI</label>
         <textarea id="input" rows="1" placeholder="Describe your business…"></textarea>
@@ -136,11 +161,13 @@ input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px
       <button class="tab" role="tab" id="tSite" aria-selected="true" type="button">Site preview</button>
       <button class="tab" role="tab" id="tPosts" aria-selected="false" type="button" hidden>Posts</button>
       <button class="tab" role="tab" id="tDomain" aria-selected="false" type="button" hidden>Domain</button>
+      <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden>Credits</button>
       <span class="status"><span class="dot" id="sDot" style="color:var(--ink-3)"></span><span id="sText">Draft · not published</span></span>
     </div>
     <div class="pane" id="pSite"><div class="frame"><div class="url" id="url">preview</div><iframe id="preview" title="Site preview" sandbox></iframe></div></div>
     <div class="pane" id="pPosts" hidden></div>
     <div class="pane" id="pDomain" hidden></div>
+    <div class="pane" id="pCredits" hidden></div>
   </section>
 </main>
 
@@ -159,6 +186,17 @@ input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px
   </form>
 </dialog>
 
+<dialog id="dPay">
+  <form id="fPay">
+    <div class="row" style="justify-content:space-between"><h2 id="payTitle">Top up</h2><button class="icon" type="button" data-close aria-label="Close">✕</button></div>
+    <div class="paysum"><span id="paySum" class="muted"></span><strong id="payAmt"></strong></div>
+    <div id="payBox"><p class="muted">Loading secure payment…</p></div>
+    <p class="err" id="payErr" style="margin:0"></p>
+    <button class="btn primary" id="payGo" type="submit" disabled>Pay</button>
+    <div class="secure"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Encrypted checkout · Card, Apple Pay, Google Pay or Klarna</div>
+  </form>
+</dialog>
+
 <dialog id="dDomain">
   <form id="fDomain">
     <h2>Connect a domain you own</h2>
@@ -174,7 +212,8 @@ input[type=email],input[type=text]{height:44px;padding:0 12px;border-radius:10px
 (() => {
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const S = { token: null, me: null, project: null, busy: false };
+const S = { token: null, me: null, project: null, busy: false, mode: 'best', balance: null };
+try { S.mode = localStorage.getItem('creai_mode') || 'best'; } catch (_) {}
 try { S.token = localStorage.getItem('creai_token'); } catch (_) {}
 
 const STARTERS = [
@@ -246,7 +285,8 @@ async function send(text) {
   $('thread').append(w); scroll();
   try {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
-    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text }) });
+    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode }) });
+    if (out.credits) setBalance(out.credits.balance);
     w.remove();
     (out.log || []).forEach(addTool);
     const last = (out.messages || []).filter(m => m.role === 'assistant').pop();
@@ -257,9 +297,10 @@ async function send(text) {
     if (window.matchMedia('(max-width:860px)').matches && (out.log || []).length) flash('Your site updated — tap “Your site” to see it.');
   } catch (e) {
     w.remove();
-    const msg = e.status === 503 ? "The agent isn't switched on for this server yet. Your message wasn't lost — try again shortly." : e.message;
-    $('thread').append(el('div', 'err msg', msg));
-    if (e.status === 429 && !S.token) renderActions([{ kind: 'sign_in', label: 'Create an account' }]);
+    $('thread').append(el('div', 'err msg', e.message));
+    if (e.status === 402 && !S.token) renderActions([{ kind: 'sign_in', label: 'Create free account' }]);
+    else if (e.status === 402) renderActions([{ kind: 'top_up', label: 'Top up credits' }]);
+    else if (e.status === 429 && !S.token) renderActions([{ kind: 'sign_in', label: 'Create an account' }]);
   } finally {
     S.busy = false; $('send').disabled = false; scroll();
   }
@@ -292,6 +333,7 @@ function runAction(a) {
   if (a.kind === 'sign_in' || !S.token) return openSign(a.kind === 'sign_in' ? null : a);
   if (a.kind === 'connect_domain') { $('dname').value = a.domain || ''; $('domErr').textContent = ''; $('dDomain').showModal(); }
   if (a.kind === 'review_posts') { showPane('posts'); loadPosts(); }
+  if (a.kind === 'top_up') { showPane('credits'); loadCredits(); }
 }
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 
@@ -336,9 +378,9 @@ async function afterSignIn(justSigned) {
   const t = await api('/v1/agent/projects/' + pid);
   S.project = t.project;
   renderThread(t.messages);
-  if (justSigned) addAgent('Saved to your workspace. You can connect a domain or ask me to draft your first posts whenever you are ready.');
-  $('tPosts').hidden = false; $('tDomain').hidden = false;
-  refreshPreview(); loadPosts(); loadDomains();
+  if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
+  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('credBtn').hidden = false;
+  refreshPreview(); loadPosts(); loadDomains(); loadCredits();
 }
 
 // domain
@@ -408,9 +450,152 @@ async function loadPosts() {
   }
 }
 
+// ------------------------------------------------------------ modes
+function setMode(m) {
+  S.mode = m; try { localStorage.setItem('creai_mode', m); } catch (_) {}
+  $('modeBest').setAttribute('aria-pressed', String(m === 'best'));
+  $('modeFast').setAttribute('aria-pressed', String(m === 'fast'));
+}
+$('modeBest').onclick = () => setMode('best');
+$('modeFast').onclick = () => setMode('fast');
+setMode(S.mode);
+
+// ------------------------------------------------------------ credits
+function setBalance(n) {
+  S.balance = n;
+  $('credTxt').textContent = n.toLocaleString() + ' credits';
+  $('credBtn').classList.toggle('low', n < 100);
+}
+
+const LEDGER = { signup: 'Welcome credits', purchase: 'Top-up', usage: 'Building', refund: 'Refund', adjustment: 'Adjustment' };
+async function loadCredits() {
+  if (!S.token) return;
+  let b;
+  try { b = await api('/v1/billing'); } catch (_) { return; }
+  setBalance(b.balance);
+  const pane = $('pCredits'); pane.replaceChildren();
+  const head = el('div'); head.style.marginBottom = '16px';
+  if (S.justAdded) {
+    const ok = el('div', 'card'); ok.style.borderColor = 'var(--ok)';
+    ok.append(el('strong', null, '✓ ' + S.justAdded.toLocaleString() + ' credits added'), el('span', 'muted', 'Thanks for topping up. Head back to the chat to keep building.'));
+    pane.append(ok); S.justAdded = 0;
+  }
+  head.append(el('h2', null, b.balance.toLocaleString() + ' credits'),
+    el('p', 'muted', 'Best uses about 20 credits a message; Fast about 4. Bigger packs come with bonus credits.'));
+  pane.append(head);
+  const grid = el('div', 'packs');
+  for (const p of b.packs) {
+    const card = el('button', 'pack' + (p.id === 'pro' ? ' best' : '')); card.type = 'button';
+    card.append(el('span', 'muted', p.name), el('span', 'price', p.price),
+      el('span', null, p.credits.toLocaleString() + ' credits'),
+      el('span', 'bonus', p.bonus ? '+' + p.bonus + '% bonus' + (p.id === 'pro' ? ' · most popular' : '') : ' '));
+    card.disabled = !b.can_buy || !b.payments_enabled;
+    card.onclick = () => openPay(p);
+    grid.append(card);
+  }
+  pane.append(grid);
+  if (!b.payments_enabled) pane.append(el('p', 'muted', 'Top-ups open shortly.'));
+  else if (!b.can_buy) pane.append(el('p', 'muted', 'Ask your workspace owner to top up.'));
+  if (b.history.length) {
+    const led = el('div', 'ledger'); led.append(el('h3', null, 'Recent activity'));
+    for (const h of b.history.slice(0, 12)) {
+      const row = el('div');
+      row.append(el('span', null, (LEDGER[h.reason] || h.reason) + (h.pack ? ' · ' + h.pack : '') + ' · ' + new Date(h.at).toLocaleDateString()),
+        el('span', null, (h.delta > 0 ? '+' : '') + h.delta.toLocaleString()));
+      led.append(row);
+    }
+    pane.append(led);
+  }
+}
+
+// In-app payment panel. Card data goes from this page straight to the
+// processor's secure fields; our server only ever sees the result.
+let payJs = null, elements = null, stripeObj = null, paying = null;
+function loadPayJs() {
+  if (payJs) return payJs;
+  payJs = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://js.stripe.com/v3/'; sc.onload = res; sc.onerror = () => { payJs = null; rej(new Error('Could not load secure payment. Check your connection.')); };
+    document.head.append(sc);
+  });
+  return payJs;
+}
+const APPEARANCE = {
+  theme: 'night',
+  variables: {
+    colorPrimary: '#6E5BF2', colorBackground: '#171B25', colorText: '#E8EBF2',
+    colorTextSecondary: '#96A0B4', colorDanger: '#F0616D', colorSuccess: '#2ED3A7',
+    fontFamily: 'Inter, system-ui, sans-serif', borderRadius: '10px', spacingUnit: '4px', fontSizeBase: '15px'
+  },
+  rules: {
+    '.Input': { border: '1px solid #232937', boxShadow: 'none' },
+    '.Input:focus': { border: '1px solid #6E5BF2', boxShadow: '0 0 0 1px #6E5BF2' },
+    '.Tab': { border: '1px solid #232937', backgroundColor: '#11141C' },
+    '.Tab--selected': { borderColor: '#6E5BF2' },
+    '.Label': { color: '#96A0B4', fontWeight: '500' }
+  }
+};
+async function openPay(pack) {
+  paying = pack;
+  $('payTitle').textContent = pack.name + ' top-up';
+  $('paySum').textContent = pack.credits.toLocaleString() + ' credits' + (pack.bonus ? ' (+' + pack.bonus + '% bonus)' : '');
+  $('payAmt').textContent = pack.price;
+  $('payErr').textContent = ''; $('payGo').disabled = true; $('payGo').textContent = 'Pay ' + pack.price;
+  $('payBox').replaceChildren(el('p', 'muted', 'Loading secure payment…'));
+  $('dPay').showModal();
+  try {
+    const [intent] = await Promise.all([
+      api('/v1/billing/pay', { method: 'POST', body: JSON.stringify({ pack: pack.id }) }),
+      loadPayJs()
+    ]);
+    stripeObj = window.Stripe(intent.publishable_key);
+    elements = stripeObj.elements({ clientSecret: intent.client_secret, appearance: APPEARANCE,
+      fonts: [{ cssSrc: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' }] });
+    const holder = el('div'); $('payBox').replaceChildren(holder);
+    const pe = elements.create('payment', {
+      layout: { type: 'accordion', defaultCollapsed: false, radios: true, spacedAccordionItems: true },
+      business: { name: 'CreAI' },
+      wallets: { applePay: 'auto', googlePay: 'auto' },
+      terms: { card: 'never' }
+    });
+    pe.mount(holder);
+    pe.on('ready', () => { $('payGo').disabled = false; });
+  } catch (e) { $('payBox').replaceChildren(); $('payErr').textContent = e.message; }
+}
+$('fPay').onsubmit = async (ev) => {
+  ev.preventDefault();
+  if (!stripeObj || !elements) return;
+  $('payGo').disabled = true; $('payGo').textContent = 'Processing…'; $('payErr').textContent = '';
+  const { error, paymentIntent } = await stripeObj.confirmPayment({
+    elements, redirect: 'if_required',
+    confirmParams: { return_url: location.origin + '/?topup=done' }
+  });
+  if (error) {
+    $('payErr').textContent = error.message || 'Payment did not go through.';
+    $('payGo').disabled = false; $('payGo').textContent = 'Pay ' + paying.price;
+    return;
+  }
+  if (paymentIntent && paymentIntent.status === 'succeeded') { $('dPay').close(); awaitCredit(); }
+  else if (paymentIntent && paymentIntent.status === 'processing') { $('dPay').close(); addAgent('Payment is processing. Your credits appear as soon as it clears.'); awaitCredit(); }
+};
+async function awaitCredit() {
+  const before = S.balance || 0;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    let b; try { b = await api('/v1/billing'); } catch (_) { continue; }
+    if (b.balance > before) {
+      S.justAdded = b.balance - before;
+      setBalance(b.balance); loadCredits();
+      addAgent('Thanks — ' + (b.balance - before).toLocaleString() + ' credits added. Let\'s keep building.'); scroll();
+      return;
+    }
+  }
+  addAgent('Your payment went through. Credits can take a minute to appear — they will show up here automatically.');
+}
+
 // ------------------------------------------------------------ tabs
 function showPane(which) {
-  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain']]) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
   }
   setMobile('work');
@@ -418,6 +603,8 @@ function showPane(which) {
 $('tSite').onclick = () => showPane('site');
 $('tPosts').onclick = () => { showPane('posts'); loadPosts(); };
 $('tDomain').onclick = () => { showPane('domain'); loadDomains(); };
+$('tCredits').onclick = () => { showPane('credits'); loadCredits(); };
+$('credBtn').onclick = () => { showPane('credits'); loadCredits(); };
 function setMobile(m) { document.body.dataset.m = m; $('mChat').setAttribute('aria-selected', String(m === 'chat')); $('mWork').setAttribute('aria-selected', String(m === 'work')); }
 $('mChat').onclick = () => setMobile('chat');
 $('mWork').onclick = () => setMobile('work');
@@ -428,7 +615,15 @@ $('mWork').onclick = () => setMobile('work');
     const h = await api('/health');
     if (!h.configured || !h.configured.agent) setStatus('Agent not switched on yet', 'var(--warn)');
   } catch (_) {}
-  if (S.token) { try { await afterSignIn(false); return; } catch (_) {} }
+  const back = new URLSearchParams(location.search).get('topup');
+  if (back) history.replaceState(null, '', '/');
+  if (S.token) {
+    try {
+      await afterSignIn(false);
+      if (back === 'done') { showPane('credits'); awaitCredit(); }
+      return;
+    } catch (_) {}
+  }
   try { const t = await api('/v1/agent/draft'); renderThread(t.messages || []); }
   catch (_) { renderThread([]); }
   refreshPreview();

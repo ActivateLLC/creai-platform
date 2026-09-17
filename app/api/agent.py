@@ -17,18 +17,23 @@ from pydantic import BaseModel, Field
 from ..core import tenancy as T
 from ..core.config import settings
 from ..core.db import conn, log_event
-from ..services import agent, site
+from ..services import agent, billing, site
 from .drafts import COOKIE, DRAFT_TTL, _token
 
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
 
-DRAFT_TURN_CAP = 60              # per anonymous draft, lifetime
+DRAFT_TURN_CAP = 5               # free messages before an account is needed
 IP_WINDOW, IP_CAP = 600, 30      # per address: 30 turns per 10 minutes
 _hits: dict[str, deque] = defaultdict(deque)
 
 
 class SayIn(BaseModel):
     message: str = Field(min_length=1, max_length=agent.MAX_USER_CHARS)
+    mode: str = Field("best", pattern="^(best|fast)$")
+
+
+def _model(mode: str) -> str:
+    return settings.agent_fast_model if mode == "fast" else settings.agent_model
 
 
 def _limit(ip: str) -> None:
@@ -93,9 +98,11 @@ async def draft_say(body: SayIn, request: Request, response: Response,
     answers = dict(row["answers"] or {})
     turns = int(answers.get("_turns", 0))
     if turns >= DRAFT_TURN_CAP:
-        raise HTTPException(429, "Create an account to keep building — your draft is saved.")
+        raise HTTPException(402, "You've used your free messages. Create an account to "
+                                 "keep building — your draft is saved and you get "
+                                 f"{billing.SIGNUP_CREDITS} free credits.")
 
-    turn = await _run(body.message, answers)
+    turn = await _run(body.message, answers, model=_model(body.mode))
     turn.answers["_turns"] = turns + 1
     async with conn() as c:
         await c.execute("UPDATE drafts SET answers=$2, updated_at=now() WHERE id=$1",
@@ -138,6 +145,12 @@ async def project_say(project_id: int, body: SayIn,
     async with conn() as c:
         p = await _project(c, project_id, ctx.org_id)
 
+    await billing.ensure_signup_grant(ctx.org_id)
+    have = await billing.balance(ctx.org_id)
+    if have < billing.MIN_TO_START[body.mode]:
+        raise HTTPException(402, "You're out of credits. Top up to keep building — "
+                                 "everything you've made is saved.")
+
     async def queue_posts(posts: list[dict]) -> list[int]:
         # Bound to this workspace and project before the model ever runs.
         ids = []
@@ -149,7 +162,9 @@ async def project_say(project_id: int, body: SayIn,
                     ctx.org_id, project_id, post))
         return ids
 
-    turn = await _run(body.message, p["answers"] or {}, project=True, queue_posts=queue_posts)
+    turn = await _run(body.message, p["answers"] or {}, project=True,
+                      queue_posts=queue_posts, model=_model(body.mode))
+    spent, left = await billing.charge_usage(ctx.org_id, ctx.user_id, project_id, turn.calls)
     async with conn() as c:
         await c.execute(
             "UPDATE projects SET answers=$3, updated_at=now() WHERE id=$1 AND org_id=$2",
@@ -157,7 +172,8 @@ async def project_say(project_id: int, body: SayIn,
     if turn.posts:
         await log_event(ctx.org_id, "agent.posts_drafted", str(len(turn.posts)),
                         project_id, ctx.user_id)
-    return _payload(turn.answers, turn.actions, turn.log, turn.posts)
+    return _payload(turn.answers, turn.actions, turn.log, turn.posts) | {
+        "credits": {"spent": spent, "balance": left}}
 
 
 @router.get("/projects/{project_id}/preview", response_class=HTMLResponse)

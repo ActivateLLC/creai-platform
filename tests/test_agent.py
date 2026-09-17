@@ -38,10 +38,11 @@ class FakeModel:
         self.steps = list(steps)
         self.calls = []
 
-    async def __call__(self, messages, tools, system):
+    async def __call__(self, messages, tools, system, model):
         self.calls.append({"tools": [t["name"] for t in tools], "system": system,
-                           "messages": messages})
-        return {"content": self.steps.pop(0)}
+                           "messages": messages, "model": model})
+        return {"content": self.steps.pop(0), "model": model,
+                "usage": {"input_tokens": 3000, "output_tokens": 500}}
 
 
 @pytest_asyncio.fixture
@@ -176,7 +177,7 @@ async def test_anonymous_rate_limit(api, monkeypatch):
     monkeypatch.setattr(agent_routes, "IP_CAP", 2)
 
     async def quick(*_a):
-        return {"content": [text("ok")]}
+        return {"content": [text("ok")], "usage": {}}
     monkeypatch.setattr(agent, "_call", quick)
     codes = [(await api.post("/v1/agent/draft", json={"message": "hi"})).status_code
              for _ in range(3)]

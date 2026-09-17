@@ -49,7 +49,13 @@ class Settings:
 
     # agent — Anthropic, called over HTTP
     anthropic_key: str = _req("ANTHROPIC_API_KEY", "")
-    agent_model: str = _req("AGENT_MODEL", "claude-sonnet-5")
+    agent_model: str = _req("AGENT_MODEL", "claude-fable-5-1")          # "Best"
+    agent_fast_model: str = _req("AGENT_FAST_MODEL", "claude-sonnet-5")  # "Fast"
+
+    # payments — in-app panel on Stripe Elements (cards, Apple Pay, Google Pay, Klarna)
+    stripe_key: str = _req("STRIPE_SECRET_KEY", "")
+    stripe_publishable_key: str = _req("STRIPE_PUBLISHABLE_KEY", "")
+    stripe_webhook_secret: str = _req("STRIPE_WEBHOOK_SECRET", "")
 
     verify_prefix: str = "_creai-verify"
 
@@ -62,6 +68,8 @@ class Settings:
             "email": bool(self.resend_key),
             "publishing": bool(self.postiz_url and self.postiz_key),
             "agent": bool(self.anthropic_key),
+            "billing": bool(self.stripe_key and self.stripe_webhook_secret
+                            and self.stripe_publishable_key),
         }
 
     def missing_for(self, capability: str) -> bool:

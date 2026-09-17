@@ -167,6 +167,7 @@ class Turn:
     actions: list = field(default_factory=list)
     log: list = field(default_factory=list)
     posts: list = field(default_factory=list)
+    calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
 
 
 def trim(thread: list) -> list:
@@ -191,7 +192,7 @@ def visible(thread: list) -> list:
     return out
 
 
-async def _call(messages: list, tools: list, system: str) -> dict:
+async def _call(messages: list, tools: list, system: str, model: str) -> dict:
     if not settings.anthropic_key:
         raise AgentUnavailable("the agent is not configured on this deployment")
     async with httpx.AsyncClient(timeout=90) as x:
@@ -199,22 +200,25 @@ async def _call(messages: list, tools: list, system: str) -> dict:
             "x-api-key": settings.anthropic_key,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
-        }, json={"model": settings.agent_model, "max_tokens": 2048,
+        }, json={"model": model, "max_tokens": 2048,
+                 # automatic prompt caching: repeated prefixes bill at the cache rate
+                 "cache_control": {"type": "ephemeral"},
                  "system": system, "tools": tools, "messages": messages})
     if r.status_code != 200:
         log.warning("agent model call failed: %s %s", r.status_code, r.text[:300])
-        raise AgentUnavailable("the agent could not respond just now — try again")
+        raise AgentUnavailable("The assistant is temporarily unavailable. Please try again in a moment.")
     return r.json()
 
 
 async def run(text: str, answers: dict | None, *, project: bool = False,
-              queue_posts=None) -> Turn:
+              queue_posts=None, model: str | None = None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
     `queue_posts` is supplied only for signed-in projects; it is already bound to
     that project and workspace, so the model never names either.
     """
+    model = model or settings.agent_model
     answers = dict(answers or {})
     turn = Turn(answers=answers,
                 site=site_spec.merge(answers.get("site"), {}),
@@ -232,7 +236,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     turn.thread.append({"role": "user", "content": text[:MAX_USER_CHARS]})
 
     for _ in range(MAX_STEPS):
-        out = await _call(turn.thread, tools, system)
+        out = await _call(turn.thread, tools, system, model)
+        turn.calls.append((out.get("model") or model, out.get("usage") or {}))
         content = out.get("content", [])
         turn.thread.append({"role": "assistant", "content": content})
         uses = [b for b in content if b.get("type") == "tool_use"]

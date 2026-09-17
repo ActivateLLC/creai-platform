@@ -210,13 +210,28 @@ CREATE TABLE IF NOT EXISTS events (
   at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS events_org_idx ON events(org_id, at DESC);
+
+-- Credits. An append-only ledger: the balance is the sum, nothing is ever
+-- edited in place. `ref` makes grants and purchases idempotent — a Stripe
+-- session id or a signup marker can only ever be credited once.
+CREATE TABLE IF NOT EXISTS credit_ledger (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  delta       INT NOT NULL,
+  reason      TEXT NOT NULL,          -- signup | purchase | usage | refund | adjustment
+  ref         TEXT UNIQUE,
+  detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  actor_id    BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS credit_ledger_org_idx ON credit_ledger(org_id, created_at DESC);
 """
 
 # Tables that must never be read without an org filter. The isolation test reads
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events",
+    "channels", "approvals", "events", "credit_ledger",
 )
 
 
