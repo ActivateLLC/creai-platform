@@ -152,12 +152,56 @@ async def checkout(org_id: int, user_id: int, email: str, plan: str, interval: s
     return session["url"]
 
 
+_portal_config: str | None = None
+
+
+async def _portal_configuration() -> str:
+    """CreAI's own portal settings (the account's default may serve other products).
+    Found by metadata, created once if missing."""
+    global _portal_config
+    if _portal_config:
+        return _portal_config
+    found = await billing._stripe("GET", "/billing_portal/configurations?active=true&limit=100")
+    for cfg in found.get("data") or []:
+        if (cfg.get("metadata") or {}).get("app") == "creai":
+            _portal_config = cfg["id"]
+            return _portal_config
+    products = []
+    for plan in PAID:
+        ids = [await _price_id(plan, i) for i in INTERVALS]
+        price = await billing._stripe("GET", f"/prices/{ids[0]}")
+        products.append({"product": price["product"], "prices": ids})
+    base = settings.public_url.rstrip("/")
+    cfg = await billing._stripe("POST", "/billing_portal/configurations", {
+        "business_profile": {"headline": "CreAI — manage your plan",
+                             "privacy_policy_url": "https://www.creai.dev/privacy",
+                             "terms_of_service_url": "https://www.creai.dev/terms"},
+        "default_return_url": f"{base}/?plan=managed",
+        "metadata": {"app": "creai"},
+        "features": {
+            "invoice_history": {"enabled": True},
+            "payment_method_update": {"enabled": True},
+            "customer_update": {"enabled": True, "allowed_updates": ["email", "address", "tax_id"]},
+            "subscription_cancel": {"enabled": True, "mode": "at_period_end",
+                                    "cancellation_reason": {"enabled": True, "options": [
+                                        "too_expensive", "missing_features", "switched_service", "unused", "other"]}},
+            "subscription_update": {"enabled": True, "default_allowed_updates": ["price"],
+                                    "proration_behavior": "create_prorations", "products": products},
+        }})
+    _portal_config = cfg["id"]
+    return _portal_config
+
+
 async def portal(org_id: int, email: str) -> str:
     """Stripe's hosted page: cancel in one tap, change card, switch plan, invoices."""
     _require_stripe()
-    session = await billing._stripe("POST", "/billing_portal/sessions", {
-        "customer": await _customer(org_id, email),
-        "return_url": settings.public_url.rstrip("/") + "/?plan=managed"})
+    params = {"customer": await _customer(org_id, email),
+              "return_url": settings.public_url.rstrip("/") + "/?plan=managed"}
+    try:
+        params["configuration"] = await _portal_configuration()
+    except billing.BillingError:
+        pass                    # fall back to the account default rather than blocking cancellation
+    session = await billing._stripe("POST", "/billing_portal/sessions", params)
     return session["url"]
 
 
@@ -209,10 +253,13 @@ async def grant_for_invoice(invoice: dict) -> int:
     lines = ((invoice.get("lines") or {}).get("data") or [])
     meta = {}
     for ln in lines:
-        meta = (ln.get("metadata") or {}) or ((ln.get("price") or {}).get("metadata") or {})
+        price = ln.get("price") or ((ln.get("pricing") or {}).get("price_details") or {})
+        meta = (ln.get("metadata") or {}) or (price.get("metadata") or {})
         if meta.get("plan"):
             break
-    sub_meta = ((invoice.get("subscription_details") or {}).get("metadata") or {})
+    sub_details = (invoice.get("subscription_details")
+                   or ((invoice.get("parent") or {}).get("subscription_details")) or {})
+    sub_meta = sub_details.get("metadata") or {}
     plan = meta.get("plan") or sub_meta.get("plan")
     org = sub_meta.get("org_id") or meta.get("org_id")
     if plan not in PAID or not org or invoice.get("status") != "paid":

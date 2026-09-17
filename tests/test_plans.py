@@ -152,6 +152,12 @@ async def test_checkout_and_portal(api, monkeypatch):
             return {"url": "https://checkout.stripe.com/c/pay/cs_1"}
         if path == "/billing_portal/sessions":
             return {"url": "https://billing.stripe.com/p/session/1"}
+        if path.startswith("/billing_portal/configurations?"):
+            return {"data": [{"id": "bpc_other", "metadata": {"app": "orcacredit"}}]}
+        if path == "/billing_portal/configurations":
+            return {"id": "bpc_creai"}
+        if path.startswith("/prices/"):
+            return {"id": "price_1", "product": "prod_1"}
         raise AssertionError(path)
     monkeypatch.setattr(billing, "_stripe", fake)
     monkeypatch.setattr(type(settings), "missing_for", lambda self, cap: False)
@@ -163,9 +169,26 @@ async def test_checkout_and_portal(api, monkeypatch):
     assert session["subscription_data"]["metadata"]["org_id"] == org
     price = next(d for m, p, d in calls if p == "/prices")
     assert price["unit_amount"] == 12000 and price["recurring"]["interval"] == "year"
+    plans._portal_config = None
     assert (await api.post("/v1/plans/portal", headers=auth(tok))).json()["url"].startswith("https://billing.stripe.com/")
+    portal = next(d for m, p, d in calls if p == "/billing_portal/sessions")
+    assert portal["configuration"] == "bpc_creai"              # never the account default shared with other products
+    cfg = next(d for m, p, d in calls if p == "/billing_portal/configurations")
+    assert cfg["features"]["subscription_cancel"]["mode"] == "at_period_end" and cfg["metadata"]["app"] == "creai"
     # already subscribed: send them to manage instead of a second subscription
     await hook(api, sub_event("customer.subscription.created", org))
     again = await api.post("/v1/plans/checkout", headers=auth(tok), json={"plan": "growth", "interval": "monthly"})
     assert again.status_code == 400 and "Manage plan" in again.json()["detail"]
     object.__setattr__(settings, "stripe_key", "")
+
+
+async def test_invoice_paid_in_newer_api_layout(api):
+    tok, org = await workspace(api)
+    await api.get("/v1/billing", headers=auth(tok))
+    before = await billing.balance(org)
+    await hook(api, {"type": "invoice.paid", "data": {"object": {
+        "id": "in_new", "object": "invoice", "status": "paid", "created": int(time.time()),
+        "parent": {"type": "subscription_details",
+                   "subscription_details": {"metadata": {"app": "creai", "org_id": str(org), "plan": "launch"}}},
+        "lines": {"data": [{"period": {"start": int(time.time())}, "metadata": {}}]}}}})
+    assert await billing.balance(org) == before + 1000
