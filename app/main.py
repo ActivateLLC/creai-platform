@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (admin, agent, approvals, auth_routes, billing, connections, dashboard,
                   domains, drafts, games, marketing, orgs, projects, channels, appdata, apps, sites,
-                  plans, readiness, assets, speech, appauth, appfiles, payments as payment_routes, imports as import_routes)
+                  plans, readiness, assets, speech, appauth, appfiles, payments as payment_routes, imports as import_routes, gallery as gallery_routes)
 from .core import db
 from .services import social_publish
 from .core.config import settings
@@ -170,7 +170,7 @@ class AppDataCORS:
 app.add_middleware(AppDataCORS)
 app.add_middleware(sites.CustomDomains)
 
-for r in (appdata.router, appauth.router, appfiles.router, payment_routes.router, import_routes.router, apps.router, games.router, sites.router, plans.router, readiness.router, assets.router, agent.router, speech.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
+for r in (appdata.router, appauth.router, appfiles.router, payment_routes.router, import_routes.router, gallery_routes.router, apps.router, games.router, sites.router, plans.router, readiness.router, assets.router, agent.router, speech.router, billing.router, connections.router, marketing.router, channels.router, drafts.router, auth_routes.router, orgs.router, projects.router, domains.router,
           approvals.router, dashboard.router, admin.router):
     app.include_router(r)
 

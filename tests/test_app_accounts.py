@@ -1166,3 +1166,101 @@ def test_history_is_shown_as_moments_not_commit_hashes():
     assert "Earlier versions" in html and "Put this back" in html
     assert "toLocaleString" in html             # a date a person can read
     assert "nothing is ever lost" in html
+
+
+# ---------------------------------------------------------------- gallery and remix
+
+@pytest.mark.asyncio
+async def test_a_remix_takes_the_shape_and_leaves_the_business_behind(api):
+    """The line that must never move: customers, records, files, takings and the
+    domain belong to whoever built it."""
+    from app.services import gallery
+    owner = await sign_in(api, f"g{secrets.token_hex(3)}@maker.io")
+    pid = (await api.post("/v1/projects", headers=auth(owner),
+                          json={"name": "Copperline", "path": "app"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(owner))).json()["active_org"]
+    await appfs.write(pid, org, {"app.js": "export const hello = 1;\n"})
+    async with db.conn() as c:
+        await c.execute("UPDATE projects SET answers=$1 WHERE id=$2",
+                        {"site": {"business": "Copperline", "headline": "Leaks fixed"}}, pid)
+        await c.execute("""INSERT INTO app_releases (org_id, project_id, slug, files, live)
+                           VALUES ($1,$2,'cl',$3,true)""", org, pid, {"app.js": "x"})
+        # things that belong to the business and must not travel
+        await c.execute("""INSERT INTO app_records (org_id, project_id, collection, data)
+                           VALUES ($1,$2,'invoices',$3)""", org, pid, {"amount": 900})
+    await appauth.sign_up(pid, org, "client@example.com", "a-good-password")
+
+    await api.post(f"/v1/projects/{pid}/showcase?on=true", headers=auth(owner))
+
+    stranger = await sign_in(api, f"s{secrets.token_hex(3)}@stranger.io")
+    out = await api.post(f"/v1/gallery/{pid}/remix", headers=auth(stranger))
+    assert out.status_code == 200, out.text
+    new_id = out.json()["project_id"]
+    new_org = (await api.get("/v1/auth/me", headers=auth(stranger))).json()["active_org"]
+
+    # the shape came across
+    assert (await appfs.files(new_id, new_org))["app.js"] == "export const hello = 1;\n"
+
+    # the business did not
+    async with db.conn() as c:
+        assert await c.fetchval(
+            "SELECT count(*) FROM app_records WHERE project_id=$1", new_id) == 0
+        assert await c.fetchval(
+            "SELECT count(*) FROM app_users WHERE project_id=$1", new_id) == 0
+        assert await c.fetchval(
+            "SELECT count(*) FROM app_releases WHERE project_id=$1", new_id) == 0
+        assert await c.fetchval(
+            "SELECT count(*) FROM payment_accounts WHERE project_id=$1", new_id) == 0
+        assert await c.fetchval(
+            "SELECT count(*) FROM domains WHERE project_id=$1", new_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_nothing_appears_in_the_gallery_unless_the_owner_said_so(api):
+    tok = await sign_in(api, f"p{secrets.token_hex(3)}@private.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Private", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        await c.execute("""INSERT INTO site_releases (org_id, project_id, slug, html, live)
+                           VALUES ($1,$2,'pv','<h1>x</h1>',true)""", org, pid)
+    items = (await api.get("/v1/gallery")).json()["items"]
+    assert pid not in [i["id"] for i in items]
+
+    await api.post(f"/v1/projects/{pid}/showcase?on=true", headers=auth(tok))
+    assert pid in [i["id"] for i in (await api.get("/v1/gallery")).json()["items"]]
+
+    await api.post(f"/v1/projects/{pid}/showcase?on=false", headers=auth(tok))
+    assert pid not in [i["id"] for i in (await api.get("/v1/gallery")).json()["items"]]
+
+
+@pytest.mark.asyncio
+async def test_a_draft_cannot_be_shown_because_it_would_be_a_broken_link(api):
+    tok = await sign_in(api, f"d{secrets.token_hex(3)}@draft.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Draft", "path": "launch"})).json()["id"]
+    r = await api.post(f"/v1/projects/{pid}/showcase?on=true", headers=auth(tok))
+    assert r.status_code == 409 and "publish it first" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_something_taken_down_by_support_cannot_be_remixed(api):
+    tok = await sign_in(api, f"m{secrets.token_hex(3)}@maker.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Bad", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        await c.execute("""INSERT INTO site_releases (org_id, project_id, slug, html, live)
+                           VALUES ($1,$2,'bd','<h1>x</h1>',true)""", org, pid)
+    await api.post(f"/v1/projects/{pid}/showcase?on=true", headers=auth(tok))
+    async with db.conn() as c:
+        await c.execute("UPDATE projects SET showcase_hidden=true WHERE id=$1", pid)
+    other = await sign_in(api, f"o{secrets.token_hex(3)}@stranger.io")
+    assert (await api.post(f"/v1/gallery/{pid}/remix", headers=auth(other))).status_code == 404
+    assert pid not in [i["id"] for i in (await api.get("/v1/gallery")).json()["items"]]
+
+
+@pytest.mark.asyncio
+async def test_the_gallery_needs_no_account_to_look_at(api):
+    r = await api.get("/v1/gallery")
+    assert r.status_code == 200 and "items" in r.json()

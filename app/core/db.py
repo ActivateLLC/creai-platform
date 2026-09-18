@@ -395,6 +395,14 @@ ALTER TABLE approvals ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_opened_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS thumb_token TEXT;
+-- Shown in the public gallery, only ever because the owner chose to. Hidden is a
+-- separate flag so support can take something down without silently flipping the
+-- owner's own choice back off.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS showcase BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS showcase_hidden BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS remixes INT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS projects_showcase_idx ON projects(showcase, updated_at DESC)
+  WHERE showcase AND NOT showcase_hidden;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS hosting JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS renewal_credits INTEGER;
