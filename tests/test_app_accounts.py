@@ -1931,3 +1931,93 @@ def test_what_was_heard_is_kept_so_a_mistake_costs_a_tap():
     from app.services import voicelead
     said = "quoted Reyes Roofing eighteen four, chase Thursday"
     assert voicelead._tidy({"who": "Reyes Roofing"}, said)["heard"] == said
+
+
+# ---------------------------------------------------------------- ad variants
+
+def test_a_variant_set_is_balanced_enough_to_learn_from():
+    """A random draw put seven of twelve on one opening. An axis value seen twice
+    cannot be compared with one seen seven times — that is a lottery, not a test."""
+    from app.services import admutate
+    vs = admutate.plan({"trade": "plumber", "shows": "x"}, want=18, seed=3)
+    for axis in ("hook", "style", "length", "open", "pace", "cta"):
+        counts = {}
+        for v in vs:
+            counts[str(v[axis])] = counts.get(str(v[axis]), 0) + 1
+        assert max(counts.values()) - min(counts.values()) <= 2, (axis, counts)
+
+
+def test_variants_needing_a_real_person_are_separated_not_faked():
+    """A generated face making a testimonial is caught in the comments, and most
+    stock licences forbid implying endorsement. These wait for a human."""
+    from app.services import admutate
+    vs = admutate.plan({"trade": "plumber", "shows": "x"}, want=14, seed=5)
+    filming = admutate.to_film(vs)
+    assert filming and all(v["style"] == "ugc" for v in filming)
+    assert all(v["status"] == "to film" for v in filming)
+    assert all(v["status"] == "ready to render" for v in vs if not v["needs_a_person"])
+    # and the ugc brief insists on a real one
+    assert "not a generated or stock one" in admutate.STYLE_RULES["ugc"]
+
+
+def test_generated_footage_may_appear_but_never_claim():
+    from app.services import admutate
+    rule = admutate.STYLE_RULES["cinematic"]
+    assert "nobody speaks and nothing is claimed" in rule
+    assert "never shows the product" in rule
+
+
+def test_the_conversion_rules_are_not_one_of_the_axes():
+    """A variant that breaks them is not an experiment, it is a wasted impression."""
+    from app.services import admutate
+    for v in admutate.plan({"trade": "baker", "shows": "x"}, want=8, seed=1):
+        b = v["brief"]
+        assert "within the first two seconds" in b
+        assert "brand name does not appear in the opening line" in b
+        assert "Nothing claimed that the product does not do." in b
+
+
+def test_contradictory_combinations_are_never_produced():
+    from app.services import admutate
+    for v in admutate.plan({"trade": "plumber", "shows": "x"}, want=20, seed=9):
+        assert not (v["style"] == "demo" and v["open"] == "person")
+        assert not (v["style"] == "ugc" and v["open"] == "product")
+        assert not (v["length"] == 15 and v["pace"] == "measured")
+
+
+def test_near_duplicate_openings_are_dropped_rather_than_shipped():
+    from app.services import admutate
+    kept = admutate.drop_near_duplicates([
+        {"id": "a", "opening_line": "Still updating your CRM after work?"},
+        {"id": "b", "opening_line": "After work, still updating your CRM?"},
+        {"id": "c", "opening_line": "Your evenings belong to paperwork now."},
+    ])
+    assert [v["id"] for v in kept] == ["a", "c"]
+
+
+def test_results_roll_up_by_axis_so_the_next_fifty_are_informed():
+    from app.services import admutate
+    results = [
+        {"id": "1", "hook": "objection", "style": "demo", "open": "product",
+         "length": 15, "cta": "free", "pace": "quick", "trade": "plumber",
+         "plays": 1000, "actions": 40},
+        {"id": "2", "hook": "objection", "style": "ugc", "open": "person",
+         "length": 30, "cta": "try", "pace": "measured", "trade": "baker",
+         "plays": 1000, "actions": 60},
+        {"id": "3", "hook": "number", "style": "demo", "open": "product",
+         "length": 15, "cta": "free", "pace": "quick", "trade": "plumber",
+         "plays": 1000, "actions": 10},
+    ]
+    learned = admutate.learn(results)
+    assert list(learned["hook"])[0] == "objection"          # 100/2000 vs 10/1000
+    assert learned["hook"]["objection"]["ads"] == 2
+
+
+def test_a_winner_cannot_be_declared_off_forty_impressions():
+    from app.services import admutate
+    thin = [{"hook": "objection", "plays": 40, "actions": 4},
+            {"hook": "number", "plays": 30, "actions": 1}]
+    assert admutate.enough(thin, "hook") is False
+    fat = [{"hook": "objection", "plays": 2000, "actions": 80},
+           {"hook": "number", "plays": 1500, "actions": 20}]
+    assert admutate.enough(fat, "hook") is True
