@@ -92,7 +92,7 @@ async def test_anonymous_turn_builds_the_site(api, monkeypatch):
 
     page = await api.get("/v1/agent/draft/preview")
     assert "Your car, spotless." in page.text and "Full detail" in page.text
-    assert "script-src 'none'" in page.headers["content-security-policy"]
+    assert "script-src 'sha256-" in page.headers["content-security-policy"]
 
     again = await api.get("/v1/agent/draft")
     assert [m["role"] for m in again.json()["messages"]] == ["user", "assistant"]
@@ -106,7 +106,13 @@ async def test_model_output_cannot_inject_markup(api, monkeypatch):
         [text("Done.")]))
     await api.post("/v1/agent/draft", json={"message": "hi"})
     page = (await api.get("/v1/agent/draft/preview")).text
-    assert "<script" not in page and "<iframe" not in page
+    # One script may appear on a page: Creai's own motion runtime, pinned into the
+    # CSP by its hash. Nothing the model produced may ever become a script.
+    from app.services import site as site_spec
+    assert page.count("<script") == 1 and site_spec.MOTION_JS in page
+    # It survives only as escaped text, which is exactly right.
+    assert "<script>alert(1)" not in page and "<iframe" not in page
+    assert "&lt;script&gt;alert(1)" in page
     assert "&lt;script&gt;" in page
 
 
@@ -269,7 +275,10 @@ def test_renderer_design_system_is_safe_and_varied():
     assert spec["hero_image"] == ""
     assert [i["image"] for i in spec["sections"][0]["items"]] == ["https://v3.fal.media/files/ok.jpeg"]
     page = s.render(spec)
-    assert "<script>" not in page and "onerror=alert" not in page.replace("onerror=alert(1)&gt;", "")
+    from app.services import site as site_spec
+    assert page.count("<script") == 1 and site_spec.MOTION_JS in page
+    assert "<script>x</script>" not in page
+    assert "onerror=alert" not in page.replace("onerror=alert(1)&gt;", "")
     assert "<img src=x" not in page and "evil.example" not in page and "<b>" not in page
     looks = {s.design_of(s.merge({}, {"business": b})) for b in
              ("Rise & Crumb", "Shine Detailing", "Maple Dental", "Northside Barbers", "Kiln & Clay",

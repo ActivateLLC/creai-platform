@@ -23,7 +23,11 @@ from ..services import site as site_spec
 router = APIRouter(tags=["sites"])
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{2,60}$")
 
-SITE_CSP = ("default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; "
+# Exactly one script may run on a published site: the motion runtime Creai emits,
+# pinned by its own hash. No CDN, no third party, nothing a visitor or a customer
+# can inject — the same guarantee as 'none', with a page that can move.
+SITE_CSP = (f"default-src 'none'; script-src {site_spec.motion_hash()}; "
+            "style-src 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src https://fonts.gstatic.com; img-src data: https:; media-src https:; base-uri 'none'; form-action 'none'; "
             "frame-ancestors 'none'")
 APP_CSP = "sandbox allow-scripts allow-forms allow-popups allow-modals"

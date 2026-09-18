@@ -486,3 +486,39 @@ def test_importing_a_charting_library_is_not_reported_as_unavailable():
            "import { format } from 'date-fns';\n"
            "render(html`<div />`, document.getElementById('root'));")
     assert not appfs.review({"app.js": src})["problems"]
+
+
+# ---------------------------------------------------------------- site motion & CSP
+
+def test_only_creais_own_motion_script_may_run_on_a_published_site():
+    """Verified in a real browser: the hash-pinned script runs, an injected inline
+    script and a CDN script are both blocked."""
+    from app.api.sites import SITE_CSP
+    from app.services import site as site_spec
+    assert site_spec.motion_hash() in SITE_CSP
+    assert "'unsafe-inline'" not in SITE_CSP.split("style-src")[0]
+    assert "https://cdn" not in SITE_CSP
+
+
+def test_the_hash_matches_the_script_that_is_actually_served():
+    """If these drift, every published site silently loses its motion."""
+    import base64, hashlib
+    from app.services import site as site_spec
+    want = "'sha256-" + base64.b64encode(
+        hashlib.sha256(site_spec.MOTION_JS.encode()).digest()).decode() + "'"
+    assert site_spec.motion_hash() == want
+    assert site_spec.MOTION_JS in site_spec.render(
+        site_spec.merge({}, {"business": "X", "headline": "Y"}))
+
+
+def test_reduced_motion_is_still_honoured():
+    from app.services import site as site_spec
+    assert "prefers-reduced-motion" in site_spec.MOTION_JS
+    assert "no-motion" in site_spec.MOTION_JS
+
+
+def test_icons_are_inline_vectors_needing_no_request():
+    from app.services import site as site_spec
+    svg = site_spec.icon("wrench")
+    assert svg.startswith("<svg") and "stroke=\"currentColor\"" in svg
+    assert site_spec.icon("not-a-real-icon") == ""

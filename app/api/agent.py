@@ -360,8 +360,10 @@ async def project_preview(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
 
 
 def _preview_headers() -> dict:
-    # Rendered sites carry no script; this makes that a rule, not a habit.
-    return {"Content-Security-Policy": "default-src 'none'; script-src 'none'; "
+    # The preview must match what a visitor will get, or motion looks broken here
+    # and works in production. Only Creai's own motion script may run, by its hash.
+    from ..services import site as site_spec
+    return {"Content-Security-Policy": f"default-src 'none'; script-src {site_spec.motion_hash()}; "
                                        "style-src 'unsafe-inline' https://fonts.googleapis.com; "
                                        "font-src https://fonts.gstatic.com; img-src data: https:; media-src https:; "
                                        "frame-ancestors 'self'",

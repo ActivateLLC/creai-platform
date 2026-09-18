@@ -578,6 +578,12 @@ color:var(--muted);border-top:1px solid var(--line);font-size:14px}}
 .hero-visual,.tile{animation:fade 1.2s ease both .15s}
 @supports (animation-timeline:view()){
 .reveal{animation:rise linear both;animation-timeline:view();animation-range:entry 0% entry 40%}}
+/* Browsers without scroll-driven CSS get the same reveal from the inline script. */
+.reveal.will{opacity:0;transform:translateY(24px)}
+.reveal.will.in{opacity:1;transform:none;transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+.no-motion .reveal.will{opacity:1;transform:none}
+.ico{flex:none;vertical-align:-.15em;opacity:.9}
+.sec-services li strong,.steps li strong{display:flex;align-items:center;gap:9px}
 }
 """
     if motion in ("lively", "cinematic"):
@@ -622,4 +628,80 @@ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
 {marquee}
 <main>{empty}{''.join(parts)}</main>
 <footer id="contact"><span>{e(name)}</span><span>{contact}</span></footer>
+<script>{MOTION_JS}</script>
 </body></html>"""
+
+# ---------------------------------------------------------------- motion & vectors
+
+# One inline script, a constant, pinned into the CSP by its own SHA-256. Nothing
+# else may run on a published site — no CDN, no third party, nothing injectable —
+# so this stays as safe as script-src 'none' while letting a page actually move.
+# CSS scroll-driven animation does the work where the browser supports it; this
+# covers everywhere else and adds the couple of things CSS still can't do.
+MOTION_JS = """
+(function(){
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { document.documentElement.classList.add('no-motion'); return; }
+  var native = CSS.supports('animation-timeline: view()');
+  if (!native && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+    document.querySelectorAll('.reveal').forEach(function(n){ n.classList.add('will'); io.observe(n); });
+  }
+  // Numbers that count up read as alive; a static figure reads as a screenshot.
+  document.querySelectorAll('[data-count]').forEach(function(n){
+    var to = parseFloat(n.getAttribute('data-count')); if (isNaN(to)) return;
+    var pre = n.getAttribute('data-pre') || '', post = n.getAttribute('data-post') || '';
+    var seen = false;
+    var run = function(){
+      if (seen) return; seen = true;
+      var t0 = performance.now(), dur = 900;
+      var step = function(t){
+        var k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        n.textContent = pre + (to % 1 ? (to * e).toFixed(1) : Math.round(to * e)) + post;
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    };
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function(es, o){ es.forEach(function(e){ if (e.isIntersecting) { run(); o.disconnect(); } }); })
+        .observe(n);
+    } else run();
+  });
+})();
+"""
+
+
+def motion_hash() -> str:
+    """The CSP entry for the script above, so only exactly this code may run."""
+    import base64 as _b64
+    import hashlib as _h
+    return "'sha256-" + _b64.b64encode(_h.sha256(MOTION_JS.encode()).digest()).decode() + "'"
+
+
+# Lucide's outlines (ISC), drawn inline so a page needs no icon font, no request
+# and no script to show them.
+ICONS = {
+    "wrench": "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
+    "clock": "M12 6v6l4 2M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z",
+    "shield": "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+    "phone": "M13.83 19a11.36 11.36 0 0 1-8.83-8.83l1.9-1.9a1 1 0 0 0 .25-1L6.1 3.6a1 1 0 0 0-1-.6H3a1 1 0 0 0-1 1 18 18 0 0 0 18 18 1 1 0 0 0 1-1v-2.1a1 1 0 0 0-.6-.92l-3.67-1.06a1 1 0 0 0-1 .25z",
+    "star": "M11.53 2.7a.53.53 0 0 1 .95 0l2.36 4.78 5.27.77a.53.53 0 0 1 .3.9l-3.82 3.72.9 5.25a.53.53 0 0 1-.77.56L12 16.2l-4.72 2.48a.53.53 0 0 1-.77-.56l.9-5.25L3.6 9.15a.53.53 0 0 1 .3-.9l5.27-.77z",
+    "check": "M20 6 9 17l-5-5",
+    "map-pin": "M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0zM12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+    "calendar": "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+    "droplet": "M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5S5 13 5 15a7 7 0 0 0 7 7z",
+    "leaf": "M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10zM2 21c0-3 1.85-5.36 5.08-6",
+    "spark": "M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8",
+}
+
+
+def icon(name: str, size: int = 22) -> str:
+    """An inline SVG icon, or nothing when the name is unknown."""
+    d = ICONS.get((name or "").strip().lower())
+    if not d:
+        return ""
+    return (f'<svg class="ico" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
+            f'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+            f'stroke-linejoin="round" aria-hidden="true"><path d="{d}"/></svg>')

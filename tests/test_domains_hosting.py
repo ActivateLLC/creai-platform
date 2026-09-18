@@ -240,7 +240,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     page = await api.get(f"/s/{slug}")
     assert page.status_code == 200 and "Your car, spotless" in page.text
     assert "Made with Creai" in page.text                               # free plan shows the badge
-    assert "script-src 'none'" in page.headers["content-security-policy"]
+    assert "script-src 'sha256-" in page.headers["content-security-policy"]
     assert (await api.get("/s/nope-000000")).status_code == 404
 
     # someone else can't publish or unpublish it
@@ -258,7 +258,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     for host in (served, "www." + served):
         r = await api.get("/", headers={"Host": host})
         assert r.status_code == 200 and "Your car, spotless" in r.text and "Creai · split" in r.text
-        assert "script-src 'none'" in r.headers["content-security-policy"]
+        assert "script-src 'sha256-" in r.headers["content-security-policy"]
     # the platform is never reachable through a customer's domain
     for path in ("/v1/auth/me", "/v1/projects", "/app.js", "/s/" + slug):
         assert (await api.get(path, headers={"Host": served})).status_code == 404
