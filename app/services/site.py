@@ -117,7 +117,12 @@ def _items(raw, fields: dict) -> list[dict]:
         if isinstance(it, dict):
             row = {}
             for k, n in fields.items():
-                row[k] = _image(it.get(k)) if n == "image" else _text(it.get(k), n)
+                if n == "image":
+                    row[k] = _image(it.get(k))
+                elif n == "icon":
+                    row[k] = safe_path(it.get(k))
+                else:
+                    row[k] = _text(it.get(k), n)
             out.append(row)
     return out
 
@@ -128,7 +133,7 @@ def clean_section(sec: dict) -> dict | None:
         return None
     out = {"kind": kind, "title": _text(sec.get("title"), 80)}
     if kind == "services":
-        out["items"] = _items(sec.get("items"), {"name": 60, "detail": 160, "price": 24})
+        out["items"] = _items(sec.get("items"), {"name": 60, "detail": 160, "price": 24, "icon": "icon"})
     elif kind == "faq":
         out["items"] = _items(sec.get("items"), {"q": 140, "a": 400})
     elif kind == "testimonials":
@@ -136,7 +141,7 @@ def clean_section(sec: dict) -> dict | None:
     elif kind == "stats":
         out["items"] = _items(sec.get("items"), {"value": 16, "label": 60})[:6]
     elif kind == "steps":
-        out["items"] = _items(sec.get("items"), {"title": 60, "detail": 200})[:8]
+        out["items"] = _items(sec.get("items"), {"title": 60, "detail": 200, "icon": "icon"})[:8]
     elif kind == "gallery":
         out["items"] = [i for i in _items(sec.get("items"), {"image": "image", "caption": 80})
                         if i["image"]][:9]
@@ -370,7 +375,8 @@ def _section(sec: dict, s: dict, n: int, layout: str) -> str:
     k = sec["kind"]
     if k == "services":
         cards = "".join(
-            f'<article class="card" style="--i:{i}"><h3>{e(x["name"])}</h3><p>{e(x["detail"])}</p>'
+            f'<article class="card" style="--i:{i}">{icon(drawn=x.get("icon", ""), size=26)}'
+            f'<h3>{e(x["name"])}</h3><p>{e(x["detail"])}</p>'
             + (f'<span class="price">{e(x["price"])}</span>' if x["price"] else "") + "</article>"
             for i, x in enumerate(sec["items"]))
         body = f'<div class="grid">{cards}</div>'
@@ -387,7 +393,8 @@ def _section(sec: dict, s: dict, n: int, layout: str) -> str:
             for i, x in enumerate(sec["items"])) + "</dl>"
     elif k == "steps":
         body = '<ol class="steps">' + "".join(
-            f'<li style="--i:{i}"><h3>{e(x["title"])}</h3><p>{e(x["detail"])}</p></li>'
+            f'<li style="--i:{i}">{icon(drawn=x.get("icon", ""), size=24)}'
+            f'<h3>{e(x["title"])}</h3><p>{e(x["detail"])}</p></li>'
             for i, x in enumerate(sec["items"])) + "</ol>"
     elif k == "gallery":
         body = '<div class="gallery">' + "".join(
@@ -589,7 +596,7 @@ color:var(--muted);border-top:1px solid var(--line);font-size:14px}}
 .reveal.will{opacity:0;transform:translateY(24px)}
 .reveal.will.in{opacity:1;transform:none;transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
 .no-motion .reveal.will{opacity:1;transform:none}
-.ico{flex:none;vertical-align:-.15em;opacity:.9}
+.ico{display:block;margin-bottom:10px;opacity:.85;color:var(--accent)}
 .sec-services li strong,.steps li strong{display:flex;align-items:center;gap:9px}
 }
 """
@@ -704,9 +711,29 @@ ICONS = {
 }
 
 
-def icon(name: str, size: int = 22) -> str:
-    """An inline SVG icon, or nothing when the name is unknown."""
-    d = ICONS.get((name or "").strip().lower())
+# An icon drawn for this business, by the agent, in the only form that can't carry
+# anything but geometry: SVG path data. Commands and numbers, nothing else — no
+# elements, no attributes, no script, no URL. We supply the <svg> wrapper, so the
+# stroke, the colour and the grid stay ours however it was drawn.
+PATH_D = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9,.\-\s]{4,1400}$")
+
+
+def safe_path(d: str) -> str:
+    """Drawn path data, or "" if it is anything other than a drawing."""
+    d = (d or "").strip()
+    if not PATH_D.match(d) or not re.match(r"^[Mm]", d):
+        return ""
+    # Everything lives on the 24-unit grid the wrapper declares.
+    nums = [abs(float(n)) for n in re.findall(r"-?\d+(?:\.\d+)?", d)]
+    if nums and max(nums) > 200:
+        return ""
+    return d
+
+
+def icon(name_or_path: str = "", size: int = 22, drawn: str = "") -> str:
+    """An icon: the one drawn for this business if there is one, else the house
+    set, else nothing. Never raw markup from the model."""
+    d = safe_path(drawn) or ICONS.get((name_or_path or "").strip().lower(), "")
     if not d:
         return ""
     return (f'<svg class="ico" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '

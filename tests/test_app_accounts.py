@@ -589,3 +589,38 @@ def test_browser_games_are_covered_by_the_app_reviewer():
            "const hud = '⭐ 0';\n"
            "loop({ update(){}, draw(){ ctx.fillText(hud, 10, 10); } });")
     assert [p for p in appfs.review({"app.js": src})["problems"] if "emoji" in p.lower()]
+
+
+# ---------------------------------------------------------------- drawn icons
+
+def test_an_icon_drawn_for_the_business_is_rendered():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "Copperline", "headline": "Leaks fixed", "cta": "Book",
+        "contact": {"email": "a@b.com"},
+        "sections": [{"kind": "services", "items": [
+            {"name": "Emergency repairs", "detail": "Burst pipes.",
+             "icon": "M4 12 L12 4 L20 12 M6 10 v9 h12 v-9"}]},
+            {"kind": "cta", "body": "y"}]})
+    html = site_spec.render(spec)
+    assert '<svg class="ico"' in html and "M4 12 L12 4 L20 12" in html
+
+
+def test_the_icon_channel_carries_geometry_and_nothing_else():
+    """The agent draws; it cannot smuggle markup, script or a URL through the path."""
+    from app.services import site as site_spec
+    assert site_spec.safe_path("M4 12 L12 4 L20 12")
+    for evil in ('M0 0"/><script>x()</script><path d="M1 1',
+                 "M0 0 url(#x)", "M0 0 <g>", "hello", "", "L4 4",
+                 "M4 12 L99999 4"):
+        assert site_spec.safe_path(evil) == "", evil
+
+
+def test_a_refused_drawing_falls_back_rather_than_breaking_the_page():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "X", "headline": "Y", "cta": "Book",
+        "contact": {"email": "a@b.com"},
+        "sections": [{"kind": "services", "items": [
+            {"name": "A", "detail": "b", "icon": "<script>bad()</script>"}]},
+            {"kind": "cta", "body": "y"}]})
+    html = site_spec.render(spec)
+    assert "bad()" not in html and "<h3>A</h3>" in html

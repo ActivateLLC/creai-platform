@@ -81,6 +81,14 @@ problem check_app reports, before you reply. Don't stop at "probably fine".
 couldn't do, and ask the ONE question that would most improve the result.
 
 Quality bar:
+- Draw the icons yourself, for this business. A services or steps item takes an "icon": SVG path
+  data only, no elements or attributes — Creai supplies the <svg>, the 24x24 grid, the 1.75 stroke
+  and the brand colour, so you supply geometry and nothing else.
+  Draw on the 24 grid with about 2 units of padding, start with M, keep it to a handful of strokes,
+  no fills, no text, and make it legible at 22px. A wrench for a plumber, a drill bit for a
+  contractor, a comb for a barber — the object that business actually touches, not a generic gear.
+  Simple and correct beats detailed and lumpy: think three or four confident strokes. If a shape
+  won't come out cleanly, leave the icon out rather than shipping a smudge.
 - Never use an emoji as an icon, in a button, a label, a list marker, a heading or a service
   name — not anywhere, on a site or in an app. They are a different typeface on every device,
   sit off the baseline, and cannot take the brand colour, so they make good work look amateur.
