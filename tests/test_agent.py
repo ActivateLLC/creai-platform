@@ -375,3 +375,45 @@ async def test_agent_is_sent_back_to_fix_quality_issues(api, monkeypatch):
 def test_system_prompt_is_current():
     assert "not switched on yet" not in agent.SYSTEM
     assert "Verify" in agent.SYSTEM and "check_app" in agent.APP_EXTRA
+
+
+# ---------------------------------------------------------------- voice typing
+
+
+@pytest.mark.asyncio
+async def test_voice_typing_returns_text_and_stores_nothing(api, monkeypatch):
+    """A recording becomes text in the reply. Nothing about it is kept."""
+    from app.services import speech
+
+    async def fake(audio, content_type, language=None):
+        assert audio == b"pretend-audio"
+        return "Build me a website for my landscaping business"
+
+    monkeypatch.setattr(speech, "transcribe", fake)
+    monkeypatch.setattr(speech, "configured", lambda: True)
+    r = await api.post("/v1/speech", files={"audio": ("speech.webm", b"pretend-audio", "audio/webm")})
+    assert r.status_code == 200
+    assert r.json()["text"] == "Build me a website for my landscaping business"
+
+
+@pytest.mark.asyncio
+async def test_voice_typing_says_something_useful_when_it_fails(api, monkeypatch):
+    """Failures come back as words the person can act on, not a stack trace."""
+    from app.services import speech
+
+    async def fake(audio, content_type, language=None):
+        raise speech.SpeechError("nothing was heard — try again, or type it instead")
+
+    monkeypatch.setattr(speech, "transcribe", fake)
+    monkeypatch.setattr(speech, "configured", lambda: True)
+    r = await api.post("/v1/speech", files={"audio": ("speech.webm", b"x", "audio/webm")})
+    assert r.status_code == 400
+    assert "nothing was heard" in r.json()["detail"]
+
+
+def test_recording_formats_map_to_an_extension_the_api_can_sniff():
+    from app.services import speech
+    assert speech.kind_of("audio/webm;codecs=opus") == "speech.webm"
+    assert speech.kind_of("audio/mp4") == "speech.mp4"
+    with pytest.raises(speech.SpeechError):
+        speech.kind_of("application/zip")

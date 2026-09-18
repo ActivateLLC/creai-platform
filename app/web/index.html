@@ -183,7 +183,10 @@ textarea::placeholder{color:var(--dim);white-space:nowrap;overflow:hidden;text-o
 .icon{width:44px;height:44px;flex-shrink:0;border:1px solid var(--hairline);background:transparent;color:var(--cream-soft);display:flex;align-items:center;justify-content:center;transition:border-color .25s,color .25s}
 .icon:hover{border-color:var(--leaf);color:var(--leaf)}
 .icon.send{background:var(--leaf);border-color:var(--leaf);color:var(--night)}
-.icon.on{border-color:var(--ember);color:var(--ember)}
+.icon.on{border-color:var(--ember);color:var(--ember);animation:micPulse 1.4s ease-in-out infinite}
+.icon.busy{opacity:.55;pointer-events:none}
+@keyframes micPulse{50%{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.icon.on{animation:none}}
 .hint{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
 
 /* ---------------------------------------------------------------- workspace */
@@ -750,11 +753,12 @@ const STARTERS = [
 // go to the live server and the draft travels in a header instead of a cookie.
 const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const PLATFORM = NATIVE ? window.Capacitor.getPlatform() : 'web';
-// Web Speech is a different engine on every platform, and iOS WKWebView exposes
-// webkitSpeechRecognition while never delivering a result (WebKit bug 239816),
-// so feature detection alone would leave a dead mic inside the app.
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const SR_WORKS = !!SR && !(NATIVE && PLATFORM === 'ios');
+// Voice is recorded here and transcribed on the server, so it behaves the same
+// in every browser and inside the app. The browser's own Web Speech API is not
+// used: it is a different engine per platform and iOS WKWebView exposes it while
+// never delivering a result (WebKit bug 239816).
+const VOICE = !!(window.MediaRecorder && navigator.mediaDevices
+                 && navigator.mediaDevices.getUserMedia && window.isSecureContext);
 const API_BASE = NATIVE ? 'https://app.creai.dev' : '';
 function draftHeaders(h) {
   if (NATIVE) { try { const d = localStorage.getItem('creai_draft'); if (d) h['X-Draft-Token'] = d; } catch (_) {} }
@@ -807,7 +811,7 @@ function renderThread(messages) {
     const h1 = el('h1');
     for (const w of ['Say', 'it.']) h1.append(el('span', null, w));
     h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it'
-      + (SR_WORKS ? ', or tap the mic and say it.' : '.')));
+      + (VOICE ? ', or tap the mic and say it.' : '.')));
     if (S.project && S.project.path === 'app') {
       h.querySelector('p:last-child').textContent = 'Describe the app: who uses it, what they need to do, and what it should remember. Creai writes the code and runs it here.';
     } else if (S.project && S.project.path === 'market') {
@@ -966,28 +970,74 @@ function micNote(msg) {
   t.append(msg); document.body.append(t);
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4200);
 }
-if (SR_WORKS) {
-  const rec = new SR(); rec.interimResults = true; rec.continuous = false; rec.lang = navigator.language || 'en-US';
-  let on = false, heard = '';
+if (VOICE) {
+  // Record here, transcribe on the server. One engine for every browser and for
+  // the app, instead of four that behave differently. The text lands in the box
+  // for the person to read and send — voice never sends on its own.
+  let rec = null, chunks = [], on = false, busy = false;
   $('mic').hidden = false;
-  const stop = () => { on = false; $('mic').classList.remove('on'); $('mic').setAttribute('aria-label', 'Speak instead of typing'); };
-  rec.onresult = (e) => { heard = Array.from(e.results).map(r => r[0].transcript).join(' '); $('input').value = heard; autosize(); };
-  rec.onend = () => { stop(); if (heard.trim()) { $('send').click(); heard = ''; } };
-  rec.onerror = (e) => {
-    stop();
-    const why = {
-      'not-allowed': 'Creai needs microphone permission. Allow it in your browser settings, then tap the mic again.',
-      'service-not-allowed': 'Creai needs microphone permission. Allow it in your browser settings, then tap the mic again.',
-      'no-speech': "Nothing came through. Tap the mic and speak, or type it instead.",
-      'audio-capture': "No microphone was found. Type your message instead.",
-      'network': "Speech didn't reach the network. Type your message instead.",
-    }[e && e.error] || "Voice didn't work that time. Type your message instead.";
-    micNote(why);
+  const idle = () => {
+    on = false; busy = false;
+    $('mic').classList.remove('on', 'busy');
+    $('mic').setAttribute('aria-label', 'Speak instead of typing');
   };
-  $('mic').onclick = () => {
-    if (on) { rec.stop(); return; }
-    heard = ''; on = true; $('mic').classList.add('on'); $('mic').setAttribute('aria-label', 'Stop listening');
-    try { rec.start(); } catch (_) { stop(); micNote("Voice didn't start. Type your message instead."); }
+  const pickType = () => ['audio/webm', 'audio/mp4', 'audio/ogg']
+    .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+
+  async function send_audio(blob) {
+    busy = true; $('mic').classList.add('busy'); $('mic').setAttribute('aria-label', 'Transcribing');
+    const fd = new FormData();
+    fd.append('audio', blob, 'speech');
+    if (navigator.language) fd.append('language', navigator.language);
+    try {
+      const r = await fetch(API_BASE + '/v1/speech', { method: 'POST', body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || "That didn't come through. Type it instead.");
+      const t = (d.text || '').trim();
+      if (!t) throw new Error('Nothing was heard. Try again, or type it instead.');
+      // Append rather than replace, so a second take adds to what is already there.
+      $('input').value = $('input').value ? ($('input').value.trim() + ' ' + t) : t;
+      autosize(); $('input').focus();
+    } catch (e) {
+      micNote(e.message || "Voice didn't work that time. Type your message instead.");
+    } finally { idle(); }
+  }
+
+  $('mic').onclick = async () => {
+    if (busy) return;
+    if (on) { try { rec && rec.stop(); } catch (_) { idle(); } return; }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      const name = err && err.name;
+      return micNote(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Creai needs microphone permission. Allow it in your settings, then tap the mic again.'
+        : name === 'NotFoundError'
+          ? 'No microphone was found. Type your message instead.'
+          : "Couldn't start the microphone. Type your message instead.");
+    }
+    const mime = pickType();
+    try {
+      rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    } catch (_) {
+      stream.getTracks().forEach(t => t.stop());
+      return micNote("This browser can't record audio. Type your message instead.");
+    }
+    chunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());   // release the mic indicator
+      const blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' });
+      chunks = [];
+      if (blob.size < 1200) { idle(); return micNote('That was too short to hear. Hold the mic while you speak.'); }
+      send_audio(blob);
+    };
+    on = true; $('mic').classList.add('on'); $('mic').setAttribute('aria-label', 'Stop and transcribe');
+    rec.start();
+    // Never record forever: stop well inside the server's limit.
+    setTimeout(() => { if (on) { try { rec.stop(); } catch (_) {} } }, 60000);
   };
 }
 

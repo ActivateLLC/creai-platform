@@ -78,6 +78,7 @@ class Settings:
 
     # agent — Anthropic, called over HTTP
     anthropic_key: str = _req("ANTHROPIC_API_KEY", "")
+    openai_key: str = _req("OPENAI_API_KEY", "")
     agent_model: str = _req("AGENT_MODEL", "claude-fable-5-1")          # "Best"
     agent_fast_model: str = _req("AGENT_FAST_MODEL", "claude-sonnet-5")  # "Fast"
 
@@ -123,6 +124,7 @@ class Settings:
                           and not REGISTRAR_REJECTED,
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
+            "voice": bool(self.openai_key),
             "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,
         }
 
