@@ -569,3 +569,23 @@ def test_an_app_using_the_real_icon_set_passes():
            " document.getElementById('root'));\n"
            "createIcons({ icons });")
     assert not [p for p in appfs.review({"app.js": src})["problems"] if "emoji" in p.lower()]
+
+
+def test_emoji_are_refused_in_godot_games_too():
+    """Godot draws emoji through the project font: tofu boxes or flat grey, and
+    they can't be tinted, atlased or animated like real art."""
+    from app.services import godot
+    files = dict(godot.STARTER)
+    assert not [p for p in godot.review(files)["problems"] if "emoji" in p.lower()]
+    script = next(k for k in files if k.endswith(".gd"))
+    files[script] += '\nfunc _hud(): return "❤️ Lives"\n'
+    problems = [p for p in godot.review(files)["problems"] if "emoji" in p.lower()]
+    assert problems and ("Polygon2D" in problems[0] or "Sprite2D" in problems[0])
+
+
+def test_browser_games_are_covered_by_the_app_reviewer():
+    src = ("import { canvas, loop } from 'creai/game';\n"
+           "const c = canvas(); const ctx = c.getContext('2d');\n"
+           "const hud = '⭐ 0';\n"
+           "loop({ update(){}, draw(){ ctx.fillText(hud, 10, 10); } });")
+    assert [p for p in appfs.review({"app.js": src})["problems"] if "emoji" in p.lower()]

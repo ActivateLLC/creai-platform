@@ -173,6 +173,13 @@ PRELOAD = re.compile(r'\b(?:preload|load)\s*\(\s*"res://([^"]+)"\s*\)')
 SCENE_HEADER = re.compile(r'^\[gd_scene\b')
 
 
+# Emoji are worse in a game than on a page: Godot draws them through the project
+# font, so they arrive as tofu boxes or flat monochrome, and they can't be styled,
+# animated or atlased like the rest of the art.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\U0001F1E6-\U0001F1FF"
+                   "\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u2049\u203C]")
+
+
 def review(game_files: dict[str, str]) -> dict:
     """What a careful engineer would check before spending a build on this.
 
@@ -181,6 +188,14 @@ def review(game_files: dict[str, str]) -> dict:
     """
     problems: list[str] = []
     notes: list[str] = []
+
+    for path, content in sorted(game_files.items()):
+        hit = EMOJI.search(content or "")
+        if hit:
+            problems.append(f"{path} uses {hit.group(0)} as an icon or label. Godot draws emoji "
+                            "through the project font, so they come out as boxes or flat grey. "
+                            "Draw the shape with a Polygon2D, a Sprite2D or a TextureRect instead.")
+            break
 
     project = game_files.get(ENTRY)
     if not project:

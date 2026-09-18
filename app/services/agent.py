@@ -671,6 +671,9 @@ Games:
 - A game still needs the things people forget: a start screen that says how to play, a pause, a
   game-over with the score and a way to play again, touch controls that work with one thumb, and a
   score saved so it survives a refresh. Keep the first playable loop small and make it feel good.
+- No emoji, in the HUD or anywhere else. Hearts, stars, coins and buttons get drawn: a canvas path,
+  a Polygon2D, a Sprite2D or a TextureRect. Emoji can't be tinted when a life is lost, can't be
+  atlased, can't be animated, and land as tofu boxes on the platforms that lack them.
 
 Craft:
 - Every data call has a loading state, an empty state that says what to do next, and error handling
