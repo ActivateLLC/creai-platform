@@ -22,6 +22,8 @@ from pathlib import Path
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+import video
+
 TOKEN = os.getenv("BUILD_TOKEN", "")
 GODOT = os.getenv("GODOT_BIN", "godot")
 VERSION = os.getenv("GODOT_VERSION", "4.5.1")
@@ -113,7 +115,71 @@ async def _run(args: list[str], cwd: Path) -> tuple[int, str]:
 @app.get("/health")
 async def health():
     code, out = await _run([GODOT, "--headless", "--version"], Path("/tmp"))
-    return {"ok": code == 0, "godot": out.strip()[:40], "version": VERSION}
+    have_ff = shutil.which("ffmpeg") is not None
+    return {"ok": code == 0, "godot": out.strip()[:40], "video": have_ff, "version": VERSION}
+
+
+class Clip(BaseModel):
+    """One scene: what to show, for how long, and what is said over it."""
+    id: str = ""
+    kind: str = "still"                 # still | clip | card
+    data: str | None = None             # base64 picture or footage
+    voice: str | None = None            # base64 mp3 of the line
+    caption: str = ""
+    seconds: float = 3.0
+    fit: str = "cover"
+    focus: float = 0.5
+    zoom_from: float = 1.0
+    zoom_to: float = 1.09
+    title: str = ""
+    subtitle: str = ""
+
+
+class VideoIn(BaseModel):
+    shape: str = "vertical"
+    scenes: list[Clip] = []
+    music: str | None = None            # base64 bed
+
+
+def _stash(work: Path, name: str, b64: str | None) -> str | None:
+    """Assets arrive as base64 so the builder needs no credentials of its own."""
+    if not b64:
+        return None
+    p = work / name
+    p.write_bytes(base64.b64decode(b64))
+    return str(p)
+
+
+@app.post("/render/video")
+async def render_video(body: VideoIn, x_build_token: str | None = Header(None)):
+    """Cut a film from scenes that already have their pictures and their voice."""
+    check(x_build_token)
+    if not shutil.which("ffmpeg"):
+        raise HTTPException(503, "this builder has no ffmpeg")
+    work = Path(tempfile.mkdtemp(prefix="creai-vid-"))
+    try:
+        scenes = []
+        for i, sc in enumerate(body.scenes):
+            scenes.append({
+                "id": sc.id or str(i), "kind": sc.kind, "caption": sc.caption,
+                "seconds": sc.seconds, "fit": sc.fit, "focus": sc.focus,
+                "zoom_from": sc.zoom_from, "zoom_to": sc.zoom_to,
+                "title": sc.title, "subtitle": sc.subtitle,
+                "file": _stash(work, f"src{i:03d}" + (".mp4" if sc.kind == "clip" else ".jpg"),
+                               sc.data),
+                "voice": _stash(work, f"vo{i:03d}.mp3", sc.voice)})
+        manifest = {"shape": body.shape, "scenes": scenes,
+                    "music": _stash(work, "bed.mp3", body.music)}
+        try:
+            out = video.render(manifest, work)
+        except video.RenderError as exc:
+            raise HTTPException(422, f"the render failed: {exc}")
+        shot = video.poster(out, work / "poster.jpg")
+        facts = video.probe(out)
+        return {"ok": True, "mp4": base64.b64encode(out.read_bytes()).decode(),
+                "poster": base64.b64encode(shot.read_bytes()).decode(), **facts}
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 @app.post("/export/web")

@@ -2,7 +2,9 @@
 FROM python:3.12-slim
 
 ARG GODOT=4.5.1
+# ffmpeg renders the videos; the DejaVu fonts are what captions are burned in with.
 RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates \
+      ffmpeg fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -sSL -o /tmp/godot.zip \
       "https://github.com/godotengine/godot/releases/download/${GODOT}-stable/Godot_v${GODOT}-stable_linux.x86_64.zip" \
