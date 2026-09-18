@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..core import tenancy as T
 from ..core.db import conn
-from ..services import sound, video
+from ..services import sound, video, videoworker
 
 log = logging.getLogger("creai.video")
 router = APIRouter(prefix="/v1/videos", tags=["videos"])
@@ -56,8 +56,30 @@ async def listing(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
 
 @router.post("/{video_id}/render")
 async def render(video_id: int, ctx: T.Ctx = Depends(T.requires("approve"))):
-    """Spend the credits and make the film."""
+    """Spend the credits and make the film. The render runs on after this returns,
+    so a slow connection does not cost the person their video."""
+    import asyncio
     try:
-        return await video.start(video_id, ctx.org_id)
+        out = await video.start(video_id, ctx.org_id)
     except video.VideoError as exc:
         raise HTTPException(409, str(exc))
+    asyncio.create_task(videoworker.run(video_id))
+    return out
+
+
+@router.get("/one/{video_id}")
+async def one(video_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
+    """Where a render has got to, and the finished film when there is one."""
+    async with conn() as c:
+        r = await c.fetchrow(
+            """SELECT id, title, shape, state, progress, seconds, credits, error,
+                      asset_key, poster_key FROM videos WHERE id=$1 AND org_id=$2""",
+            video_id, ctx.org_id)
+    if not r:
+        raise HTTPException(404, "no such video")
+    from ..services import assets
+    return {**{k: r[k] for k in ("id", "title", "shape", "state", "progress", "credits", "error")},
+            "seconds": float(r["seconds"]) if r["seconds"] else None,
+            "url": await assets.signed_get(r["asset_key"]) if r["asset_key"] else None,
+            "poster": await assets.signed_get(r["poster_key"]) if r["poster_key"] else None,
+            "token": r["asset_key"]}

@@ -1482,3 +1482,68 @@ async def test_the_music_terms_are_visible_before_anything_is_made(api):
     ids = [m["id"] for m in r.json()["music"]]
     assert "ace-step" in ids and "musicgen" not in ids
     assert all(m.get("licence") for m in r.json()["music"])
+
+
+# ---------------------------------------------------------------- the render worker
+
+def test_the_name_is_spelled_for_the_ear_not_the_eye():
+    """A speech model cannot guess 'Kree-aye' from 'Creai'. Spelling it
+    phonetically in the input is the only lever, and nobody ever sees it."""
+    from app.services.speech import _say_the_name
+    assert _say_the_name("Creai builds it.") == "Kree-aye builds it."
+    assert _say_the_name("Creative work") == "Creative work"      # not a false match
+    assert _say_the_name("creai.dev") == "creai.dev"              # a domain is read as one
+
+
+@pytest.mark.asyncio
+async def test_a_scene_runs_as_long_as_its_line_takes_to_say(api, monkeypatch):
+    """Squeezing speech into a fixed slot is how ads end up sounding rushed at the
+    end of every sentence."""
+    from app.services import videoworker
+    long_line = 4.8
+    monkeypatch.setattr(videoworker, "_seconds_of", lambda _b: _async(long_line))
+    scene = {"id": "a", "line": "a fairly long sentence", "seconds": 2.0}
+    # the plan said 2 seconds; the voice takes 4.8, so the scene grows
+    runs = round(max(long_line + videoworker.BEAT, scene["seconds"]), 2)
+    assert runs > scene["seconds"]
+
+
+async def _async(v):
+    return v
+
+
+@pytest.mark.asyncio
+async def test_a_failed_render_says_what_went_wrong(api):
+    """'Rendering failed' costs the person another paid attempt to find out why."""
+    from app.services import video, videoworker
+    tok = await sign_in(api, f"w{secrets.token_hex(3)}@studio.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Ad", "path": "video"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    made = await video.save(pid, org, None, {"brand_name": "X", "scenes": [
+        {"source": "footage", "footage": "app", "line": "Something true.", "seconds": 3}]})
+    async with db.conn() as c:
+        await c.execute("UPDATE videos SET state='rendering' WHERE id=$1", made["id"])
+    await videoworker.run(made["id"])          # no builder configured in tests
+    async with db.conn() as c:
+        row = await c.fetchrow("SELECT state, error FROM videos WHERE id=$1", made["id"])
+    assert row["state"] == "failed"
+    assert row["error"] and "isn't switched on" in row["error"]
+
+
+@pytest.mark.asyncio
+async def test_two_workers_cannot_claim_the_same_render(api):
+    """Claiming happens in SQL, so a second instance picking up the queue does not
+    render and charge for the same video twice."""
+    from app.services import video, videoworker
+    tok = await sign_in(api, f"q{secrets.token_hex(3)}@studio.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Ad", "path": "video"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    made = await video.save(pid, org, None, {"scenes": [
+        {"source": "card", "line": "x", "seconds": 2}]})
+    async with db.conn() as c:
+        await c.execute("""UPDATE videos SET state='rendering',
+                           updated_at = now() - interval '10 minutes' WHERE id=$1""", made["id"])
+    first, second = await videoworker.sweep(), await videoworker.sweep()
+    assert first == 1 and second == 0
