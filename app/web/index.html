@@ -627,6 +627,7 @@ html[data-theme=day] .paybtn{color:#fff}
       <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden>Credits</button>
       <button class="tab" role="tab" id="tProjects" aria-selected="false" type="button" hidden>Projects</button>
       <button class="tab" role="tab" id="tFiles" aria-selected="false" type="button" hidden>Files</button>
+      <button class="tab" role="tab" id="tPay" aria-selected="false" type="button" hidden>Payments</button>
       <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden>Connect</button>
       <span class="status label"><span class="dot" id="sDot" style="color:var(--dim)"></span><span id="sText">Draft · not published</span></span>
     </div>
@@ -641,6 +642,7 @@ html[data-theme=day] .paybtn{color:#fff}
     <div class="pane" id="pPosts" hidden></div>
     <div class="pane" id="pDomain" hidden></div>
     <div class="pane" id="pCredits" hidden></div>
+    <div class="pane" id="pPay" hidden></div>
     <div class="pane" id="pProjects" hidden></div>
     <div class="pane" id="pFiles" hidden></div>
     <div class="pane" id="pConnect" hidden></div>
@@ -1190,7 +1192,7 @@ async function afterSignIn(justSigned) {
   }
   creditNotice();
   if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
-  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('credBtn').hidden = false;
+  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('tPay').hidden = false; $('credBtn').hidden = false;
   refreshPreview(); loadPosts(); loadDomains(); loadCredits();
 }
 
@@ -1593,6 +1595,71 @@ async function openProject(pid) {
   loadReadiness();
   checkUploads();
 }
+// Payments: connect the business's own Stripe account, then see what it has taken.
+function money(cents, currency) {
+  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: (currency || 'usd').toUpperCase() }).format((cents || 0) / 100); }
+  catch (_) { return ((cents || 0) / 100).toFixed(2); }
+}
+async function loadPayments() {
+  if (!S.token || !S.project) return;
+  const pane = $('pPay'); pane.replaceChildren();
+  const head = el('div'); head.style.marginBottom = '16px';
+  head.append(el('h2', null, 'Take payments'),
+    el('p', 'muted', "Your customers pay you directly, into your own Stripe account. Creai never holds the money; your name is on the statement."));
+  pane.append(head);
+
+  let state;
+  try { state = await api('/v1/payments/' + S.project.id); }
+  catch (e) { pane.append(el('p', 'err', e.message)); return; }
+
+  const card = el('div', 'card');
+  if (!state.connected || !state.ready) {
+    card.append(el('p', 'label', state.connected ? 'Almost there' : 'Not connected yet'));
+    card.append(el('p', 'muted', state.connected
+      ? 'Stripe still needs a few details before you can be paid.'
+      : 'Connect a Stripe account — or create one on the way through — and your app can start taking payments.'));
+    if (state.needs && state.needs.length) {
+      const ul = el('ul');
+      for (const n of state.needs.slice(0, 6)) ul.append(el('li', 'muted', String(n).replace(/[._]/g, ' ')));
+      card.append(ul);
+    }
+    const go = el('button', 'btn', state.connected ? 'Finish connecting' : 'Connect Stripe');
+    go.type = 'button';
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = 'Opening Stripe…';
+      try {
+        const out = await api('/v1/payments/' + S.project.id + '/connect', { method: 'POST' });
+        location.href = out.url;
+      } catch (e) { go.disabled = false; go.textContent = 'Connect Stripe'; card.append(el('p', 'err', e.message)); }
+    };
+    card.append(go);
+  } else {
+    card.append(el('p', 'label', 'Connected'));
+    card.append(el('p', 'muted', 'Your app can take payments. Creai takes '
+      + (state.fee_bps / 100) + '% of each one; Stripe takes its own fee separately.'));
+  }
+  pane.append(card);
+
+  const rows = state.payments || [];
+  const taken = el('div', 'card'); taken.style.marginTop = '14px';
+  taken.append(el('p', 'label', 'Payments'));
+  if (!rows.length) {
+    taken.append(el('p', 'muted', 'Nothing yet. Payments your app takes will appear here.'));
+  } else {
+    const paid = rows.filter(r => r.status === 'paid');
+    taken.append(el('p', null, money(paid.reduce((a, r) => a + r.amount, 0), rows[0].currency)
+      + ' from ' + paid.length + ' payment' + (paid.length === 1 ? '' : 's')));
+    const ul = el('ul');
+    for (const r of rows.slice(0, 20)) {
+      ul.append(el('li', r.status === 'paid' ? null : 'muted',
+        money(r.amount, r.currency) + ' · ' + (r.label || 'Payment')
+        + (r.status === 'paid' ? '' : ' · unpaid')));
+    }
+    taken.append(ul);
+  }
+  pane.append(taken);
+}
+
 async function loadConnections() {
   if (!S.token) return;
   const pane = $('pConnect'); pane.replaceChildren();
@@ -2769,7 +2836,7 @@ function revealTab(tab) {
   strip.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' });
 }
 function showPane(which) {
-  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect']]) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect'], ['tPay', 'pPay', 'pay']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
     if (k === which) revealTab($(t));
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
@@ -2781,6 +2848,7 @@ $('tPosts').onclick = () => { showPane('posts'); loadPosts(); };
 $('tDomain').onclick = () => { showPane('domain'); loadDomains(); };
 $('tCredits').onclick = () => { showPane('credits'); loadCredits(); };
 $('tConnect').onclick = () => { showPane('connect'); loadConnections(); };
+$('tPay').onclick = () => { showPane('pay'); loadPayments(); };
 $('tFiles').onclick = () => { showPane('files'); loadFiles(); };
 $('tProjects').onclick = () => { showPane('projects'); loadProjects(); };
 $('credBtn').onclick = () => { showPane('credits'); loadCredits(); };

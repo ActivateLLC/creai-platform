@@ -794,3 +794,14 @@ async def test_a_signed_out_stranger_cannot_start_a_payment(api):
                        headers={"X-App-Token": appfs.token(pid, org, "public")},
                        json={"amount": 5000, "label": "Deposit"})
     assert r.status_code == 401
+
+
+def test_the_owner_has_a_way_to_connect_stripe():
+    """The endpoints existed with nothing calling them, which is the same as not
+    existing to the person who needs them."""
+    html = open("app/web/index.html").read()
+    assert 'id="tPay"' in html and 'id="pPay"' in html
+    assert "loadPayments" in html
+    assert "/v1/payments/' + S.project.id + '/connect" in html
+    # the fee is stated where the owner can see it, not buried
+    assert "fee_bps" in html
