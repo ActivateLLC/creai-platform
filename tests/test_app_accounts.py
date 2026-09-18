@@ -2273,3 +2273,14 @@ def test_captions_clear_the_space_the_platforms_cover():
     f = cp.draw(cp.Phrase("You are not done.", 0, 2), 1080, H)
     y = int(f.split(":y=")[1].split(":")[0].split("{")[0])
     assert y < H * (1 - cp.SAFE_BOTTOM)
+
+
+def test_captions_stay_readable_on_pale_footage():
+    """White on cream is invisible, and nothing reports it — the caption simply
+    is not there. The app screens are pale; the establishing footage is dark."""
+    from app.services import captions as cp
+    dark = cp.filters("Chase Thursday.", 0, 2, 1080, 1920)
+    light = cp.filters("Chase Thursday.", 0, 2, 1080, 1920, light=True)
+    assert cp.INK.lstrip("#") in dark and "black@" in dark
+    assert cp.INK_DARK.lstrip("#") in light and "white@" in light
+    assert cp.ACCENT_DARK.lstrip("#") in light        # the lifted word too

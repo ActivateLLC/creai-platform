@@ -34,7 +34,9 @@ FONT = "/home/claude/fonts/inter/extras/ttf/InterDisplay-Bold.ttf"
 FONT_HEAVY = "/home/claude/fonts/inter/extras/ttf/InterDisplay-Black.ttf"
 
 INK = "#F7F5F2"
+INK_DARK = "#14181C"          # on light footage, white text simply disappears
 ACCENT = "#E8894A"
+ACCENT_DARK = "#B5541F"       # the same accent, legible on a pale background
 
 # What the platforms cover. Captions sit above the bottom band and clear of the
 # right-hand column of buttons.
@@ -135,7 +137,8 @@ def _esc(t: str) -> str:
              .replace("%", "\\%").replace("—", "-"))
 
 
-def draw(phrase: Phrase, w: int, h: int, *, size: float = 0.072) -> str:
+def draw(phrase: Phrase, w: int, h: int, *, size: float = 0.072,
+         light: bool = False) -> str:
     """One drawtext filter for a phrase: no box, a soft shadow, one word lifted.
 
     The emphasised word is drawn as its own layer at a larger size and in the
@@ -145,29 +148,38 @@ def draw(phrase: Phrase, w: int, h: int, *, size: float = 0.072) -> str:
     """
     fs = int(w * size)
     y = int(h * (1 - SAFE_BOTTOM) - fs * 1.4)
-    shadow = ":shadowcolor=black@0.55:shadowx=0:shadowy=3"
+    # White on cream is invisible. The app screens are pale, the footage is dark,
+    # and a caption that assumes one of them disappears on the other.
+    ink = INK_DARK if light else INK
+    accent = ACCENT_DARK if light else ACCENT
+    shadow = (":shadowcolor=white@0.45:shadowx=0:shadowy=2" if light
+              else ":shadowcolor=black@0.55:shadowx=0:shadowy=3")
     window = f":enable='between(t,{phrase.start:.2f},{phrase.end:.2f})'"
 
     if not phrase.emphasis:
-        return (f"drawtext=fontfile={FONT}:text='{_esc(phrase.words)}':fontcolor={INK}"
+        return (f"drawtext=fontfile={FONT}:text='{_esc(phrase.words)}':fontcolor={ink}"
                 f":fontsize={fs}:x=(w-text_w)/2:y={y}{shadow}{window}")
 
     # the phrase with its strong word removed, then the strong word beneath it
     rest = phrase.words.replace(phrase.emphasis, "").replace("  ", " ").strip(" .,")
     big = int(fs * 1.5)
     layers = [
-        f"drawtext=fontfile={FONT_HEAVY}:text='{_esc(phrase.emphasis)}':fontcolor={ACCENT}"
+        f"drawtext=fontfile={FONT_HEAVY}:text='{_esc(phrase.emphasis)}':fontcolor={accent}"
         f":fontsize={big}:x=(w-text_w)/2:y={y - int(big * 0.55)}{shadow}{window}"
     ]
     if rest:
         layers.append(
-            f"drawtext=fontfile={FONT}:text='{_esc(rest)}':fontcolor={INK}"
+            f"drawtext=fontfile={FONT}:text='{_esc(rest)}':fontcolor={ink}"
             f":fontsize={fs}:x=(w-text_w)/2:y={y + int(fs * 0.7)}{shadow}{window}")
     return ",".join(layers)
 
 
 def filters(text: str, start: float, end: float, w: int, h: int,
-            words: list[dict] | None = None) -> str:
-    """Every caption layer for one line, ready to append to a filter chain."""
-    parts = [draw(p, w, h) for p in phrases(text, start, end, words)]
+            words: list[dict] | None = None, light: bool = False) -> str:
+    """Every caption layer for one line, ready to append to a filter chain.
+
+    `light` for pale footage — the app screens. Getting this wrong does not
+    produce an error, it produces a caption nobody can read.
+    """
+    parts = [draw(p, w, h, light=light) for p in phrases(text, start, end, words)]
     return ("," + ",".join(parts)) if parts else ""
