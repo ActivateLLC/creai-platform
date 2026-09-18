@@ -89,7 +89,8 @@ MARK = Path(__file__).parent.parent / "assets" / "brand" / "mark.png"
 
 async def cut(sheet: dict, assets: dict, work: Path, *, shape: str = "vertical",
               kit: dict | None = None, music: bool = True,
-              sign_off: bool = True, address: str = "creai.dev") -> Path:
+              sign_off: bool = True, address: str = "creai.dev",
+              shoot_missing: bool = True, quality: str = "final") -> Path:
     """Render a production sheet.
 
     `assets` maps a scene index to footage already on disk. Anything not supplied
@@ -105,25 +106,40 @@ async def cut(sheet: dict, assets: dict, work: Path, *, shape: str = "vertical",
     w, h = SHAPES.get(shape, SHAPES["vertical"])
     work.mkdir(parents=True, exist_ok=True)
 
-    # Footage is checked before a single voice is bought. Speaking first meant a
+    # Footage first, before a single voice is bought. Speaking first meant a
     # missing asset cost a full set of paid calls before failing on something
     # that was knowable up front.
-    shots = []
-    for i in range(len(scenes)):
-        shot = assets.get(i) or assets.get(str(i))
-        if not shot:
-            raise CutError(f"scene {i + 1} has no footage and none was generated")
-        shot = Path(shot)
-        if not shot.exists() or shot.stat().st_size == 0:
-            raise CutError(f"scene {i + 1} names {shot.name}, which is not there")
-        shots.append(shot)
+    #
+    # A scene with no footage is shot rather than refused, so a sheet on its own
+    # is enough to make a film. Supplying assets stays the cheaper path — real
+    # product footage beats anything generated, and costs nothing.
+    from . import shots as shotsvc
+    footage, made = [], []
+    for i, sc in enumerate(scenes):
+        given = assets.get(i) or assets.get(str(i))
+        if given:
+            p = Path(given)
+            if not p.exists() or p.stat().st_size == 0:
+                raise CutError(f"scene {i + 1} names {p.name}, which is not there")
+            footage.append(p)
+            continue
+        if not shoot_missing:
+            raise CutError(f"scene {i + 1} has no footage and shooting is switched off")
+        try:
+            got = shotsvc.shoot(sc, work / f"shot{i:02d}.mp4", quality=quality)
+        except shotsvc.ShotError as exc:
+            raise CutError(f"scene {i + 1} could not be shot: {exc}") from exc
+        footage.append(got["clip"])
+        made.append({"scene": i + 1, "attempts": got["attempts"], "faults": got["faults"]})
+    if made:
+        log.info("shot %d scenes: %s", len(made), made)
 
     # then every line, so a scene can be as long as its line takes to say
     spoken = await _voices(scenes, work)
 
     parts = []
     for i, sc in enumerate(scenes):
-        shot = shots[i]
+        shot = footage[i]
         runs = max(float(sc.get("seconds") or 3), spoken[i]["seconds"] + 0.2)
         seg = work / f"seg{i:02d}.mp4"
         pale = _is_pale(shot)

@@ -172,6 +172,51 @@ def end_card(out: Path, *, logo: Path, address: str = "creai.dev",
     return out
 
 
+# Motion. Wan is cheap enough to draft with; Veo is sharper and costs about the
+# same per second, so the choice is quality of motion rather than money.
+MOVERS = {
+    "draft": ("fal-ai/wan-i2v", {"resolution": "480p", "num_frames": 81}),
+    "final": ("fal-ai/wan-i2v", {"resolution": "720p", "num_frames": 81}),
+}
+
+
+def animate(image_url: str, motion: str, out: Path, *, quality: str = "final",
+            seconds: float = 5.0) -> Path:
+    """Give a still motion, and write the clip to disk.
+
+    The camera move belongs at the END of the prompt. Appended after the scene it
+    reduces drift; embedded mid-sentence the model tends to reinterpret the
+    subject instead of the camera.
+    """
+    model, extra = MOVERS.get(quality, MOVERS["final"])
+    out_json = _fal(model, {"prompt": motion, "image_url": image_url, **extra}, timeout=900)
+    url = (out_json.get("video") or {}).get("url")
+    if not url:
+        raise ShotError("no clip came back")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(httpx.get(url, timeout=600).content)
+    if out.stat().st_size == 0:
+        raise ShotError("the clip downloaded empty")
+    return out
+
+
+def shoot(scene: dict, out: Path, *, quality: str = "final") -> dict:
+    """A scene description becomes a clip: generate, judge, sharpen, animate.
+
+    The whole reason this exists in one place is that the order matters and is
+    easy to get wrong — judging after animating wastes the expensive step, and
+    sharpening after animating enlarges the blur instead of removing it.
+    """
+    from . import producer
+    look = producer.prompt_for(scene)
+    still = make_still(look, "portrait_16_9", sharpen=True, check=True)
+    motion = f"{scene.get('shows', '')}. {producer.MOVES.get(scene.get('move', 'still'), '')}."
+    clip = animate(still["url"], motion, out, quality=quality,
+                   seconds=float(scene.get("seconds") or 4))
+    return {"clip": clip, "still": still["url"], "attempts": still.get("attempt", 1),
+            "faults": still.get("faults", []), "sharpened": still.get("sharpened")}
+
+
 def make_still(prompt: str, shape: str = "portrait_16_9", *, sharpen: bool = True,
                check: bool = True, tries: int = 2) -> dict:
     """A still worth animating: generated, sharpened, and looked at.

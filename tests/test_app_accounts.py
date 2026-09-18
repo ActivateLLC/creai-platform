@@ -2544,3 +2544,39 @@ def test_the_pipeline_is_written_down():
                   "voicedirect", "captions", "sound"):
         assert stage in doc
     assert "Still by hand" in doc          # and is honest about the gaps
+
+
+def test_a_scene_is_shot_when_no_footage_is_given():
+    """A sheet on its own should be enough to make a film."""
+    import inspect
+    from app.services import cutter
+    sig = inspect.signature(cutter.cut)
+    assert sig.parameters["shoot_missing"].default is True
+    assert sig.parameters["quality"].default == "final"
+
+
+@pytest.mark.asyncio
+async def test_shooting_can_be_switched_off_and_then_it_says_so():
+    import pathlib
+    from app.services import cutter
+    sheet = {"scenes": [
+        {"line": "a", "say": "narrator", "angle": "high", "move": "push", "seconds": 2},
+        {"line": "b", "say": "narrator", "angle": "over", "move": "push", "seconds": 2},
+        {"line": "c", "say": "narrator", "angle": "low", "move": "still", "seconds": 2}]}
+    with pytest.raises(cutter.CutError) as e:
+        await cutter.cut(sheet, {}, pathlib.Path("/tmp/noshoot"), shoot_missing=False)
+    assert "scene 1" in str(e.value) and "switched off" in str(e.value)
+
+
+def test_the_expensive_step_happens_last():
+    """Judging after animating wastes the expensive step; sharpening after
+    animating enlarges the blur instead of removing it."""
+    src = open("app/services/shots.py").read()
+    body = src[src.index("def shoot("):src.index("def make_still(")]
+    assert body.index("make_still") < body.index("animate(")
+
+
+def test_the_camera_move_is_last_in_a_motion_prompt():
+    from app.services import producer, shots
+    assert "END of the prompt" in shots.animate.__doc__
+    assert set(shots.MOVERS) == {"draft", "final"}
