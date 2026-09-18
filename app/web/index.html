@@ -286,6 +286,18 @@ input:focus{outline:none;border-color:var(--leaf)}
 .att .doc svg{width:22px;height:22px;color:var(--ember)}
 .att .doc.vid{position:absolute;inset:0}
 .att .doc.vid svg{color:var(--leaf)}
+/* A real line-through, not a drawn bar: the sentence wraps on a phone, and an
+   absolutely positioned bar only ever crosses the first line of a wrap. */
+.struck{opacity:.62;text-decoration:line-through;text-decoration-thickness:1.5px;
+  text-decoration-color:transparent;transition:text-decoration-color .45s ease-out;
+  animation:strike .45s .5s ease-out forwards}
+@keyframes strike{to{text-decoration-color:currentColor}}
+.truth{opacity:0;animation:tell .4s 1s ease-out forwards}
+@keyframes tell{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .struck{animation:none;text-decoration-color:currentColor}
+  .truth{animation:none;opacity:1}
+}
 .att .badge{position:absolute;left:5px;bottom:5px;padding:2px 6px;border-radius:99px;background:rgba(0,0,0,.62);color:#fff;
   font:600 10px/1.3 var(--sans);backdrop-filter:blur(4px)}
 .att .rm{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:0;padding:0;display:grid;place-items:center;
@@ -1263,8 +1275,16 @@ async function loadDomains() {
     };
     api('/v1/plans').then(p => {
       if (p.current.plan !== 'free') return;
+      // Nobody appreciates the absence of a thing they never saw, so the badge
+      // other builders would put here is named — and struck out as it is read.
+      // The strike runs with the sentence rather than after it: this sits on the
+      // publish button, and a beat of "wait, they brand my site?" costs more at
+      // that moment than the joke earns.
       const up = el('div'); up.style.marginTop = '10px';
-      up.append(el('p', 'note', 'Your free address is yours to keep — no badge on your site, nothing added to your pages.'));
+      const joke = el('p', 'note');
+      const struck = el('span', 'struck', 'Free sites carry a small “Made with Creai” badge.');
+      const truth = el('span', 'truth', ' Just kidding. It’s your work — you take the credit.');
+      joke.append(struck, truth); up.append(joke);
       const l = el('button', 'btn ghost', 'Use your own domain'); l.type = 'button';
       l.style.marginTop = '6px'; l.onclick = openPlans;
       up.append(l); pubCard.append(up);

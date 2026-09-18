@@ -1636,3 +1636,15 @@ async def test_every_plan_is_badge_free_including_the_free_one(api):
     text = str(r.json())
     assert "Made with Creai badge" not in text
     assert "No Creai badge" not in text        # nothing to sell the removal of
+
+
+def test_the_badge_joke_survives_a_wrap_and_reduced_motion():
+    """An absolutely positioned bar only crosses the first line of a wrapped
+    sentence, and on a phone this sentence always wraps."""
+    html = open("app/web/index.html").read()
+    assert "text-decoration:line-through" in html
+    assert "Just kidding" in html and "you take the credit" in html
+    # someone who has asked for less motion still gets the joke, not the setup
+    block = html[html.index("@media (prefers-reduced-motion:reduce){"):][:400]
+    assert "text-decoration-color:currentColor" in block
+    assert "opacity:1" in block
