@@ -21,7 +21,11 @@ ffmpeg filter will, every time, for nothing.
 """
 
 import logging
+
+import httpx
 from dataclasses import dataclass
+
+from ..core.config import settings
 
 log = logging.getLogger("creai.sound")
 
@@ -35,10 +39,19 @@ class Source:
     note: str
 
 
+# Hosted now rather than self-hosted: fal runs ACE-Step and Stable Audio, which
+# removes the GPU that was blocking this and keeps the licences that made them
+# the right choice. Self-hosting stays the cheaper answer at volume; it is no
+# longer the only answer.
+ENDPOINTS = {
+    "ace-step": "fal-ai/ace-step",                          # beds, Apache-2.0
+    "stable-sfx": "fal-ai/stable-audio-25/text-to-audio",   # effects, community licence
+}
+
 SOURCES = {
     "ace-step": Source("ACE-Step", "Apache-2.0", True, True,
-                       "Instrumental beds. Ours to run, clear to ship."),
-    "stable-sfx": Source("Stable Audio Small SFX", "Stability Community", True, True,
+                       "Instrumental beds. Clear to ship, and cheap to run ourselves later."),
+    "stable-sfx": Source("Stable Audio", "Stability Community", True, True,
                          "Short effects: whooshes, clicks, stings."),
     "elevenlabs": Source("ElevenLabs Music", "Licensed (tiered)", True, False,
                          "Cleared training data, but advertising rights need their "
@@ -104,3 +117,51 @@ def mix(voice_track: str, bed: str | None, cuts: list[float], out: str) -> list[
     return ["-i", voice_track, "-stream_loop", "-1", "-i", bed,
             "-filter_complex", chain, "-map", "[mixed]",
             "-c:a", "aac", "-b:a", "160k", "-shortest", out]
+
+
+# ---------------------------------------------------------------- making it
+
+async def make(source: str, prompt: str, seconds: float = 8, *, for_ads: bool = True) -> bytes:
+    """Generate a bed or an effect, refusing by licence before spending anything.
+
+    The licence check happens first on purpose: discovering afterwards that a
+    track cannot run in an advertisement means the money is already gone and the
+    cut is already built around it.
+    """
+    picked = pick(source, for_ads=for_ads)          # raises on a licence problem
+    if not settings.fal_key:
+        raise SoundError("sound generation isn't configured")
+    endpoint = ENDPOINTS.get(source)
+    if not endpoint:
+        raise SoundError(f"{picked.name} has no endpoint wired up")
+
+    body = {"prompt": prompt}
+    if source == "ace-step":
+        body["duration"] = max(4, min(int(seconds), 120))
+    else:
+        body["seconds_total"] = max(1, min(int(seconds), 47))
+
+    async with httpx.AsyncClient(timeout=300) as x:
+        r = await x.post(f"https://fal.run/{endpoint}",
+                         headers={"Authorization": f"Key {settings.fal_key}",
+                                  "Content-Type": "application/json"},
+                         json=body)
+    if r.status_code >= 400:
+        log.error("sound failed: %s %s", r.status_code, r.text[:200])
+        raise SoundError("that sound could not be made")
+    out = r.json()
+    url = ((out.get("audio") or out.get("audio_file") or {}) or {}).get("url")
+    if not url:
+        raise SoundError("no audio came back")
+    async with httpx.AsyncClient(timeout=300) as x:
+        return (await x.get(url)).content
+
+
+async def bed_for(kit: dict, mood: str = "", seconds: float = 30) -> bytes:
+    """The bed for an ad, described from the brand rather than from a genre."""
+    return await make("ace-step", bed_prompt(kit, mood), seconds)
+
+
+async def effect(what: str, seconds: float = 2) -> bytes:
+    """One effect. Short on purpose: an effect that outlasts its moment is music."""
+    return await make("stable-sfx", what, seconds)

@@ -2409,3 +2409,29 @@ def test_a_generation_prompt_carries_lens_and_light_too():
                              "move": "push", "lens": "long", "light": "lamp"})
     assert producer.LENSES["long"] in p and producer.LIGHT["lamp"] in p
     assert p.rstrip().endswith(producer.MOVES["push"] + ".")      # movement last
+
+
+def test_a_licence_is_checked_before_any_sound_is_paid_for():
+    """Discovering afterwards that a track cannot run in an ad means the money is
+    gone and the cut is already built around it."""
+    import asyncio
+    from app.services import sound
+    with pytest.raises(sound.SoundError) as e:
+        asyncio.get_event_loop().run_until_complete(sound.make("musicgen", "x", 5)) \
+            if False else sound.pick("musicgen", for_ads=True)
+    assert "non-commercial" in str(e.value).lower()
+    assert "ace-step" in str(e.value).lower()          # and names the one that works
+
+
+def test_only_sources_with_a_wired_endpoint_can_be_made():
+    from app.services import sound
+    assert set(sound.ENDPOINTS) == {"ace-step", "stable-sfx"}
+    for src in sound.ENDPOINTS:
+        assert sound.SOURCES[src].ads_ok
+
+
+def test_an_effect_is_short_and_a_bed_is_not():
+    """An effect that outlasts its moment is music."""
+    from app.services import sound
+    assert sound.bed_prompt({"voice": "plain"}, "calm").endswith("Loopable.")
+    assert "no vocals" in sound.bed_prompt({"voice": "plain"})

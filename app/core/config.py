@@ -79,6 +79,8 @@ class Settings:
     # agent — Anthropic, called over HTTP
     anthropic_key: str = _req("ANTHROPIC_API_KEY", "")
     openai_key: str = _req("OPENAI_API_KEY", "")
+    # fal runs the video, music and sound-effect models. One key, several jobs.
+    fal_key: str = _req("FAL_KEY", "")
     # A separate origin for sites people import, which run their own JavaScript.
     # Never the app's own host: localStorage there holds the owner's session.
     imports_host: str = os.getenv("IMPORTS_HOST", "")
@@ -129,6 +131,7 @@ class Settings:
             "agent": bool(self.anthropic_key),
             "voice": bool(self.openai_key),
             "images": bool(self.hf_token),
+            "sound": bool(self.fal_key),
             "imports": bool(self.assets_bucket and self.assets_key_id),
             "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,
             "payments": self.stripe_keys_ok() and not STRIPE_REJECTED and not CONNECT_OFF,
