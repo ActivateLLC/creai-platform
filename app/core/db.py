@@ -300,6 +300,26 @@ CREATE TABLE IF NOT EXISTS app_users (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS app_users_email_idx ON app_users(project_id, lower(email));
 
+-- Files handed over by the people who use an app: a receipt, a photo of the job,
+-- a signed form. Scoped to the app, and to one of its users when the collection
+-- is private. Served through the API, never by a public URL.
+CREATE TABLE IF NOT EXISTS app_files (
+  id           BIGSERIAL PRIMARY KEY,
+  org_id       BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id   BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  collection   TEXT NOT NULL,
+  app_user_id  BIGINT,
+  name         TEXT NOT NULL,
+  mime         TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  size         BIGINT NOT NULL,
+  key          TEXT NOT NULL,
+  token        TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS app_files_idx ON app_files(project_id, collection, id DESC);
+CREATE INDEX IF NOT EXISTS app_files_owner_idx ON app_files(project_id, app_user_id);
+
 -- Workspace spending cap (credits per calendar month; NULL = no cap) and the
 -- registrant contact for domains (encrypted).
 CREATE TABLE IF NOT EXISTS org_settings (
@@ -510,7 +530,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
     "game_builds", "game_releases",
 )
 

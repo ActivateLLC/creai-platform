@@ -388,7 +388,34 @@ const auth = {
   get user() { return CURRENT; },
   get signedIn() { return !!SESSION; },
 };
-window.creai = { db: { collection }, auth, report };
+// Files people hand over: a receipt, a photo of the job, a signed form. Same
+// access rules as the records, so "own" keeps one person's files to themselves.
+const FILES = API.replace(/\/v1\/appdata$/, '/v1/appfiles');
+const files = {
+  async upload(collection, file) {
+    const fd = new FormData(); fd.append('file', file, file.name || 'upload');
+    const h = { 'X-App-Token': TOKEN };
+    if (SESSION) h['X-App-Session'] = SESSION;
+    const r = await fetch(FILES + '/' + collection, { method: 'POST', headers: h, body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || 'that upload did not work');
+    return d;                                   // { id, name, mime, size, url }
+  },
+  list: (collection) => fetch(FILES + '/' + collection, { headers: headers() })
+    .then(async (r) => { const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'could not list files'); return d.files; }),
+  remove: (file) => fetch(FILES + file.url.replace('/v1/appfiles', ''),
+    { method: 'DELETE', headers: headers() }).then((r) => r.ok),
+  // A src/href the browser can use. The bytes are fetched with the session in a
+  // header and handed back as a blob URL — a token in a query string would leak
+  // through referrers and server logs, and would outlive the session.
+  async link(file) {
+    const r = await fetch(FILES + file.url.replace('/v1/appfiles', ''), { headers: headers() });
+    if (!r.ok) throw new Error('that file is not available');
+    return URL.createObjectURL(await r.blob());   // revoke it when the view closes
+  },
+};
+window.creai = { db: { collection }, auth, files, report };
 """
 
 RUNNER = """

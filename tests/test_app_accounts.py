@@ -624,3 +624,99 @@ def test_a_refused_drawing_falls_back_rather_than_breaking_the_page():
             {"kind": "cta", "body": "y"}]})
     html = site_spec.render(spec)
     assert "bad()" not in html and "<h3>A</h3>" in html
+
+
+# ---------------------------------------------------------------- files people upload
+
+PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+
+FILE_APP = {
+    "app.js": "import { html, render } from 'htm/preact';\n"
+              "await window.creai.auth.me();\n"
+              "window.creai.auth.signOut();\n"
+              "const notes = window.creai.db.collection('notes');\n"
+              "render(html`<div />`, document.getElementById('root'));",
+    "app.json": '{"collections": {"notes": {"read": "own", "write": "user", "manage": "own"}}}',
+}
+
+
+@pytest_asyncio.fixture
+async def files_api(api, monkeypatch):
+    """Storage stubbed at the bucket, so the access rules are what's under test."""
+    from app.services import appfiles, assets
+    store = {}
+    monkeypatch.setattr(assets, "configured", lambda: True)
+
+    async def put(key, data, mime):
+        store[key] = data
+
+    async def blob(key):
+        return store.get(key)
+
+    monkeypatch.setattr(assets, "put_blob", put)
+    monkeypatch.setattr(appfiles.assets, "put_blob", put)
+    monkeypatch.setattr(appfiles.assets, "blob", blob)
+    monkeypatch.setattr(appfiles.assets, "configured", lambda: True)
+    yield api
+
+
+@pytest.mark.asyncio
+async def test_one_persons_upload_is_invisible_to_another(files_api):
+    api = files_api
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    a = (await api.post("/v1/appauth/signup", headers=visitor,
+                        json={"email": "ivy@example.com", "password": "a-good-password"})).json()
+    b = (await api.post("/v1/appauth/signup", headers=visitor,
+                        json={"email": "jon@example.com", "password": "a-good-password"})).json()
+    ivy = {**visitor, "X-App-Session": a["session"]}
+    jon = {**visitor, "X-App-Session": b["session"]}
+
+    up = await api.post("/v1/appfiles/notes", headers=ivy,
+                        files={"file": ("receipt.png", PNG, "image/png")})
+    assert up.status_code == 200, up.text
+    f = up.json()
+
+    assert [x["name"] for x in (await api.get("/v1/appfiles/notes", headers=ivy)).json()["files"]] \
+        == ["receipt.png"]
+    assert (await api.get("/v1/appfiles/notes", headers=jon)).json()["files"] == []
+
+    # the exact link, in someone else's hands, is a 404
+    assert (await api.get(f["url"], headers=ivy)).status_code == 200
+    assert (await api.get(f["url"], headers=jon)).status_code == 404
+    assert (await api.delete(f["url"], headers=jon)).status_code == 404
+    assert (await api.get(f["url"], headers=ivy)).content == PNG
+
+
+@pytest.mark.asyncio
+async def test_a_signed_out_stranger_cannot_read_a_private_file(files_api):
+    api = files_api
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    s = (await api.post("/v1/appauth/signup", headers=visitor,
+                        json={"email": "kim@example.com", "password": "a-good-password"})).json()
+    f = (await api.post("/v1/appfiles/notes", headers={**visitor, "X-App-Session": s["session"]},
+                        files={"file": ("x.png", PNG, "image/png")})).json()
+    assert (await api.get(f["url"], headers=visitor)).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_lies_about_its_type_is_refused(files_api):
+    api = files_api
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    s = (await api.post("/v1/appauth/signup", headers=visitor,
+                        json={"email": "lee@example.com", "password": "a-good-password"})).json()
+    who = {**visitor, "X-App-Session": s["session"]}
+    bad = await api.post("/v1/appfiles/notes", headers=who,
+                         files={"file": ("evil.png", b"<?php echo 1; ?>", "image/png")})
+    assert bad.status_code == 400 and "isn't what its name says" in bad.json()["detail"]
+    wrong = await api.post("/v1/appfiles/notes", headers=who,
+                           files={"file": ("a.exe", b"MZ", "application/x-msdownload")})
+    assert wrong.status_code == 400
+
+
+def test_the_sdk_never_puts_a_token_in_a_url():
+    """A token in a query string leaks through referrers and server logs."""
+    assert "createObjectURL" in appfs.SDK
+    assert "?t=" not in appfs.SDK and "token=" not in appfs.SDK

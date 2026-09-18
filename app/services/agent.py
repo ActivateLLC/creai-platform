@@ -668,6 +668,21 @@ Platform rules (the preview enforces them):
   what the app is, and put the person's name and a sign-out control in the topbar. Use "own" for
   anything personal so one member never sees another's rows; the server enforces it, but choose
   it deliberately. Show the error text from a failed sign-in exactly as it comes back.
+  Forgotten passwords, which every sign-in screen needs:
+    await creai.auth.forgot(email)               emails a code; always succeeds, so it can't be
+                                                 used to find out who has an account
+    await creai.auth.reset(code, newPassword)    sets it and signs them in
+  Build both screens, not just the link.
+- Files people hand over — a receipt, a photo of the job, a signed form, a CV, an invoice PDF:
+    await creai.files.upload('invoices', fileFromAnInput)  -> { id, name, mime, size, url }
+    await creai.files.list('invoices')                     -> the ones this person may see
+    await creai.files.link(file)                           -> a src/href for <img> or a download
+    await creai.files.remove(file)
+  The same app.json rules as records: "own" keeps each person's files to themselves, and a link
+  copied out of one account is refused in another. Images and PDFs, up to 12 MB each. Call
+  URL.revokeObjectURL on a link when the view closes.
+  Still missing, so never promise it: an app cannot call another company's API, and there is no
+  payment step inside an app yet.
 
 Games:
 - For a game, import { canvas, loop, keys, tapped, pointer, sprite, loadAll, beep, save, leaderboard,
