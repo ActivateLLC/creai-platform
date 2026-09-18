@@ -2160,3 +2160,34 @@ def test_an_arc_that_does_not_exist_is_refused():
         vd.arc("nonsense")
     with pytest.raises(vd.DirectionError):
         vd.direct("problem", "no-such-beat")
+
+
+def test_the_agent_is_told_what_the_first_screen_must_carry():
+    """The brief was senior on correctness and silent on substance, so the agent
+    built correct forms over tables — which is a database with a coat on."""
+    from app.services import agent
+    b = agent.APP_EXTRA
+    assert "Lead with the number they actually care about" in b
+    assert "Show state, not just rows" in b
+    assert 'Answer "what now"' in b
+    assert "database with a coat on" in b
+    assert "never a name in\n    brackets" in b or "never a name in brackets" in b.replace("\n    ", " ")
+
+
+def test_the_video_agent_gets_a_real_brief_not_a_tool_description():
+    """The app agent had 150 lines of direction and the video agent had eight.
+    That imbalance is why the ads came out correct and unwatchable."""
+    from app.services import agent
+    b = agent.VIDEO_EXTRA
+    assert len(b.splitlines()) > 40
+    # the things that actually decide whether an ad earns anything
+    assert "first two seconds must MOVE" in b
+    assert "brand name never appears in the opening line" in b
+    assert "Holding matters more than hooking" in b
+    assert "last third states what to do and why now" in b
+    # and the lines that stop it lying
+    assert "testimonial nobody gave" in b
+    assert "may appear and must never claim" in b
+    assert "Nothing claimed that the product does not do" in b
+    # direction, not a voice setting
+    assert "One instruction for every line is a voice setting" in b
