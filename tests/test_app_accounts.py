@@ -2363,3 +2363,49 @@ def test_camera_movement_is_appended_last_in_a_generation_prompt():
     assert p.rstrip().endswith(producer.MOVES["push"] + ".")
     assert producer.ANGLES["low"] in p
     assert "no text" in p
+
+
+def test_a_production_sheet_specifies_every_attribute_of_a_moment():
+    """Angle alone is not direction. Lens, light, tone, sound and music are the
+    rest of it, and each one maps to something the pipeline can execute."""
+    from app.services import producer
+    for table in (producer.ANGLES, producer.MOVES, producer.LENSES,
+                  producer.LIGHT, producer.SOUNDS, producer.MUSIC):
+        assert table and all(isinstance(v, str) and v for v in table.values())
+    # the sounds named are the ones that actually exist as files
+    assert set(producer.SOUNDS) >= {"pop", "tick", "snap", "chime", "none"}
+
+
+def test_sound_marks_a_beat_rather_than_decorating_every_one():
+    from app.services import producer
+    noisy = [{"angle": "high", "move": "push", "sound": "pop", "music": "under", "tone": "a"},
+             {"angle": "over", "move": "push", "sound": "tick", "music": "under", "tone": "b"},
+             {"angle": "low", "move": "still", "sound": "snap", "music": "out", "tone": "c"}]
+    assert any("decorate" in p for p in producer.check(noisy))
+
+
+def test_the_bed_lifts_once_and_leaves_the_last_line_dry():
+    from app.services import producer
+    twice = [{"angle": "high", "move": "push", "music": "lift", "tone": "a"},
+             {"angle": "over", "move": "push", "music": "lift", "tone": "b"},
+             {"angle": "low", "move": "still", "music": "under", "tone": "c"}]
+    problems = producer.check(twice)
+    assert any("lifts more than once" in p for p in problems)
+    assert any("land dry" in p for p in problems)
+
+
+def test_one_tone_across_the_whole_ad_is_caught():
+    """That is a voice setting, not a performance — the exact fault in the early cuts."""
+    from app.services import producer
+    flat = [{"angle": "high", "move": "push", "tone": "confident", "music": "under"},
+            {"angle": "over", "move": "push", "tone": "confident", "music": "under"},
+            {"angle": "low", "move": "still", "tone": "confident", "music": "out"}]
+    assert any("voice setting" in p for p in producer.check(flat))
+
+
+def test_a_generation_prompt_carries_lens_and_light_too():
+    from app.services import producer
+    p = producer.prompt_for({"shows": "A plumber at a kitchen table", "angle": "high",
+                             "move": "push", "lens": "long", "light": "lamp"})
+    assert producer.LENSES["long"] in p and producer.LIGHT["lamp"] in p
+    assert p.rstrip().endswith(producer.MOVES["push"] + ".")      # movement last

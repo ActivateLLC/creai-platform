@@ -57,6 +57,44 @@ MOVES = {
     "tilt": "tilt up — used once, on the turn from problem to solution",
 }
 
+# Everything else a moment is made of. Each of these maps to something the
+# pipeline can actually do — a generation prompt, a sound file, a voice
+# direction, a caption setting. An attribute nothing can execute is a note, not
+# a specification, and notes are how production documents rot.
+LENSES = {
+    "wide": "wide lens, some distortion, the room around them — for establishing",
+    "normal": "normal lens, how the eye sees it — for anything conversational",
+    "long": "long lens, compressed, background falling away — isolates the subject",
+    "macro": "macro, very close, shallow — hands, a screen, a detail",
+}
+
+LIGHT = {
+    "dusk": "low warm sun, long shadows, end of the day",
+    "lamp": "one practical lamp, warm pool, dark around it — night, indoors",
+    "grey": "flat overcast daylight, no drama — the ordinary version of the day",
+    "screen": "lit by the phone itself, cool on the face, dark behind",
+    "clean": "even bright light, no mood — for product screens",
+}
+
+# The sounds that exist, generated rather than licensed, so a spec can name one
+# and the render can find it.
+SOUNDS = {
+    "pop": "a name landing in a field",
+    "tick": "money landing — heavier than the others",
+    "snap": "a state changing",
+    "chime": "a date landing in a calendar",
+    "none": "silence, deliberately",
+}
+
+# Music is the one attribute not yet wired: ACE-Step needs a GPU and has none
+# yet. Specifying it is still worth doing, because the spec outlives the gap.
+MUSIC = {
+    "none": "no bed — the voice and the room carry it",
+    "under": "a sparse bed, well under the voice, ducked when anyone speaks",
+    "lift": "the bed opens slightly as the product appears",
+    "out": "the bed drops away entirely, leaving the last line dry",
+}
+
 SYSTEM = """You are the producer of a short vertical advertisement. You write the script AND
 direct it: every scene says what the camera sees, from where, and how it moves.
 
@@ -66,6 +104,17 @@ Return ONLY a JSON object: {"scenes": [...]}, each scene having
   shows    what is on screen, described so somebody could film or generate it
   angle    one of: high, eye, low, over, macro
   move     one of: still, push, pull, handheld, tilt
+  lens     one of: wide, normal, long, macro
+  light    one of: dusk, lamp, grey, screen, clean
+  tone     the emotional direction for the voice on this line, in a few words
+  sound    one of: pop, tick, snap, chime, none — a single effect, on the beat it marks
+  music    one of: none, under, lift, out
+  caption  what is SEEN on screen. Two to five words, and NOT a summary of the line —
+           the viewer is already hearing that. Prefer the hard thing: a time, an
+           amount, a day, a name. A voice says "eighteen four"; the screen says
+           "$18,400". A voice says "six forty-seven"; the screen says "6:47".
+           If the scene has no such thing in it, use "" — a caption that only
+           narrates is worse than none.
   seconds  a rough guess; the real length follows the line
   why      one short sentence on why this angle, not another
 
@@ -84,6 +133,21 @@ Direction that is not optional:
 - The last scene says what to do and why now.
 - One idea per scene. Write for sound off.
 - Claim nothing the product does not do. No invented prices, awards or customers.
+
+On the other attributes:
+- Light carries time of day and mood. The problem is dusk or lamp; the product is clean.
+  Do not light a working screen dramatically — it reads as an advertisement for itself.
+- Lens is distance felt rather than measured. Long for isolation, macro for the moment a
+  thing happens, wide only to establish.
+- Sound marks a beat; it does not decorate one. At most one effect per scene, and silence
+  is a legitimate choice — four identical clicks are worse than nothing.
+- Music is under everything or it is not there. It lifts once, when the product arrives,
+  and drops out for the last line so the ask lands dry.
+- Captions are not subtitles. On at most half the scenes, and never on the scene where
+  the customer speaks — the picture is already carrying that moment.
+- Tone is the emotional direction, and it must MOVE across the ad. Exhausted, then sharp,
+  then curious, then quick, then relieved, then certain. A single tone across six scenes
+  is a voice setting, not a performance.
 """
 
 
@@ -134,6 +198,12 @@ def _clean(s: dict) -> dict:
         "shows": str(s.get("shows") or "")[:400],
         "angle": s.get("angle") if s.get("angle") in ANGLES else "eye",
         "move": s.get("move") if s.get("move") in MOVES else "still",
+        "lens": s.get("lens") if s.get("lens") in LENSES else "normal",
+        "light": s.get("light") if s.get("light") in LIGHT else "grey",
+        "tone": str(s.get("tone") or "")[:120],
+        "sound": s.get("sound") if s.get("sound") in SOUNDS else "none",
+        "music": s.get("music") if s.get("music") in MUSIC else "under",
+        "caption": str(s.get("caption") or "")[:80],
         "seconds": float(s.get("seconds") or 3),
         "why": str(s.get("why") or "")[:160],
     }
@@ -158,6 +228,24 @@ def check(scenes: list[dict]) -> list[str]:
         problems.append("the first scene is locked off; the opening has to move")
     if not any(s.get("angle") in ("over", "macro") for s in scenes):
         problems.append("no shot is over the shoulder or macro, so the product is never theirs")
+
+    tones = [(s.get("tone") or "").lower() for s in scenes if s.get("tone")]
+    if len(tones) > 2 and len(set(tones)) <= 1:
+        problems.append("every scene has the same tone — that is a voice setting, not a read")
+    if sum(1 for s in scenes if s.get("sound") not in (None, "none")) > len(scenes) * 0.6:
+        problems.append("almost every scene has an effect; sound marks a beat, it does not "
+                        "decorate one")
+    # Only judge an attribute that was actually specified. Complaining about a
+    # missing one turns the checker into noise, and a checker people learn to
+    # skim is worse than none.
+    music = [s.get("music") for s in scenes if s.get("music")]
+    if music.count("lift") > 1:
+        problems.append("the bed lifts more than once, so no lift means anything")
+    if music and music[-1] not in ("out", "none"):
+        problems.append("the bed is still running under the last line; let the ask land dry")
+    captioned = sum(1 for s in scenes if (s.get("caption") or "").strip())
+    if captioned > max(1, len(scenes) // 2):
+        problems.append("most scenes carry a caption — the viewer is already hearing the line")
     return problems
 
 
@@ -168,5 +256,7 @@ def prompt_for(scene: dict) -> str:
     reduces drift, where embedding it mid-sentence tends to confuse the subject.
     """
     return (f"{scene['shows']}. {ANGLES[scene['angle']]}. "
+            f"{LENSES.get(scene.get('lens', 'normal'), '')}. "
+            f"{LIGHT.get(scene.get('light', 'grey'), '')}. "
             f"Vertical 9:16, photographic, no text, no on-screen writing. "
             f"{MOVES[scene['move']]}.")
