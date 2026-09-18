@@ -582,8 +582,14 @@ or two in your head, then build it completely. Don't leave TODOs or half-built s
 Platform rules (the preview enforces them):
 - Plain ES modules, no build step. Reach for the known library that fits, not a hand-rolled one:
     preact, preact/hooks, htm/preact   the app itself
-    gsap, gsap/ScrollTrigger           motion, entrances, scroll-linked reveals
+    lucide                             icons — use them; an interface without icons looks unfinished
+    motion                             animate() for micro-interactions and enter/exit
+    gsap, gsap/ScrollTrigger           timelines and scroll-linked reveals, when motion isn't enough
+    @floating-ui/dom                   menus, tooltips and popovers that stay on screen
+    zod                                validate a form before it saves, and show the message
     chart.js/auto                      any dashboard, total over time, breakdown
+    d3                                 a chart Chart.js can't draw
+    embla-carousel                     galleries and sliders
     date-fns                           dates and durations — bookings, invoices, "3 days ago"
     fuse.js                            search once a list is long enough to scroll
     sortablejs                         drag to reorder, kanban columns

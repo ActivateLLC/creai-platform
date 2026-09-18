@@ -32,6 +32,12 @@ MARKED = "15.0.12"
 FUSE = "7.1.0"
 SORTABLE = "1.15.6"
 CONFETTI = "1.9.3"
+LUCIDE = "0.544.0"
+MOTION = "12.23.12"
+FLOATING = "1.7.4"
+ZOD = "4.1.5"
+D3 = "7.9.0"
+EMBLA = "8.6.0"
 IMPORTS = {
     "preact": f"{ESM}/preact@{PREACT}",
     "preact/hooks": f"{ESM}/preact@{PREACT}/hooks",
@@ -41,6 +47,12 @@ IMPORTS = {
     "gsap/ScrollTrigger": f"{ESM}/gsap@{GSAP}/ScrollTrigger",
     # The right well-known library for the job, pinned. Each is plain JS with no
     # stylesheet of its own, so nothing fights the kit or the sandbox's CSP.
+    "lucide": f"{ESM}/lucide@{LUCIDE}",                # icons — a UI without them looks unfinished
+    "motion": f"{ESM}/motion@{MOTION}",                # the modern animate(); GSAP for timelines
+    "@floating-ui/dom": f"{ESM}/@floating-ui/dom@{FLOATING}",  # menus, tooltips, popovers that fit
+    "zod": f"{ESM}/zod@{ZOD}",                         # validate a form before it saves
+    "d3": f"{ESM}/d3@{D3}",                            # a chart Chart.js cannot draw
+    "embla-carousel": f"{ESM}/embla-carousel@{EMBLA}",  # galleries and sliders that feel right
     "chart.js/auto": f"{ESM}/chart.js@{CHART}/auto",   # dashboards, totals over time
     "date-fns": f"{ESM}/date-fns@{DATEFNS}",           # bookings, invoices, "3 days ago"
     "marked": f"{ESM}/marked@{MARKED}",                # notes, rich descriptions
@@ -579,9 +591,10 @@ def review(app_files: dict[str, str]) -> dict:
                             problems.append(f"{path}: imports {{ {name} }} from {target}, which doesn't export it.")
             elif spec not in IMPORTS and not spec.startswith("three/addons/"):
                 problems.append(f"{path}: '{spec}' isn't available. Use preact, preact/hooks, "
-                                "htm/preact, gsap, gsap/ScrollTrigger, chart.js/auto, date-fns, "
-                                "marked, fuse.js, sortablejs, canvas-confetti, three, phaser or "
-                                "creai/game.")
+                                "htm/preact, lucide, motion, gsap, gsap/ScrollTrigger, "
+                                "@floating-ui/dom, zod, chart.js/auto, d3, date-fns, marked, "
+                                "fuse.js, sortablejs, embla-carousel, canvas-confetti, three, "
+                                "phaser or creai/game.")
             for item in re.split(r"[,{}\s]+", what):
                 item = item.strip()
                 if item and item not in ("*", "as"):

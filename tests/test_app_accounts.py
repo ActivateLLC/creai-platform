@@ -473,7 +473,8 @@ def test_content_images_are_not_square_cornered():
 
 def test_the_known_library_for_each_job_is_available():
     """Verified loading in a real sandboxed browser, not just listed here."""
-    for spec in ("chart.js/auto", "date-fns", "marked", "fuse.js", "sortablejs",
+    for spec in ("lucide", "motion", "@floating-ui/dom", "zod", "chart.js/auto", "d3",
+                 "date-fns", "marked", "fuse.js", "sortablejs", "embla-carousel",
                  "canvas-confetti", "gsap", "three", "phaser"):
         assert spec in appfs.IMPORTS, spec
         assert appfs.IMPORTS[spec].startswith("https://esm.sh/"), spec
