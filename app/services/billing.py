@@ -286,12 +286,17 @@ def _form(data: dict, prefix: str = "") -> list[tuple[str, str]]:
     return out
 
 
-async def _stripe(method: str, path: str, data: dict | None = None) -> dict:
+async def _stripe(method: str, path: str, data: dict | None = None,
+                  stripe_account: str | None = None) -> dict:
+    """Creai's own Stripe call, or — with stripe_account — a call made on a
+    connected customer's account, which is how their buyers pay them directly."""
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    if stripe_account:
+        headers["Stripe-Account"] = stripe_account
     async with httpx.AsyncClient(timeout=30) as x:
         r = await x.request(
             method, f"{STRIPE}{path}", content=urlencode(_form(data or {})),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            auth=(settings.stripe_key, ""))
+            headers=headers, auth=(settings.stripe_key, ""))
     out = r.json()
     if r.status_code >= 400:
         raise BillingError((out.get("error") or {}).get("message", "payment failed"))

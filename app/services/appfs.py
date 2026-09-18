@@ -415,7 +415,26 @@ const files = {
     return URL.createObjectURL(await r.blob());   // revoke it when the view closes
   },
 };
-window.creai = { db: { collection }, auth, files, report };
+// Taking money, on the business's own Stripe account. Creai never holds it.
+const PAY = API.replace(/\/v1\/appdata$/, '/v1/apppay');
+const pay = {
+  // Opens Stripe's payment page. Returns nothing useful — the browser leaves.
+  async charge(collection, { amount, label, currency = 'usd', reference = '' }) {
+    const r = await fetch(PAY + '/' + collection, { method: 'POST', headers: headers(),
+      body: JSON.stringify({ amount, label, currency, reference }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || 'could not start that payment');
+    window.location.href = d.url;
+    return d;
+  },
+  // After the buyer comes back: did it actually go through?
+  settled: (sessionId) => fetch(PAY + '/session/' + encodeURIComponent(sessionId),
+    { headers: headers() }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'could not check that payment');
+      return d; }),
+};
+window.creai = { db: { collection }, auth, files, pay, report };
 """
 
 RUNNER = """

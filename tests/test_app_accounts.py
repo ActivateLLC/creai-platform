@@ -720,3 +720,77 @@ def test_the_sdk_never_puts_a_token_in_a_url():
     """A token in a query string leaks through referrers and server logs."""
     assert "createObjectURL" in appfs.SDK
     assert "?t=" not in appfs.SDK and "token=" not in appfs.SDK
+
+
+# ---------------------------------------------------------------- payments
+
+def test_creai_takes_a_fee_that_can_never_exceed_the_charge():
+    from app.services import payments
+    assert payments.fee_for(10_000) == 200          # 2% of $100
+    assert payments.fee_for(50) == 1
+    assert payments.fee_for(1) == 0                 # never more than the charge
+    assert all(payments.fee_for(a) < a for a in (1, 50, 99, 100, 10_000, 2_000_000))
+
+
+@pytest.mark.asyncio
+async def test_a_charge_is_made_on_the_customers_account_not_ours(monkeypatch):
+    """Direct charges: the money reaches the business and their name is on the
+    statement. Without Stripe-Account this would charge Creai's own account."""
+    from app.services import payments
+    seen = {}
+
+    async def fake_stripe(method, path, data=None, stripe_account=None):
+        seen[path] = stripe_account
+        return {"id": "cs_test_1", "url": "https://stripe.test/pay"}
+
+    async def fake_account(org_id, project_id):
+        return {"stripe_account": "acct_customer", "ready": True}
+
+    class _Conn:
+        async def execute(self, *a, **k): return None
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+
+    def noop(*a, **k): return _Conn()
+
+    monkeypatch.setattr(payments, "_stripe", fake_stripe)
+    monkeypatch.setattr(payments, "account_for", fake_account)
+    monkeypatch.setattr(payments, "conn", noop)
+    out = await payments.checkout(1, 2, amount=10_000, currency="usd", label="Deposit",
+                                  success_url="https://x/ok", cancel_url="https://x/no")
+    assert seen["/checkout/sessions"] == "acct_customer"
+    assert out["fee"] == 200 and out["url"] == "https://stripe.test/pay"
+
+
+@pytest.mark.asyncio
+async def test_an_app_cannot_charge_before_the_owner_has_connected(api, monkeypatch):
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    s = (await api.post("/v1/appauth/signup", headers=visitor,
+                        json={"email": "mia@example.com", "password": "a-good-password"})).json()
+    r = await api.post("/v1/apppay/notes",
+                       headers={**visitor, "X-App-Session": s["session"]},
+                       json={"amount": 5000, "label": "Deposit"})
+    assert r.status_code == 400 and "connecting its payment account" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_an_absurd_amount_is_refused_before_it_reaches_stripe(api):
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    s = (await api.post("/v1/appauth/signup", headers=visitor,
+                        json={"email": "ned@example.com", "password": "a-good-password"})).json()
+    who = {**visitor, "X-App-Session": s["session"]}
+    for amount in (0, 10, -500, 900_000_000):
+        r = await api.post("/v1/apppay/notes", headers=who,
+                           json={"amount": amount, "label": "Oops"})
+        assert r.status_code in (400, 422), amount
+
+
+@pytest.mark.asyncio
+async def test_a_signed_out_stranger_cannot_start_a_payment(api):
+    _owner, pid, org = await _published_app(api)
+    r = await api.post("/v1/apppay/notes",
+                       headers={"X-App-Token": appfs.token(pid, org, "public")},
+                       json={"amount": 5000, "label": "Deposit"})
+    assert r.status_code == 401

@@ -681,8 +681,16 @@ Platform rules (the preview enforces them):
   The same app.json rules as records: "own" keeps each person's files to themselves, and a link
   copied out of one account is refused in another. Images and PDFs, up to 12 MB each. Call
   URL.revokeObjectURL on a link when the view closes.
-  Still missing, so never promise it: an app cannot call another company's API, and there is no
-  payment step inside an app yet.
+- Taking money, on the business's own Stripe account:
+    await creai.pay.charge('bookings', { amount: 7500, label: 'Deposit', reference: id })
+        amount is in CENTS. This sends the buyer to Stripe's payment page.
+    await creai.pay.settled(sessionId)   -> { paid, amount } when they come back
+  The money goes to the business, not to Creai, and their name is on the statement. The owner
+  connects their account once from the payments screen — until they have, charge() fails with a
+  message saying so, which you should show rather than hide. Record what the payment was for in
+  your own collection before charging, and mark it paid from settled(); never treat the return
+  from Stripe as proof on its own.
+  Still missing, so never promise it: an app cannot call another company's API.
 
 Games:
 - For a game, import { canvas, loop, keys, tapped, pointer, sprite, loadAll, beep, save, leaderboard,

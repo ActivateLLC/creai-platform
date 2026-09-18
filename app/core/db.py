@@ -320,6 +320,35 @@ CREATE TABLE IF NOT EXISTS app_files (
 CREATE INDEX IF NOT EXISTS app_files_idx ON app_files(project_id, collection, id DESC);
 CREATE INDEX IF NOT EXISTS app_files_owner_idx ON app_files(project_id, app_user_id);
 
+-- The customer's own Stripe account, so their buyers pay them and not us.
+CREATE TABLE IF NOT EXISTS payment_accounts (
+  id              BIGSERIAL PRIMARY KEY,
+  org_id          BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id      BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE UNIQUE,
+  stripe_account  TEXT NOT NULL,
+  ready           BOOLEAN NOT NULL DEFAULT false,
+  checked_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Every charge started through an app, with Creai's fee recorded at the time.
+CREATE TABLE IF NOT EXISTS payments (
+  id           BIGSERIAL PRIMARY KEY,
+  org_id       BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id   BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  app_user_id  BIGINT,
+  session_id   TEXT NOT NULL UNIQUE,
+  amount       BIGINT NOT NULL,
+  currency     TEXT NOT NULL,
+  fee          BIGINT NOT NULL,
+  label        TEXT,
+  reference    TEXT,
+  status       TEXT NOT NULL DEFAULT 'open',
+  settled_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payments_idx ON payments(project_id, id DESC);
+
 -- Workspace spending cap (credits per calendar month; NULL = no cap) and the
 -- registrant contact for domains (encrypted).
 CREATE TABLE IF NOT EXISTS org_settings (
@@ -530,7 +559,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "payment_accounts", "payments", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
     "game_builds", "game_releases",
 )
 
