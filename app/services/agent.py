@@ -536,10 +536,25 @@ Platform rules (the preview enforces them):
   tables. Add styles.css only for what the kit lacks. Colours and fonts come from the project theme
   (update_site palette/theme).
 - Access once published lives in app.json:
-  {"collections": {"bookings": {"read": "owner", "write": "public"}}}
-  read = list/get, write = add records, manage = edit/delete; anything unlisted is owner-only.
+  {"collections": {"bookings": {"read": "own", "write": "user", "manage": "own"}}}
+  read = list/get, write = add records, manage = edit/delete. Four levels, least to most trusted:
+    public  anyone, signed in or not
+    user    any signed-in person (a shared list members can all see)
+    own     signed-in, and only the rows that person created
+    owner   the business owner only (the default for anything unlisted)
   Public forms: write public, read owner. Public listings: read public. Never make personal data
   publicly readable, and show a friendly message when a visitor call isn't allowed.
+- Accounts, when the app needs people to sign in — bookings, orders, memberships, portals,
+  anything where someone returns to their own things. window.creai.auth:
+    await creai.auth.signUp(email, password, name)  -> user, and signs them in
+    await creai.auth.signIn(email, password)        -> user
+    await creai.auth.me()                           -> user or null, never throws
+    creai.auth.signOut()
+  Accounts belong to this app alone; they are not Creai accounts. Build the sign-in screen with
+  the kit, call me() once on load to decide what to render, keep a signed-out view that explains
+  what the app is, and put the person's name and a sign-out control in the topbar. Use "own" for
+  anything personal so one member never sees another's rows; the server enforces it, but choose
+  it deliberately. Show the error text from a failed sign-in exactly as it comes back.
 
 Games:
 - For a game, import { canvas, loop, keys, tapped, pointer, sprite, loadAll, beep, save, leaderboard,

@@ -281,6 +281,24 @@ CREATE TABLE IF NOT EXISTS app_records (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS app_records_idx ON app_records(project_id, collection, id);
+ALTER TABLE app_records ADD COLUMN IF NOT EXISTS app_user_id BIGINT;
+CREATE INDEX IF NOT EXISTS app_records_owner_idx ON app_records(project_id, collection, app_user_id);
+
+-- People who sign in to an app a customer built. Their own accounts, not Creai
+-- accounts: scoped to one project, and deleted with it. The password hash is
+-- scrypt; the app never sees it and neither does the owner.
+CREATE TABLE IF NOT EXISTS app_users (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  name        TEXT,
+  pw          TEXT NOT NULL,
+  blocked     BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  seen_at     TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS app_users_email_idx ON app_users(project_id, lower(email));
 
 -- Workspace spending cap (credits per calendar month; NULL = no cap) and the
 -- registrant contact for domains (encrypted).
@@ -492,7 +510,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
     "game_builds", "game_releases",
 )
 

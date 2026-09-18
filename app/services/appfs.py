@@ -132,6 +132,9 @@ PUBLIC_TTL = 7 * 24 * 3600
 
 
 def token(project_id: int, org_id: int, role: str = "owner") -> str:
+    """The app's own token: who the app is, not who is signed into it. A signed-in
+    person is carried separately, by appauth's session, so signing in and out never
+    changes the app's identity."""
     ttl = PUBLIC_TTL if role == "public" else TOKEN_TTL
     body = f"{project_id}.{org_id}.{role}.{int(time.time()) + ttl}"
     sig = hmac.new(settings.secret_key.encode(), b"appdata:" + body.encode(), hashlib.sha256).hexdigest()[:32]
@@ -151,6 +154,12 @@ def verify(tok: str) -> tuple[int, int, str]:
     return int(pid), int(oid), role
 
 
+# Who may touch a collection, least to most trusted. "own" is the one that makes
+# member apps possible: signed-in people reach their own rows and nobody else's,
+# which is what a booking, an order or a timesheet actually needs.
+LEVELS = ("public", "user", "own", "owner")
+
+
 def rules(app_files: dict[str, str]) -> dict:
     """Access rules from app.json. Anything not declared is owner-only when published."""
     try:
@@ -160,8 +169,16 @@ def rules(app_files: dict[str, str]) -> dict:
     out = {}
     for name, r in (raw.get("collections") or {}).items():
         if isinstance(r, dict) and re.match(r"^[a-z][a-z0-9_]{0,40}$", str(name)):
-            out[name] = {k: ("public" if r.get(k) == "public" else "owner") for k in ("read", "write", "manage")}
+            out[name] = {k: (r.get(k) if r.get(k) in LEVELS else "owner")
+                         for k in ("read", "write", "manage")}
     return out
+
+
+def signin_required(app_files: dict[str, str]) -> bool:
+    """True when any collection expects a signed-in person, so the preview and the
+    published app know to offer sign-in at all."""
+    return any(v in ("user", "own")
+               for rule in rules(app_files).values() for v in rule.values())
 
 
 # ---------------------------------------------------------------- preview
@@ -218,12 +235,34 @@ padding:10px 16px;border-radius:999px;animation:in .3s both}}
 
 
 SDK = """
-const API = __API__, TOKEN = __TOKEN__;
+const API = __API__, AUTH = __AUTH__, TOKEN = __TOKEN__;
+// The session lives here, not in app code: app code is blocked from browser
+// storage, and in the preview the frame has an opaque origin where storage
+// throws anyway. Published apps have a real origin, so it persists there.
+let SESSION = null;
+try { SESSION = sessionStorage.getItem('creai_app_session'); } catch (e) {}
+function remember(s) {
+  SESSION = s || null;
+  try { s ? sessionStorage.setItem('creai_app_session', s) : sessionStorage.removeItem('creai_app_session'); } catch (e) {}
+}
+function headers() {
+  const h = { 'Content-Type': 'application/json', 'X-App-Token': TOKEN };
+  if (SESSION) h['X-App-Session'] = SESSION;
+  return h;
+}
 async function call(method, path, body) {
-  const r = await fetch(API + path, { method, headers: { 'Content-Type': 'application/json',
-    'X-App-Token': TOKEN }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(API + path, { method, headers: headers(),
+    body: body ? JSON.stringify(body) : undefined });
   const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && SESSION) remember(null);   // expired session: sign out cleanly
   if (!r.ok) throw new Error(data.detail || ('request failed ' + r.status));
+  return data;
+}
+async function authCall(path, body) {
+  const r = await fetch(AUTH + path, { method: body ? 'POST' : 'GET', headers: headers(),
+    body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || 'that did not work');
   return data;
 }
 const collection = (name) => ({
@@ -236,7 +275,30 @@ const collection = (name) => ({
 const report = (message) => fetch(API + '/_report', { method: 'POST',
   headers: { 'Content-Type': 'application/json', 'X-App-Token': TOKEN },
   body: JSON.stringify({ message }) }).catch(() => {});
-window.creai = { db: { collection }, report };
+
+// People who use this app. Their accounts belong to this app alone.
+let CURRENT = null;
+const auth = {
+  async signUp(email, password, name) {
+    const d = await authCall('/signup', { email, password, name });
+    remember(d.session); CURRENT = d.user; return d.user;
+  },
+  async signIn(email, password) {
+    const d = await authCall('/signin', { email, password });
+    remember(d.session); CURRENT = d.user; return d.user;
+  },
+  signOut() { remember(null); CURRENT = null; },
+  // Who is signed in. Returns null when nobody is — never throws, so a screen can
+  // simply ask for it and render accordingly.
+  async me() {
+    if (!SESSION) { CURRENT = null; return null; }
+    try { CURRENT = (await authCall('/me')).user; } catch (e) { CURRENT = null; }
+    return CURRENT;
+  },
+  get user() { return CURRENT; },
+  get signedIn() { return !!SESSION; },
+};
+window.creai = { db: { collection }, auth, report };
 """
 
 RUNNER = """
@@ -293,6 +355,7 @@ def preview(app_files: dict[str, str], site: dict, app_token: str, api_base: str
     code = {p: c for p, c in app_files.items() if p.endswith((".js", ".css", ".json"))}
     blob = json.dumps(code).replace("</", "<\\/")
     sdk = SDK.replace("__API__", json.dumps(api_base.rstrip("/") + "/v1/appdata")) \
+             .replace("__AUTH__", json.dumps(api_base.rstrip("/") + "/v1/appauth")) \
              .replace("__TOKEN__", json.dumps(app_token))
     csp = ("default-src 'none'; script-src 'unsafe-inline' blob: data: https://esm.sh; "
            "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
@@ -436,6 +499,23 @@ def review(app_files: dict[str, str]) -> dict:
     if missing:
         notes.append("No visitor access rule yet for: " + ", ".join(missing)
                      + " (owner-only once published; add them to app.json if visitors should use them).")
+    # Accounts: the two halves have to agree, or people meet a locked door.
+    uses_auth = "creai.auth" in code_all
+    wants_signin = signin_required(app_files)
+    if wants_signin and not uses_auth:
+        problems.append("app.json expects people to sign in, but nothing calls creai.auth — "
+                        "add a sign-in screen, or change those rules to public.")
+    if uses_auth and not wants_signin:
+        notes.append("The app signs people in, but no collection uses \"user\" or \"own\", so "
+                     "signing in changes nothing. Consider \"own\" for anything personal.")
+    if uses_auth and "creai.auth.me" not in code_all:
+        notes.append("Call creai.auth.me() on load, so a returning person stays signed in.")
+    if uses_auth and "signOut" not in code_all:
+        notes.append("No way to sign out. Put it in the topbar.")
+    for name, rule in rules(app_files).items():
+        if rule.get("read") == "public" and rule.get("write") in ("user", "own"):
+            notes.append(f"{name}: anyone can read it, but only signed-in people can add to it. "
+                         "If those rows are personal, read should be \"own\".")
     if used and not re.search(r"catch\s*\(|\.catch\(", code_all):
         notes.append("Data calls have no error handling; show a friendly message when a call fails.")
     if used and not re.search(r"[Ll]oading", code_all):

@@ -187,7 +187,7 @@ async def test_publish_serves_isolated_page_with_visitor_rules(api):
     assert page.headers["content-security-policy"].startswith("sandbox allow-scripts")
     assert "allow-same-origin" not in page.headers["content-security-policy"]
     import re
-    public_tok = re.search(r'const API = [^,]+, TOKEN = "([^"]+)"', page.text).group(1)
+    public_tok = re.search(r'const API = [^,]+, AUTH = [^,]+, TOKEN = "([^"]+)"', page.text).group(1)
     assert appfs.verify(public_tok) == (pid, org, "public")
     v = {"X-App-Token": public_tok}
     owner = {"X-App-Token": appfs.token(pid, org)}

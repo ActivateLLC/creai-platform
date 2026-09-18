@@ -14,7 +14,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from ..core.db import conn
-from ..services import appfs
+from ..services import appauth, appfs
 
 router = APIRouter(prefix="/v1/appdata", tags=["appdata"])
 
@@ -27,6 +27,18 @@ _hits: dict[int, deque] = defaultdict(deque)
 
 class RecordIn(BaseModel):
     data: dict
+
+
+def _user(pid: int, session: str | None) -> int | None:
+    """The person signed into the app, if they are. A bad or expired session is
+    simply nobody — the request then stands or falls on the public rules."""
+    if not session:
+        return None
+    try:
+        spid, _oid, uid = appauth.open_session(session)
+    except appauth.AuthError:
+        return None
+    return uid if spid == pid else None
 
 
 def _auth(tok: str | None, collection: str) -> tuple[int, int, str]:
@@ -47,17 +59,25 @@ def _auth(tok: str | None, collection: str) -> tuple[int, int, str]:
     return pid, oid, role
 
 
-async def _allow(pid: int, role: str, collection: str, action: str) -> None:
-    """Owners (the preview) can do anything. Visitors to a published app can only
-    do what the app's app.json allows for that collection."""
+async def _allow(pid: int, role: str, collection: str, action: str,
+                 uid: int | None = None) -> str:
+    """Owners (the preview) can do anything. Everyone else gets what the app's
+    app.json allows. Returns the level that let them through, because "own" also
+    decides which rows they see."""
     if role == "owner":
-        return
+        return "owner"
     async with conn() as c:
         files = await c.fetchval(
             "SELECT files FROM app_releases WHERE project_id=$1 AND live ORDER BY id DESC LIMIT 1", pid)
     rule = appfs.rules(files or {}).get(collection, {"read": "owner", "write": "owner", "manage": "owner"})
-    if rule[action] != "public":
-        raise HTTPException(403, f"visitors can't {action} {collection} in this app")
+    level = rule[action]
+    if level == "public":
+        return "public"
+    if level in ("user", "own"):
+        if not uid:
+            raise HTTPException(401, "please sign in to continue")
+        return level
+    raise HTTPException(403, f"visitors can't {action} {collection} in this app")
 
 
 class ReportIn(BaseModel):
@@ -92,42 +112,55 @@ def _size(data: dict) -> None:
 
 
 @router.get("/{collection}")
-async def list_records(collection: str, x_app_token: str | None = Header(None)):
+async def list_records(collection: str, x_app_token: str | None = Header(None),
+                       x_app_session: str | None = Header(None)):
     pid, oid, role = _auth(x_app_token, collection)
-    await _allow(pid, role, collection, "read")
+    uid = _user(pid, x_app_session)
+    level = await _allow(pid, role, collection, "read", uid)
     async with conn() as c:
-        rows = await c.fetch(
-            """SELECT id, data, created_at FROM app_records
-               WHERE project_id=$1 AND org_id=$2 AND collection=$3 ORDER BY id DESC LIMIT 500""",
-            pid, oid, collection)
+        if level == "own":
+            rows = await c.fetch(
+                """SELECT id, data, created_at FROM app_records
+                   WHERE project_id=$1 AND org_id=$2 AND collection=$3 AND app_user_id=$4
+                   ORDER BY id DESC LIMIT 500""", pid, oid, collection, uid)
+        else:
+            rows = await c.fetch(
+                """SELECT id, data, created_at FROM app_records
+                   WHERE project_id=$1 AND org_id=$2 AND collection=$3 ORDER BY id DESC LIMIT 500""",
+                pid, oid, collection)
     return {"items": [_row(r) for r in rows]}
 
 
 @router.post("/{collection}")
-async def add_record(collection: str, body: RecordIn, x_app_token: str | None = Header(None)):
+async def add_record(collection: str, body: RecordIn, x_app_token: str | None = Header(None),
+                     x_app_session: str | None = Header(None)):
     pid, oid, role = _auth(x_app_token, collection)
-    await _allow(pid, role, collection, "write")
+    uid = _user(pid, x_app_session)
+    await _allow(pid, role, collection, "write", uid)
     _size(body.data)
     async with conn() as c:
         n = await c.fetchval("SELECT count(*) FROM app_records WHERE project_id=$1", pid)
         if n >= MAX_RECORDS:
             raise HTTPException(409, "this app has reached its record limit")
         r = await c.fetchrow(
-            """INSERT INTO app_records (org_id, project_id, collection, data)
-               VALUES ($1,$2,$3,$4) RETURNING id, data, created_at""",
-            oid, pid, collection, body.data)
+            """INSERT INTO app_records (org_id, project_id, collection, data, app_user_id)
+               VALUES ($1,$2,$3,$4,$5) RETURNING id, data, created_at""",
+            oid, pid, collection, body.data, uid)
     return _row(r)
 
 
 @router.get("/{collection}/{record_id}")
-async def get_record(collection: str, record_id: int, x_app_token: str | None = Header(None)):
+async def get_record(collection: str, record_id: int, x_app_token: str | None = Header(None),
+                     x_app_session: str | None = Header(None)):
     pid, oid, role = _auth(x_app_token, collection)
-    await _allow(pid, role, collection, "read")
+    uid = _user(pid, x_app_session)
+    level = await _allow(pid, role, collection, "read", uid)
     async with conn() as c:
         r = await c.fetchrow(
             """SELECT id, data, created_at FROM app_records
-               WHERE id=$1 AND project_id=$2 AND org_id=$3 AND collection=$4""",
-            record_id, pid, oid, collection)
+               WHERE id=$1 AND project_id=$2 AND org_id=$3 AND collection=$4
+                 AND ($5::bigint IS NULL OR app_user_id=$5)""",
+            record_id, pid, oid, collection, uid if level == "own" else None)
     if not r:
         raise HTTPException(404, "not found")
     return _row(r)
@@ -135,29 +168,35 @@ async def get_record(collection: str, record_id: int, x_app_token: str | None = 
 
 @router.patch("/{collection}/{record_id}")
 async def update_record(collection: str, record_id: int, body: RecordIn,
-                        x_app_token: str | None = Header(None)):
+                        x_app_token: str | None = Header(None),
+                        x_app_session: str | None = Header(None)):
     pid, oid, role = _auth(x_app_token, collection)
-    await _allow(pid, role, collection, "manage")
+    uid = _user(pid, x_app_session)
+    level = await _allow(pid, role, collection, "manage", uid)
     _size(body.data)
     async with conn() as c:
         r = await c.fetchrow(
             """UPDATE app_records SET data = data || $5::jsonb, updated_at=now()
                WHERE id=$1 AND project_id=$2 AND org_id=$3 AND collection=$4
+                 AND ($6::bigint IS NULL OR app_user_id=$6)
                RETURNING id, data, created_at""",
-            record_id, pid, oid, collection, body.data)
+            record_id, pid, oid, collection, body.data, uid if level == "own" else None)
     if not r:
         raise HTTPException(404, "not found")
     return _row(r)
 
 
 @router.delete("/{collection}/{record_id}")
-async def delete_record(collection: str, record_id: int, x_app_token: str | None = Header(None)):
+async def delete_record(collection: str, record_id: int, x_app_token: str | None = Header(None),
+                        x_app_session: str | None = Header(None)):
     pid, oid, role = _auth(x_app_token, collection)
-    await _allow(pid, role, collection, "manage")
+    uid = _user(pid, x_app_session)
+    level = await _allow(pid, role, collection, "manage", uid)
     async with conn() as c:
         res = await c.execute(
-            "DELETE FROM app_records WHERE id=$1 AND project_id=$2 AND org_id=$3 AND collection=$4",
-            record_id, pid, oid, collection)
+            """DELETE FROM app_records WHERE id=$1 AND project_id=$2 AND org_id=$3 AND collection=$4
+                 AND ($5::bigint IS NULL OR app_user_id=$5)""",
+            record_id, pid, oid, collection, uid if level == "own" else None)
     if res.endswith("0"):
         raise HTTPException(404, "not found")
     return {"ok": True}
