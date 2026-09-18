@@ -68,13 +68,22 @@ captions on most scenes.
 - **`put_screen_on()`** places a real screen recording onto a surface in a scene
   with a perspective transform. No video model renders an interface legibly —
   generated phones show a smudge. The real screen goes on afterwards.
+- **`shoot()`** is the whole sequence in one call: generate, judge, sharpen,
+  animate. It exists in one place because the order is easy to get wrong —
+  judging after animating wastes the expensive step, sharpening after animating
+  enlarges the blur rather than removing it. The camera move goes at the **end**
+  of the motion prompt; embedded mid-sentence the model reinterprets the subject
+  instead of the camera.
 - **`end_card()`** — the mark, the address, the reason. Uses `assets/brand/mark.png`,
   the transparent one. `logo.png` carries a dark plate that shows as a box on any
   background but its own.
 
 ## 4. The film — `cutter.py`
 
-A sheet plus assets becomes an mp4, unattended.
+A sheet becomes an mp4, unattended. Assets are optional: **a scene with no
+footage is shot rather than refused**, so a production sheet on its own is enough
+to make a film. Supplying footage stays the better path where it exists — real
+product capture beats anything generated, and costs nothing.
 
 - Footage is checked **before any voice is bought** — a missing asset used to cost
   a full set of paid calls to discover something knowable up front.
@@ -149,7 +158,6 @@ nothing claimed that the product does not do.
 
 ## Still by hand
 
-- **Animating a still.** `fal-ai/wan-i2v` is called directly; not yet wrapped.
 - **Choosing the four corners** for `put_screen_on()`. Needs a person's eye, or a
   detector.
 - **Filming UGC.** A real person, once. `shoot_list()` says what to ask for.
