@@ -349,6 +349,20 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_idx ON payments(project_id, id DESC);
 
+-- Every fault the reviewers catch before a reply goes out. Individually these are
+-- already handled; in aggregate they say where the agent is weak, which is the
+-- only list worth working from. Kept short: the shape of the fault, not the copy.
+CREATE TABLE IF NOT EXISTS quality_findings (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+  surface     TEXT NOT NULL,          -- site | app | game
+  fault       TEXT NOT NULL,          -- a normalised shape, not the sentence
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS quality_findings_idx ON quality_findings(created_at DESC);
+CREATE INDEX IF NOT EXISTS quality_findings_fault_idx ON quality_findings(fault, created_at DESC);
+
 -- Workspace spending cap (credits per calendar month; NULL = no cap) and the
 -- registrant contact for domains (encrypted).
 CREATE TABLE IF NOT EXISTS org_settings (
@@ -559,7 +573,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "payment_accounts", "payments", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "payment_accounts", "payments", "quality_findings", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
     "game_builds", "game_releases",
 )
 

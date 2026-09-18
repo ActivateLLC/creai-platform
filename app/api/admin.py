@@ -171,3 +171,14 @@ async def probe(admin=Depends(T.platform_admin)):
         out["hosting"] = {"ok": False, "error": str(exc)[:300]}
     await T.log_admin(admin["user_id"], "admin.probe", admin["reason"])
     return out
+
+
+@router.get("/quality")
+async def quality(days: int = 7, admin=Depends(T.platform_admin)):
+    """What the reviewers keep catching, across every build.
+
+    The working list: a fault appearing hundreds of times is a prompt to rewrite,
+    a rule that is wrong, or a capability that is missing. Read it weekly.
+    """
+    from ..services import quality as quality_svc
+    return await quality_svc.digest(days=max(1, min(int(days), 90)))

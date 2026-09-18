@@ -834,3 +834,38 @@ def test_health_reports_payments_separately_from_billing():
     theirs. They fail independently."""
     src = open("app/core/config.py").read()
     assert '"payments":' in src and "CONNECT_OFF" in src
+
+
+# ---------------------------------------------------------------- the improvement loop
+
+def test_faults_are_counted_by_shape_not_by_wording():
+    """Two emoji complaints are one fault. Otherwise the tally says nothing."""
+    from app.services import quality
+    assert quality.shape_of("Remove the emoji (🔧). They render differently") == "emoji-as-icon"
+    assert quality.shape_of("Remove the emoji (💧). They render differently") == "emoji-as-icon"
+    assert quality.shape_of('"Sign in" sounds like a way into an app') == "dead-sign-in-button"
+    assert quality.shape_of("There is placeholder text on the page") == "placeholder-on-page"
+    assert quality.shape_of("app.js: looks like JSX. Use html`` instead") == "jsx-instead-of-templates"
+    assert quality.shape_of("project.godot has no run/main_scene") == "godot-main-scene"
+    assert quality.shape_of("something nobody has classified") == "other"
+
+
+@pytest.mark.asyncio
+async def test_recording_a_fault_can_never_break_the_build_it_watches(monkeypatch):
+    """Telemetry that can throw is worse than no telemetry."""
+    from app.services import quality
+
+    def broken(*a, **k):
+        raise RuntimeError("database is having a day")
+
+    monkeypatch.setattr(quality, "conn", broken)
+    await quality.record(1, 2, "site", ["Remove the emoji (x)"])   # must not raise
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_written_when_there_is_nothing_to_report(monkeypatch):
+    from app.services import quality
+    called = []
+    monkeypatch.setattr(quality, "conn", lambda *a, **k: called.append(1))
+    await quality.record(1, 2, "site", [])
+    assert not called

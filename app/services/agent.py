@@ -419,6 +419,9 @@ async def _game_tool(turn, name, args, project_id, org_id) -> dict:
             return {"ok": True, "written": written}
         if name == "check_game":
             out = godot.review(await godot.files(project_id, org_id))
+            from . import quality as quality_svc
+            await quality_svc.record(org_id, project_id, "game",
+                                     (out.get("problems") or []) + (out.get("notes") or []))
             turn.app_checked = out["ok"]
             turn.log.append("checked the game · " + ("all clear" if out["ok"]
                             else f"{len(out['problems'])} to fix"))
@@ -491,6 +494,9 @@ async def _app_tool(turn, name, args, project_id, org_id) -> dict:
         if name == "check_app":
             fs = await appfs.files(project_id, org_id)
             out = appfs.review(fs)
+            from . import quality as quality_svc
+            await quality_svc.record(org_id, project_id, "app",
+                                     (out.get("problems") or []) + (out.get("notes") or []))
             from ..core.db import conn
             async with conn() as c:
                 errs = await c.fetch(
@@ -1000,6 +1006,12 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             turn.log.append(f"updated site · {changed}")
             layout, theme = site_spec.design_of(turn.site)
             quality = site_spec.critique(turn.site)
+            # Anonymous drafts have no project; their faults still count, against
+            # the org when there is one.
+            if app or game:
+                _pid, _oid = (app or game)[0], (app or game)[1]
+                from . import quality as quality_svc
+                await quality_svc.record(_oid, _pid, "site", quality)
             turn.site_issues = [q for q in quality if "automatic" not in q and "default colours" not in q]
             return {"ok": True, "site": turn.site, "design": {"layout": layout, "theme": theme},
                     "quality": quality}
