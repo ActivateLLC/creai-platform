@@ -750,6 +750,11 @@ const STARTERS = [
 // go to the live server and the draft travels in a header instead of a cookie.
 const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const PLATFORM = NATIVE ? window.Capacitor.getPlatform() : 'web';
+// Web Speech is a different engine on every platform, and iOS WKWebView exposes
+// webkitSpeechRecognition while never delivering a result (WebKit bug 239816),
+// so feature detection alone would leave a dead mic inside the app.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SR_WORKS = !!SR && !(NATIVE && PLATFORM === 'ios');
 const API_BASE = NATIVE ? 'https://app.creai.dev' : '';
 function draftHeaders(h) {
   if (NATIVE) { try { const d = localStorage.getItem('creai_draft'); if (d) h['X-Draft-Token'] = d; } catch (_) {} }
@@ -801,7 +806,8 @@ function renderThread(messages) {
     const lab = el('p', 'label'); lab.innerHTML = '<b>00</b> · Start here';
     const h1 = el('h1');
     for (const w of ['Say', 'it.']) h1.append(el('span', null, w));
-    h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it, or tap the mic and say it.'));
+    h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it'
+      + (SR_WORKS ? ', or tap the mic and say it.' : '.')));
     if (S.project && S.project.path === 'app') {
       h.querySelector('p:last-child').textContent = 'Describe the app: who uses it, what they need to do, and what it should remember. Creai writes the code and runs it here.';
     } else if (S.project && S.project.path === 'market') {
@@ -950,18 +956,38 @@ function autosize() { const t = $('input'); t.style.height = 'auto'; t.style.hei
 $('input').addEventListener('input', autosize);
 
 // voice
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SR) {
+// Web Speech is a different engine on every platform, and iOS WKWebView exposes
+// webkitSpeechRecognition while never delivering a result (WebKit bug 239816).
+// So feature detection alone is not enough: inside the app the object is there
+// and the mic would sit dead. Hide it where it cannot work, and when it fails
+// anywhere else, say so instead of blinking the button off.
+function micNote(msg) {
+  const t = el('div', 'rtoast'); t.setAttribute('role', 'status');
+  t.append(msg); document.body.append(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4200);
+}
+if (SR_WORKS) {
   const rec = new SR(); rec.interimResults = true; rec.continuous = false; rec.lang = navigator.language || 'en-US';
   let on = false, heard = '';
   $('mic').hidden = false;
+  const stop = () => { on = false; $('mic').classList.remove('on'); $('mic').setAttribute('aria-label', 'Speak instead of typing'); };
   rec.onresult = (e) => { heard = Array.from(e.results).map(r => r[0].transcript).join(' '); $('input').value = heard; autosize(); };
-  rec.onend = () => { on = false; $('mic').classList.remove('on'); $('mic').setAttribute('aria-label', 'Speak instead of typing'); if (heard.trim()) { $('send').click(); heard = ''; } };
-  rec.onerror = () => { on = false; $('mic').classList.remove('on'); };
+  rec.onend = () => { stop(); if (heard.trim()) { $('send').click(); heard = ''; } };
+  rec.onerror = (e) => {
+    stop();
+    const why = {
+      'not-allowed': 'Creai needs microphone permission. Allow it in your browser settings, then tap the mic again.',
+      'service-not-allowed': 'Creai needs microphone permission. Allow it in your browser settings, then tap the mic again.',
+      'no-speech': "Nothing came through. Tap the mic and speak, or type it instead.",
+      'audio-capture': "No microphone was found. Type your message instead.",
+      'network': "Speech didn't reach the network. Type your message instead.",
+    }[e && e.error] || "Voice didn't work that time. Type your message instead.";
+    micNote(why);
+  };
   $('mic').onclick = () => {
     if (on) { rec.stop(); return; }
     heard = ''; on = true; $('mic').classList.add('on'); $('mic').setAttribute('aria-label', 'Stop listening');
-    try { rec.start(); } catch (_) { on = false; }
+    try { rec.start(); } catch (_) { stop(); micNote("Voice didn't start. Type your message instead."); }
   };
 }
 
