@@ -469,3 +469,19 @@ def test_content_images_are_not_square_cornered():
     from app.services import site as site_spec
     css = site_spec.render(site_spec.merge({}, {"business": "X", "headline": "Y"}))
     assert "img{max-width:100%;display:block;border-radius:var(--r)}" in css
+
+
+def test_the_known_library_for_each_job_is_available():
+    """Verified loading in a real sandboxed browser, not just listed here."""
+    for spec in ("chart.js/auto", "date-fns", "marked", "fuse.js", "sortablejs",
+                 "canvas-confetti", "gsap", "three", "phaser"):
+        assert spec in appfs.IMPORTS, spec
+        assert appfs.IMPORTS[spec].startswith("https://esm.sh/"), spec
+
+
+def test_importing_a_charting_library_is_not_reported_as_unavailable():
+    src = ("import { html, render } from 'htm/preact';\n"
+           "import Chart from 'chart.js/auto';\n"
+           "import { format } from 'date-fns';\n"
+           "render(html`<div />`, document.getElementById('root'));")
+    assert not appfs.review({"app.js": src})["problems"]

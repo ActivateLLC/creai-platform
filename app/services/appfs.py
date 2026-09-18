@@ -26,6 +26,12 @@ ESM = "https://esm.sh"
 PHASER = "3.90.0"
 THREE = "0.170.0"
 GSAP = "3.13.0"
+CHART = "4.5.0"
+DATEFNS = "4.1.0"
+MARKED = "15.0.12"
+FUSE = "7.1.0"
+SORTABLE = "1.15.6"
+CONFETTI = "1.9.3"
 IMPORTS = {
     "preact": f"{ESM}/preact@{PREACT}",
     "preact/hooks": f"{ESM}/preact@{PREACT}/hooks",
@@ -33,6 +39,14 @@ IMPORTS = {
     # motion: the difference between a form on a page and something that feels built
     "gsap": f"{ESM}/gsap@{GSAP}",
     "gsap/ScrollTrigger": f"{ESM}/gsap@{GSAP}/ScrollTrigger",
+    # The right well-known library for the job, pinned. Each is plain JS with no
+    # stylesheet of its own, so nothing fights the kit or the sandbox's CSP.
+    "chart.js/auto": f"{ESM}/chart.js@{CHART}/auto",   # dashboards, totals over time
+    "date-fns": f"{ESM}/date-fns@{DATEFNS}",           # bookings, invoices, "3 days ago"
+    "marked": f"{ESM}/marked@{MARKED}",                # notes, rich descriptions
+    "fuse.js": f"{ESM}/fuse.js@{FUSE}",                # search a list that got long
+    "sortablejs": f"{ESM}/sortablejs@{SORTABLE}",      # drag to reorder, kanban
+    "canvas-confetti": f"{ESM}/canvas-confetti@{CONFETTI}",
     # games and 3D, pinned like everything else
     "phaser": f"{ESM}/phaser@{PHASER}",
     "three": f"{ESM}/three@{THREE}",
@@ -565,7 +579,9 @@ def review(app_files: dict[str, str]) -> dict:
                             problems.append(f"{path}: imports {{ {name} }} from {target}, which doesn't export it.")
             elif spec not in IMPORTS and not spec.startswith("three/addons/"):
                 problems.append(f"{path}: '{spec}' isn't available. Use preact, preact/hooks, "
-                                "htm/preact, gsap, gsap/ScrollTrigger, three, phaser or creai/game.")
+                                "htm/preact, gsap, gsap/ScrollTrigger, chart.js/auto, date-fns, "
+                                "marked, fuse.js, sortablejs, canvas-confetti, three, phaser or "
+                                "creai/game.")
             for item in re.split(r"[,{}\s]+", what):
                 item = item.strip()
                 if item and item not in ("*", "as"):
