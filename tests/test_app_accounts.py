@@ -2066,7 +2066,11 @@ def test_a_read_has_an_arc_rather_than_one_setting_for_every_line():
         {"beat": "cta", "text": "Build yours free at Creai dot dev."}])
     feelings = [l["feeling"] for l in read]
     assert len(set(feelings)) == len(feelings)          # every beat directed differently
-    assert "weary" in feelings[0] and "conviction" in feelings[-1]
+    # check the shape, not the adjective: rewriting the direction must not break
+    # the test that the direction exists
+    assert any(w in feelings[0] for w in ("weary", "exhausted", "tired"))
+    assert any(w in feelings[-1] for w in ("conviction", "certainty", "confident"))
+    assert read[0]["hold"] > read[-1]["hold"]      # the open breathes, the close does not
 
 
 def test_a_line_the_customer_says_is_not_performed():
@@ -2119,8 +2123,11 @@ def test_every_beat_gets_its_own_direction_not_one_setting_for_the_whole_ad():
         {"beat": "cta", "text": "Build yours free at Creai dot dev."}])
     feelings = [l["feeling"] for l in read]
     assert len(set(feelings)) == len(feelings)          # no two beats read alike
-    assert "weary" in read[0]["feeling"]
-    assert "conviction" in read[-1]["feeling"]
+    # the words change when the direction is rewritten; the shape must not —
+    # the open is low and the close is certain
+    assert any(w in read[0]["feeling"] for w in ("weary", "exhausted", "tired"))
+    assert any(w in read[-1]["feeling"] for w in ("conviction", "certainty", "confident"))
+    assert read[0]["hold"] > 0                     # and it leaves silence after itself
 
 
 def test_the_customers_own_line_is_never_performed():
@@ -2223,3 +2230,46 @@ def test_a_third_speaker_does_not_share_a_voice_with_the_first():
     from app.services import voicedirect as vd
     voices = [vd.cast_voice(r) for r in ("narrator", "customer", "a neighbour", "a supplier")]
     assert len(set(voices)) == len(voices)
+
+
+# ---------------------------------------------------------------- captions
+
+def test_captions_carry_no_container():
+    """White text in a black rounded box reads as 2021 creator content and
+    undercuts anything trying to look like software worth paying for."""
+    from app.services import captions as cp
+    f = cp.filters("You are not done.", 0, 2, 1080, 1920)
+    assert "box=1" not in f and "boxcolor" not in f
+    assert "shadowcolor" in f                      # contrast without a container
+
+
+def test_the_caption_shows_the_figure_not_the_spoken_words():
+    """A voice says 'eighteen four'; the screen says $18,400. Written out it reads
+    as a subtitle of somebody talking — as a figure it is the thing itself."""
+    from app.services import captions as cp
+    assert cp.as_written("Six forty-seven. You are not done.").startswith("6:47")
+    assert "$18,400" in cp.as_written("quoted them eighteen four")
+    assert "creai.dev" in cp.as_written("Build yours free at Creai dot dev.")
+
+
+def test_exactly_one_word_carries_a_phrase():
+    """Emphasising three words is emphasising none."""
+    from app.services import captions as cp
+    assert cp.pick_emphasis("6:47.") == "6:47"
+    assert cp.pick_emphasis("Chase Thursday.") == "Thursday"
+    assert cp.pick_emphasis("You are not done.") == ""      # nothing worth lifting
+
+
+def test_phrases_are_short_enough_to_read_at_speed():
+    from app.services import captions as cp
+    for p in cp.phrases("Jobs in your head and the paperwork is still sitting at home", 0, 5):
+        assert len(p.words.split()) <= cp.MAX_WORDS
+
+
+def test_captions_clear_the_space_the_platforms_cover():
+    """TikTok and Reels put their own interface over the bottom fifth."""
+    from app.services import captions as cp
+    H = 1920
+    f = cp.draw(cp.Phrase("You are not done.", 0, 2), 1080, H)
+    y = int(f.split(":y=")[1].split(":")[0].split("{")[0])
+    assert y < H * (1 - cp.SAFE_BOTTOM)

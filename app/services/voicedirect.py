@@ -28,31 +28,49 @@ log = logging.getLogger("creai.voicedirect")
 
 @dataclass(frozen=True)
 class Beat:
-    """One line's direction: what it is doing emotionally, and how it should land."""
+    """One line's direction: what it is doing emotionally, and how it should land.
+
+    `hold` is the silence left after the line, in seconds. Silence does more for
+    drama than volume does: a beat after "Six forty-seven" lands harder than the
+    same words said louder, and a model asked to pause inside a sentence will
+    usually ignore it. So the pause is cut in, not requested.
+    """
     name: str
     feeling: str
     delivery: str
     tags: tuple[str, ...] = ()
+    hold: float = 0.0
 
 
 # The arc of a problem-angle ad. Named beats rather than positions, so a cut that
 # drops a scene keeps the shape instead of shifting every direction one along.
+# The arc has to be wider than feels comfortable when read one line at a time.
+# Each line is generated separately, so a model never hears the contrast — the
+# range has to be written in, or every beat drifts back toward the same middle
+# and the whole thing lands as one narration bed.
 ARCS: dict[str, tuple[Beat, ...]] = {
     "problem": (
-        Beat("open", "weary, observational — almost talking to himself",
-             "low and close, slower than feels natural, no projection",
-             ("tired",)),
-        Beat("agitate", "recognition turning to mild frustration",
-             "conversational, clipped, the sentence of someone who has said it before",
-             ("frustrated",)),
-        Beat("turn", "curiosity — something might be different",
-             "lifts slightly, a fraction quicker", ("curious",)),
-        Beat("demo", "growing confidence as it works",
-             "quicker, cleaner, no hesitation", ()),
-        Beat("payoff", "relief, faintly amused that it was that easy",
-             "warmer, a smile in the voice, unhurried again", ("pleased",)),
-        Beat("cta", "conviction, not salesmanship",
-             "short, decisive, downward inflection, no announcer lift", ()),
+        Beat("open", "exhausted — the end of a long physical day, said half to himself",
+             "very low and close, almost under the breath, markedly slower than "
+             "feels natural, no projection whatsoever",
+             ("tired", "quiet"), hold=0.55),
+        Beat("agitate", "sharp, genuinely annoyed — not weary any more",
+             "clipped and harder, a shade faster and louder, the sentence of "
+             "somebody who has had enough of it",
+             ("frustrated",), hold=0.35),
+        Beat("turn", "caught off guard — wait, what just happened",
+             "audibly brighter and quicker, lifts through the line, a touch of "
+             "disbelief", ("curious", "faster"), hold=0.3),
+        Beat("demo", "impressed, gathering pace",
+             "noticeably quicker and cleaner than anything before it, energised, "
+             "no hesitation", ("impressed",), hold=0.25),
+        Beat("payoff", "quiet delight — a small vocal smile, almost laughing at how "
+                       "easy that was",
+             "warm and unhurried again, smiling audibly, land the last word",
+             ("satisfied",), hold=0.45),
+        Beat("cta", "calm certainty — it does not need selling",
+             "drop the energy slightly, quieter than the line before, short and "
+             "inevitable, downward inflection, never an announcer lift", (), hold=0.0),
     ),
     "demo": (
         Beat("open", "matter-of-fact, mid-thought", "plain, no setup", ()),
@@ -121,7 +139,7 @@ def cast_voice(role: str) -> str:
 IN_CHARACTER = Beat(
     "said", "not performing — a person recording a note for themselves",
     "clipped, slightly tired, trailing off at the end, no emphasis on any word",
-    ("tired",))
+    ("tired",), hold=0.3)
 
 # Brand names a speech model cannot get from the spelling. The phonetic version
 # goes into the text the model reads; nobody ever sees it, they only hear it.
@@ -208,6 +226,26 @@ def for_elevenlabs(beat: Beat, says_name: bool = False) -> dict:
             "note": NAME_NOTE if says_name else ""}
 
 
+# A pause inside a line is the one a model will not honour. Asked to leave half a
+# second after "Six forty-seven", it reads straight through — so the line is split
+# and the silence is cut in between the two halves. Each half is generated on its
+# own, which also lets the second half be directed differently from the first.
+SPLIT_AFTER = 0.45
+
+
+def split_for_pause(text: str) -> list[str]:
+    """A line broken where a dramatic pause belongs.
+
+    Only splits a short first sentence away from what follows: "Six forty-seven.
+    You are not done." becomes two. A long sentence is left alone, because a pause
+    mid-thought reads as a fault rather than a choice.
+    """
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if p.strip()]
+    if len(parts) == 2 and len(parts[0].split()) <= 4:
+        return parts
+    return [text.strip()] if text and text.strip() else []
+
+
 def plan_read(angle: str, lines: list[dict]) -> list[dict]:
     """Attach direction to every line of a script, for any product.
 
@@ -220,8 +258,11 @@ def plan_read(angle: str, lines: list[dict]) -> list[dict]:
         say, note = phonetic(l.get("text") or "")
         beat = direct(angle, l.get("beat", ""), in_character=bool(l.get("in_character")))
         who = voice_for(l)
+        chunks = split_for_pause(say)
         out.append({**l, "say": say, "name_note": note, "who": who,
-                    "voice": CAST[who]["openai"],
+                    "chunks": chunks,
+                    "gap": SPLIT_AFTER if len(chunks) > 1 else 0.0,
+                    "voice": cast_voice(who), "hold": beat.hold,
                     "feeling": beat.feeling, "delivery": beat.delivery,
                     "tags": list(beat.tags), "says_name": bool(note),
                     "openai": for_openai(beat, bool(note)) + (" " + note if note else ""),
