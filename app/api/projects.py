@@ -101,6 +101,53 @@ class ProjectPatch(BaseModel):
     archived: bool | None = None
 
 
+@router.get("/{project_id}/versions")
+async def versions(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
+    """Every version this project has had, newest first."""
+    from ..services import versions as versions_svc
+    async with conn() as c:
+        p = await c.fetchrow("SELECT path FROM projects WHERE id=$1 AND org_id=$2",
+                             project_id, ctx.org_id)
+    if not p:
+        raise HTTPException(404, "no such project")
+    return {"versions": await versions_svc.listing(project_id, ctx.org_id, p["path"])}
+
+
+@router.post("/{project_id}/versions/{version_id}/restore")
+async def restore_version(project_id: int, version_id: int,
+                          ctx: T.Ctx = Depends(T.requires("approve"))):
+    """Put it back how it was. Restoring makes a new version, so nothing is lost."""
+    from ..services import versions as versions_svc
+    async with conn() as c:
+        p = await c.fetchrow("SELECT path FROM projects WHERE id=$1 AND org_id=$2",
+                             project_id, ctx.org_id)
+    if not p:
+        raise HTTPException(404, "no such project")
+    try:
+        return await versions_svc.restore(project_id, ctx.org_id, p["path"],
+                                          version_id, ctx.user_id)
+    except versions_svc.VersionError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@router.get("/{project_id}/versions/{version_id}/preview", include_in_schema=False)
+async def preview_version(project_id: int, version_id: int,
+                          ctx: T.Ctx = Depends(T.current_ctx)):
+    """Look before you restore."""
+    from fastapi.responses import HTMLResponse
+    from ..services import versions as versions_svc
+    from ..services import site as site_spec
+    html = await versions_svc.preview_html(project_id, ctx.org_id, version_id)
+    if html is None:
+        raise HTTPException(404, "no such version")
+    return HTMLResponse(html, headers={
+        "Content-Security-Policy": f"default-src 'none'; script-src {site_spec.motion_hash()}; "
+                                   "style-src 'unsafe-inline' https://fonts.googleapis.com; "
+                                   "font-src https://fonts.gstatic.com; img-src data: https:; "
+                                   "media-src https:; frame-ancestors 'self'",
+        "Cache-Control": "no-store"})
+
+
 @router.get("/{project_id}/export")
 async def export_project(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
     """Take your work with you. No plan check and no ceremony: a customer who

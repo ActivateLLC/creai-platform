@@ -627,6 +627,7 @@ html[data-theme=day] .paybtn{color:#fff}
       <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden>Credits</button>
       <button class="tab" role="tab" id="tProjects" aria-selected="false" type="button" hidden>Projects</button>
       <button class="tab" role="tab" id="tFiles" aria-selected="false" type="button" hidden>Files</button>
+      <button class="tab" role="tab" id="tHistory" aria-selected="false" type="button" hidden>History</button>
       <button class="tab" role="tab" id="tImport" aria-selected="false" type="button" hidden>Import</button>
       <button class="tab" role="tab" id="tPay" aria-selected="false" type="button" hidden>Payments</button>
       <button class="tab" role="tab" id="tConnect" aria-selected="false" type="button" hidden>Connect</button>
@@ -645,6 +646,7 @@ html[data-theme=day] .paybtn{color:#fff}
     <div class="pane" id="pCredits" hidden></div>
     <div class="pane" id="pPay" hidden></div>
     <div class="pane" id="pImport" hidden></div>
+    <div class="pane" id="pHistory" hidden></div>
     <div class="pane" id="pProjects" hidden></div>
     <div class="pane" id="pFiles" hidden></div>
     <div class="pane" id="pConnect" hidden></div>
@@ -1194,7 +1196,7 @@ async function afterSignIn(justSigned) {
   }
   creditNotice();
   if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
-  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('tPay').hidden = false; $('tImport').hidden = false; $('credBtn').hidden = false;
+  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('tPay').hidden = false; $('tImport').hidden = false; $('tHistory').hidden = false; $('credBtn').hidden = false;
   refreshPreview(); loadPosts(); loadDomains(); loadCredits();
 }
 
@@ -1604,6 +1606,61 @@ function money(cents, currency) {
 }
 // Bring your own site. Most people have never zipped a folder, so choosing one
 // works, dragging it in works, and a single page works.
+// Every version this project has had. Moments, not commit hashes: a list you can
+// read, a look before you leap, and one button to put it back.
+async function loadHistory() {
+  if (!S.token || !S.project) return;
+  const pane = $('pHistory'); pane.replaceChildren();
+  const head = el('div'); head.style.marginBottom = '16px';
+  head.append(el('h2', null, 'Earlier versions'),
+    el('p', 'muted', 'Every time you published, Creai kept a copy. Putting one back makes a new version, so nothing is ever lost.'));
+  pane.append(head);
+
+  let list = [];
+  try { list = (await api('/v1/projects/' + S.project.id + '/versions')).versions; }
+  catch (e) { pane.append(el('p', 'err', e.message)); return; }
+  if (!list.length) {
+    pane.append(el('p', 'empty', 'Nothing published yet. Once you do, every version shows up here.'));
+    return;
+  }
+
+  for (const v of list) {
+    const card = el('div', 'card'); card.style.marginBottom = '10px';
+    const when = new Date(v.at);
+    const stamp = when.toLocaleString(undefined,
+      { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const row = el('div', 'row');
+    row.append(el('strong', null, stamp));
+    if (v.live) row.append(el('span', 'badge', 'Live now'));
+    card.append(row);
+    if (v.by) card.append(el('p', 'muted', 'by ' + v.by));
+
+    const actions = el('div', 'row'); actions.style.marginTop = '8px';
+    if (S.project.kind === 'Site') {
+      const look = el('button', 'btn ghost', 'Look at it'); look.type = 'button';
+      look.onclick = () => window.open(API_BASE + '/v1/projects/' + S.project.id
+        + '/versions/' + v.id + '/preview', '_blank', 'noopener');
+      actions.append(look);
+    }
+    if (!v.live) {
+      const back = el('button', 'btn', 'Put this back'); back.type = 'button';
+      back.onclick = async () => {
+        if (!confirm('Put the version from ' + stamp + ' back? Your current one is kept, so you can return to it.')) return;
+        back.disabled = true; back.textContent = 'Restoring…';
+        try {
+          await api('/v1/projects/' + S.project.id + '/versions/' + v.id + '/restore',
+            { method: 'POST' });
+          readyToast('Put back to ' + stamp);
+          loadHistory();
+        } catch (e) { back.disabled = false; back.textContent = 'Put this back'; flash(e.message); }
+      };
+      actions.append(back);
+    }
+    card.append(actions);
+    pane.append(card);
+  }
+}
+
 async function loadImport() {
   if (!S.token || !S.project) return;
   const pane = $('pImport'); pane.replaceChildren();
@@ -2934,7 +2991,7 @@ function revealTab(tab) {
   strip.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' });
 }
 function showPane(which) {
-  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect'], ['tPay', 'pPay', 'pay'], ['tImport', 'pImport', 'import']]) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect'], ['tPay', 'pPay', 'pay'], ['tImport', 'pImport', 'import'], ['tHistory', 'pHistory', 'history']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
     if (k === which) revealTab($(t));
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
@@ -2948,6 +3005,7 @@ $('tCredits').onclick = () => { showPane('credits'); loadCredits(); };
 $('tConnect').onclick = () => { showPane('connect'); loadConnections(); };
 $('tPay').onclick = () => { showPane('pay'); loadPayments(); };
 $('tImport').onclick = () => { showPane('import'); loadImport(); };
+$('tHistory').onclick = () => { showPane('history'); loadHistory(); };
 $('tFiles').onclick = () => { showPane('files'); loadFiles(); };
 $('tProjects').onclick = () => { showPane('projects'); loadProjects(); };
 $('credBtn').onclick = () => { showPane('credits'); loadCredits(); };

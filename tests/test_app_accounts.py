@@ -1091,3 +1091,78 @@ def test_the_import_screen_does_not_assume_anyone_can_zip():
     assert "webkitdirectory" in html and "webkitRelativePath" in html
     assert "Drop your website folder here" in html
     assert "I have a zip file instead" in html      # the fallback, not the default
+
+
+# ---------------------------------------------------------------- put it back
+
+@pytest.mark.asyncio
+async def test_restoring_keeps_the_version_you_restored_from(api):
+    """Nobody should be punished for restoring by mistake: going back makes a new
+    version, so forward is still there."""
+    from app.services import versions
+    tok = await sign_in(api, f"h{secrets.token_hex(3)}@history.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Shop", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+
+    async with db.conn() as c:
+        for html, live in (("<h1>Monday</h1>", False), ("<h1>Tuesday</h1>", True)):
+            await c.execute(
+                """INSERT INTO site_releases (org_id, project_id, slug, html, live)
+                   VALUES ($1,$2,'shop-1',$3,$4)""", org, pid, html, live)
+
+    listed = (await api.get(f"/v1/projects/{pid}/versions", headers=auth(tok))).json()["versions"]
+    assert len(listed) == 2 and listed[0]["live"] is True
+    monday = [v for v in listed if not v["live"]][0]
+
+    r = await api.post(f"/v1/projects/{pid}/versions/{monday['id']}/restore", headers=auth(tok))
+    assert r.status_code == 200, r.text
+
+    after = (await api.get(f"/v1/projects/{pid}/versions", headers=auth(tok))).json()["versions"]
+    assert len(after) == 3                       # a new version, nothing overwritten
+    async with db.conn() as c:
+        live_html = await c.fetchval(
+            "SELECT html FROM site_releases WHERE project_id=$1 AND live", pid)
+    assert live_html == "<h1>Monday</h1>"
+    # and Tuesday is still there to come back to
+    async with db.conn() as c:
+        all_html = [r["html"] for r in await c.fetch(
+            "SELECT html FROM site_releases WHERE project_id=$1", pid)]
+    assert "<h1>Tuesday</h1>" in all_html
+
+
+@pytest.mark.asyncio
+async def test_restoring_the_live_version_is_refused_rather_than_duplicated(api):
+    tok = await sign_in(api, f"j{secrets.token_hex(3)}@history.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Shop", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        vid = await c.fetchval(
+            """INSERT INTO site_releases (org_id, project_id, slug, html, live)
+               VALUES ($1,$2,'s','<h1>Now</h1>',true) RETURNING id""", org, pid)
+    r = await api.post(f"/v1/projects/{pid}/versions/{vid}/restore", headers=auth(tok))
+    assert r.status_code == 409 and "already the live one" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_another_workspace_can_neither_see_nor_restore_your_versions(api):
+    tok = await sign_in(api, f"k{secrets.token_hex(3)}@history.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Shop", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        vid = await c.fetchval(
+            """INSERT INTO site_releases (org_id, project_id, slug, html, live)
+               VALUES ($1,$2,'s','<h1>x</h1>',false) RETURNING id""", org, pid)
+    other = await sign_in(api, f"l{secrets.token_hex(3)}@elsewhere.io")
+    assert (await api.get(f"/v1/projects/{pid}/versions", headers=auth(other))).status_code == 404
+    assert (await api.post(f"/v1/projects/{pid}/versions/{vid}/restore",
+                           headers=auth(other))).status_code == 404
+
+
+def test_history_is_shown_as_moments_not_commit_hashes():
+    html = open("app/web/index.html").read()
+    assert "Earlier versions" in html and "Put this back" in html
+    assert "toLocaleString" in html             # a date a person can read
+    assert "nothing is ever lost" in html
