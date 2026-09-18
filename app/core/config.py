@@ -127,6 +127,7 @@ class Settings:
             "voice": bool(self.openai_key),
             "images": bool(self.hf_token),
             "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,
+            "payments": self.stripe_keys_ok() and not STRIPE_REJECTED and not CONNECT_OFF,
         }
 
     def stripe_keys_ok(self) -> bool:
@@ -143,5 +144,6 @@ class Settings:
 # Set when Stripe refuses the key (401). Billing then reads as off until a restart with a good key.
 STRIPE_REJECTED = False
 REGISTRAR_REJECTED = False
+CONNECT_OFF = False
 
 settings = Settings()

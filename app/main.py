@@ -54,6 +54,14 @@ async def _stripe_self_check():
         log.info("stripe portal configuration: %s", cfg)
     except Exception as exc:
         log.error("stripe portal configuration failed: %s", exc)
+    # Connect is a separate switch on the account: a working key does not imply it.
+    try:
+        from .services import payments
+        log.info("stripe connect: %s", await payments.self_check())
+    except Exception as exc:
+        from .core import config
+        config.CONNECT_OFF = True
+        log.error("stripe connect unavailable, so customers cannot take payments: %s", exc)
 
 
 async def _registrar_self_check():

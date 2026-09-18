@@ -805,3 +805,32 @@ def test_the_owner_has_a_way_to_connect_stripe():
     assert "/v1/payments/' + S.project.id + '/connect" in html
     # the fee is stated where the owner can see it, not buried
     assert "fee_bps" in html
+
+
+@pytest.mark.asyncio
+async def test_connect_being_switched_off_is_reported_not_guessed(monkeypatch):
+    """A working Stripe key does not mean Connect is enabled. Finding out at boot
+    beats finding out when a customer presses Connect."""
+    from app.services import payments
+
+    async def ok(method, path, data=None, stripe_account=None):
+        assert path.startswith("/accounts")
+        return {"data": [{"id": "acct_1"}]}
+
+    monkeypatch.setattr(payments, "_stripe", ok)
+    assert "ok" in await payments.self_check()
+
+    async def refused(method, path, data=None, stripe_account=None):
+        from app.services.billing import BillingError
+        raise BillingError("Only Stripe Connect platforms can work with other accounts")
+
+    monkeypatch.setattr(payments, "_stripe", refused)
+    with pytest.raises(Exception):
+        await payments.self_check()
+
+
+def test_health_reports_payments_separately_from_billing():
+    """Billing is Creai charging its customers; payments is customers charging
+    theirs. They fail independently."""
+    src = open("app/core/config.py").read()
+    assert '"payments":' in src and "CONNECT_OFF" in src

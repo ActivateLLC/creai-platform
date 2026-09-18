@@ -38,6 +38,16 @@ def fee_for(amount: int) -> int:
     return max(0, min(amount - 1, amount * FEE_BPS // 10_000))
 
 
+async def self_check() -> str:
+    """Prove Connect is actually enabled on this platform account, rather than
+    assuming it because a key exists. A read-only list is enough: if Connect is
+    off, Stripe refuses it, and we would otherwise find out when a customer
+    pressed Connect and got a stack trace."""
+    out = await _stripe("GET", "/accounts?limit=1")
+    n = len(out.get("data") or [])
+    return f"ok ({n} connected account{'' if n == 1 else 's'} visible)"
+
+
 async def account_for(org_id: int, project_id: int) -> dict | None:
     async with conn() as c:
         r = await c.fetchrow(
