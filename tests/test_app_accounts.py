@@ -932,3 +932,71 @@ async def test_a_data_export_never_carries_password_material(api):
     body = out.text
     assert "member@example.com" in body
     assert "scrypt" not in body and "pw" not in out.json()["users"][0]
+
+
+# ---------------------------------------------------------------- bring your own site
+
+def _zip(files):
+    import io, zipfile
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        for k, v in files.items():
+            z.writestr(k, v)
+    return b.getvalue()
+
+
+def test_an_uploaded_folder_is_unpacked_the_way_a_person_expects():
+    from app.services import imports
+    out = imports.read_zip(_zip({"mysite/index.html": "<h1>Hi</h1>",
+                                 "mysite/app.js": "console.log(1)",
+                                 "mysite/.git/config": "secret",
+                                 "mysite/node_modules/x/y.js": "junk"}))
+    assert sorted(out) == ["app.js", "index.html"]          # wrapper stripped, junk skipped
+
+
+def test_a_project_that_needs_a_server_is_refused_with_a_reason():
+    from app.services import imports
+    with pytest.raises(imports.ImportError_) as e:
+        imports.read_zip(_zip({"index.php": "<?php echo 1; ?>"}))
+    assert "needs a server" in str(e.value)
+
+
+def test_path_traversal_cannot_escape_the_bundle():
+    from app.services import imports
+    out = imports.read_zip(_zip({"index.html": "x", "../../../etc/passwd": "root:x:0:0"}))
+    assert list(out) == ["index.html"]
+
+
+def test_a_folder_with_no_landing_page_is_refused():
+    from app.services import imports
+    with pytest.raises(imports.ImportError_):
+        imports.read_zip(_zip({"readme.txt": "hello"}))
+
+
+@pytest.mark.asyncio
+async def test_an_imported_site_is_never_served_from_the_apps_own_origin(api):
+    """The whole reason this feature is shaped the way it is: somebody else's
+    JavaScript on app.creai.dev could read a signed-in visitor's token."""
+    r = await api.get("/i/anything/index.html", headers={"host": "test"})
+    assert r.status_code == 404
+    from app.core.config import settings
+    app_host = (settings.public_url or "").split("//")[-1].split("/")[0]
+    r2 = await api.get("/i/anything/index.html", headers={"host": app_host})
+    assert r2.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_publishing_without_a_domain_or_a_hosting_host_is_refused(api, monkeypatch):
+    from app.services import imports as imports_svc
+    monkeypatch.setattr(imports_svc, "can_serve_free_address", lambda: False)
+    tok = await sign_in(api, f"i{secrets.token_hex(3)}@bringyourown.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Mine", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        await c.execute(
+            """INSERT INTO site_imports (org_id, project_id, slug, source, manifest, files, bytes)
+               VALUES ($1,$2,'abcd1234','upload',$3,1,10)""",
+            org, pid, {"index.html": {"key": "k", "mime": "text/html", "size": 10}})
+    r = await api.post(f"/v1/imports/{pid}/publish", headers=auth(tok))
+    assert r.status_code == 409 and "read a signed-in visitor's account" in r.json()["detail"]
