@@ -68,6 +68,53 @@ ARCS: dict[str, tuple[Beat, ...]] = {
     ),
 }
 
+# Who speaks. A single voice doing every emotion is why an ad sounds like one
+# person reading; the tonal change should be structural, not manufactured. When
+# the camera cuts to the customer's phone, the voice cuts too.
+#
+# The narrator and the customer are different people, so they get different
+# voices — and the customer's line is the one the ad is demonstrating, which is
+# precisely the line that must not sound performed.
+CAST = {
+    "narrator": {"openai": "echo",
+                 "why": "the person showing you this — warm, grounded, not selling"},
+    "customer": {"openai": "verse",
+                 "why": "the tradesperson in the van — a different person entirely"},
+}
+
+
+# Never cast again. Kept by name so nobody reaches for it out of habit, and so
+# the reason outlives the person who made the call.
+RETIRED = {"ash": "used in an early cut and rejected — do not cast"}
+
+# Anyone else who speaks gets the next unused voice rather than doubling up. Two
+# characters sharing a voice is exactly what a second speaker exists to avoid.
+SPARE = ("ballad", "sage", "coral", "alloy", "shimmer")
+
+
+def voice_for(line: dict) -> str:
+    """Which cast member says this line."""
+    return "customer" if line.get("in_character") else "narrator"
+
+
+def cast_voice(role: str) -> str:
+    """The voice for any role, casting one when the role is new.
+
+    A third or fourth speaker gets a spare rather than reusing the narrator's:
+    the point of more than one voice is that they sound like more than one person.
+    """
+    role = (role or "narrator").strip().lower()
+    known = CAST.get(role)
+    if known:
+        return known["openai"]
+    taken = {c["openai"] for c in CAST.values()} | set(RETIRED)
+    for v in SPARE:
+        if v not in taken:
+            CAST[role] = {"openai": v, "why": f"cast for {role}"}
+            return v
+    raise DirectionError("every voice is cast or retired — reuse one deliberately")
+
+
 # Lines said by the customer rather than the narrator get their own direction:
 # somebody talking into a phone is not performing, and a performed one is the
 # fastest way to lose the thing the ad is demonstrating.
@@ -172,7 +219,9 @@ def plan_read(angle: str, lines: list[dict]) -> list[dict]:
     for l in lines:
         say, note = phonetic(l.get("text") or "")
         beat = direct(angle, l.get("beat", ""), in_character=bool(l.get("in_character")))
-        out.append({**l, "say": say, "name_note": note,
+        who = voice_for(l)
+        out.append({**l, "say": say, "name_note": note, "who": who,
+                    "voice": CAST[who]["openai"],
                     "feeling": beat.feeling, "delivery": beat.delivery,
                     "tags": list(beat.tags), "says_name": bool(note),
                     "openai": for_openai(beat, bool(note)) + (" " + note if note else ""),

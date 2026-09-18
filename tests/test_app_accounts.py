@@ -2191,3 +2191,35 @@ def test_the_video_agent_gets_a_real_brief_not_a_tool_description():
     assert "Nothing claimed that the product does not do" in b
     # direction, not a voice setting
     assert "One instruction for every line is a voice setting" in b
+
+
+def test_the_two_speakers_never_collapse_into_one_voice():
+    """The tonal change should be structural — one voice doing both parts is the
+    thing that made it sound like a single person reading."""
+    from app.services import voicedirect as vd
+    assert vd.CAST["narrator"]["openai"] != vd.CAST["customer"]["openai"]
+    read = vd.plan_read("problem", [
+        {"beat": "open", "text": "Six forty-seven."},
+        {"beat": "turn", "in_character": True, "text": "Quoted Reyes Roofing eighteen four."}])
+    assert read[0]["voice"] != read[1]["voice"]
+    assert read[0]["who"] == "narrator" and read[1]["who"] == "customer"
+
+
+def test_the_rejected_narrator_can_never_be_cast_again():
+    """Kept by name rather than deleted, so nobody reaches for it out of habit and
+    the reason outlives whoever made the call."""
+    from app.services import voicedirect as vd
+    assert "ash" in vd.RETIRED and vd.RETIRED["ash"]
+    assert vd.cast_voice("narrator") == "echo"
+    cast = {c["openai"] for c in vd.CAST.values()}
+    assert "ash" not in cast
+    # and it is never handed out to a new speaker either
+    for role in ("second customer", "a mate", "the accountant", "a supplier"):
+        assert vd.cast_voice(role) != "ash"
+
+
+def test_a_third_speaker_does_not_share_a_voice_with_the_first():
+    """The point of more than one voice is sounding like more than one person."""
+    from app.services import voicedirect as vd
+    voices = [vd.cast_voice(r) for r in ("narrator", "customer", "a neighbour", "a supplier")]
+    assert len(set(voices)) == len(voices)
