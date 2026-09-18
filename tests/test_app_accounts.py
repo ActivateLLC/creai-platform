@@ -1765,3 +1765,62 @@ async def test_coverage_admits_how_little_history_has_a_source(api):
     cov = await metrics.coverage()
     assert 0 <= cov["share"] <= 1
     assert "permanently" in cov["note"]
+
+
+# ---------------------------------------------------------------- blueprints
+
+def test_the_crm_blueprint_requires_exactly_one_field():
+    """Adoption is the number one cause of CRM failure, and every extra required
+    field is a reason not to bother. An unentered deal beats a half-entered one."""
+    from app.services import blueprints
+    crm = blueprints.get("crm")
+    required = [f for f in crm["fields"] if f.get("required")]
+    assert len(required) == 1 and required[0]["name"] == "who"
+
+
+def test_the_crm_blueprint_leads_with_voice_and_with_what_to_do():
+    from app.services import blueprints
+    brief = blueprints.get("crm")["brief"].lower()
+    assert "voice first" in brief
+    assert "tells them what to do" in brief
+    assert "person selling, not the person watching" in brief
+    assert "their words" in brief
+
+
+def test_a_salespersons_pipeline_is_theirs_alone():
+    from app.services import blueprints
+    for c in blueprints.get("crm")["collections"].values():
+        assert c["read"] == "own"          # enforced in SQL, not by the screen
+
+
+def test_the_content_blueprint_refuses_to_become_a_second_editor():
+    """A website editor here would hand back the exact problem Creai removes."""
+    from app.services import blueprints
+    brief = blueprints.get("content")["brief"]
+    assert "NOT" in brief and "website editor" in brief
+    assert "stay in the conversation" in brief
+    # the brief wraps, so compare on collapsed whitespace rather than raw text
+    flat = " ".join(brief.lower().split())
+    assert "nothing on the live site changes until they publish" in flat
+
+
+def test_content_is_public_to_read_and_owner_only_to_change():
+    from app.services import blueprints
+    c = blueprints.get("content")["collections"]["content"]
+    assert c["read"] == "public" and c["write"] == "owner"
+
+
+def test_the_agent_is_offered_the_blueprints_and_told_not_to_recite_them():
+    from app.services.agent import TOOL_BLUEPRINT
+    d = TOOL_BLUEPRINT["description"]
+    assert "more than one required field gets abandoned" in d
+    assert "second editor" in d
+    assert set(TOOL_BLUEPRINT["input_schema"]["properties"]["blueprint"]["enum"]) == {"crm", "content"}
+
+
+def test_a_brief_is_written_for_the_business_it_is_for():
+    from app.services import blueprints
+    brief = blueprints.brief_for("crm", "Copperline Plumbing", "plumber")
+    assert "Copperline Plumbing" in brief and "a plumber" in brief
+    with pytest.raises(KeyError):
+        blueprints.brief_for("nonsense", "X")

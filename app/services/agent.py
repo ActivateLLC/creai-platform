@@ -243,6 +243,25 @@ TOOL_START_APP = {
         "required": ["name"]},
 }
 
+TOOL_BLUEPRINT = {
+    "name": "use_blueprint",
+    "description": "Build one of the things nearly every business needs, done properly: a CRM "
+                   "for tracking leads and who to chase, or a content store for the prices, "
+                   "posts and hours that change often.\n"
+                   "Use this when someone says they need to track leads, customers, quotes or "
+                   "follow-ups, or says they want to change prices or add posts themselves. "
+                   "It gives you a brief carrying what makes these succeed or fail — a CRM with "
+                   "more than one required field gets abandoned; a content store that becomes a "
+                   "second editor defeats the point of Creai.\n"
+                   "You still build it in their words, shaped to their trade. The blueprint is "
+                   "judgement, not a template to paste.",
+    "input_schema": {"type": "object", "properties": {
+        "blueprint": {"type": "string", "enum": ["crm", "content"]},
+        "business": {"type": "string", "description": "The business this is for"},
+        "trade": {"type": "string", "description": "What they do, in their words"}},
+        "required": ["blueprint", "business"]},
+}
+
 TOOL_PLAN_VIDEO = {
     "name": "plan_video",
     "description": "Write a video and offer to make it: an ad, a short, a clip for a channel. "
@@ -916,6 +935,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         # A video can be asked for from any build conversation: plenty of people
         # want a clip for a channel and never a website at all.
         tools.append(TOOL_PLAN_VIDEO)
+        tools.append(TOOL_BLUEPRINT)
         if ideas is not None:
             tools.append(TOOL_SUGGEST_IMPROVEMENTS)
         if project and queue_posts is not None:
@@ -1134,6 +1154,21 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             return {"ok": True, "offered": label,
                     "note": "The person now has a button that creates the app and opens it. "
                             "Finish this turn by building the site part you can build."}
+
+        if name == "use_blueprint":
+            from . import blueprints
+            try:
+                brief = blueprints.brief_for(args.get("blueprint", ""),
+                                             args.get("business", ""),
+                                             args.get("trade", ""))
+            except KeyError:
+                return {"ok": False, "error": "no such blueprint"}
+            bp = blueprints.get(args["blueprint"])
+            turn.log.append(f"opened the {bp['name'].lower()} blueprint")
+            return {"ok": True, "brief": brief, "collections": bp["collections"],
+                    "fields": bp.get("fields"),
+                    "note": "Build this now with write_files, in their words. Do not read the "
+                            "brief back to them — show them the thing."}
 
         if name == "plan_video":
             from . import video as video_svc
