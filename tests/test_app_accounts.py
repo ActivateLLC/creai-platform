@@ -1824,3 +1824,110 @@ def test_a_brief_is_written_for_the_business_it_is_for():
     assert "Copperline Plumbing" in brief and "a plumber" in brief
     with pytest.raises(KeyError):
         blueprints.brief_for("nonsense", "X")
+
+
+# ---------------------------------------------------------------- speech into a lead
+
+def test_money_is_read_the_way_a_contractor_says_it():
+    """"eighteen four" is 18,400 on a job sheet and 184 to a parser that has never
+    met a contractor. The failure is silent: nobody notices until the forecast is
+    wrong."""
+    from app.services.voicelead import money_from_speech as m
+    assert m("just quoted them eighteen four for the duplex") == 18400
+    assert m("twelve fifty") == 1250
+    assert m("two and a half k") == 2500
+    assert m("a grand") == 1000
+    assert m("eighteen hundred") == 1800
+    assert m("said yes to the nine six") == 9600
+    assert m("$4,820") == 4820
+
+
+def test_ordinary_sentences_are_not_mistaken_for_money():
+    from app.services.voicelead import money_from_speech as m
+    assert m("sent four five invoices this morning") is None
+    assert m("spoke to a guy about a boiler") is None
+    assert m("") is None
+
+
+def test_a_value_nobody_said_is_never_invented():
+    """A guessed number in a pipeline total is a decision made on a lie, and three
+    quarters of people already say their CRM data is wrong."""
+    from app.services import voicelead
+    out = voicelead._tidy({"who": "Kessler Dental", "stage": "New", "value": 5000},
+                          "Kessler Dental called about a blocked drain")
+    assert out["value"] is None
+
+
+def test_a_spoken_amount_overrides_a_model_that_misheard_it():
+    from app.services import voicelead
+    out = voicelead._tidy({"who": "Reyes Roofing", "stage": "Quoted", "value": 184},
+                          "quoted Reyes Roofing eighteen four for the duplex")
+    assert out["value"] == 18400
+
+
+def test_a_stage_outside_the_four_is_refused():
+    from app.services import voicelead
+    assert voicelead._tidy({"who": "X", "stage": "Negotiating"}, "x")["stage"] == "New"
+
+
+@pytest.mark.asyncio
+async def test_a_sentence_with_no_name_asks_rather_than_guesses():
+    from app.services import voicelead
+    with pytest.raises(voicelead.LeadError) as e:
+        voicelead._tidy({"who": "", "stage": "New"}, "spoke to a guy about a boiler")
+        raise voicelead.LeadError("I didn't catch who that was for — say the name and try again")
+    assert "didn't catch who" in str(e.value)
+
+
+def test_the_sentence_is_handed_back_so_a_mistake_costs_a_tap():
+    from app.services import voicelead
+    said = "quoted Reyes Roofing eighteen four, chase Thursday"
+    assert voicelead._tidy({"who": "Reyes Roofing"}, said)["heard"] == said
+
+
+# ---------------------------------------------------------------- voice to lead
+
+def test_money_is_read_the_way_a_contractor_says_it():
+    """The silent failure: nobody notices a lead worth 184 instead of 18,400
+    until the forecast is wrong."""
+    from app.services.voicelead import money_from_speech as money
+    assert money("quoted them eighteen four for the duplex") == 18400
+    assert money("twelve fifty") == 1250
+    assert money("two and a half k") == 2500
+    assert money("a grand") == 1000
+    assert money("eighteen hundred") == 1800
+    assert money("said yes to the nine six") == 9600
+    assert money("$4,820 for the job") == 4820
+
+
+def test_ordinary_numbers_are_not_mistaken_for_money():
+    from app.services.voicelead import money_from_speech as money
+    assert money("sent four five invoices") is None
+    assert money("spoke to them about the boiler") is None
+
+
+def test_a_value_nobody_said_is_thrown_away():
+    """Three quarters of people already say their CRM data is wrong. A guessed
+    number in a pipeline total is a decision made on a lie."""
+    from app.services import voicelead
+    out = voicelead._tidy({"who": "Kessler Dental", "stage": "New", "value": 5000},
+                          "Kessler Dental called about a blocked drain")
+    assert out["value"] is None
+
+
+def test_a_misheard_value_is_corrected_from_the_words():
+    from app.services import voicelead
+    out = voicelead._tidy({"who": "Reyes Roofing", "stage": "Quoted", "value": 184},
+                          "quoted Reyes Roofing eighteen four for the duplex")
+    assert out["value"] == 18400
+
+
+def test_a_stage_it_does_not_recognise_falls_back_rather_than_inventing():
+    from app.services import voicelead
+    assert voicelead._tidy({"who": "X", "stage": "Negotiating"}, "X called")["stage"] == "New"
+
+
+def test_what_was_heard_is_kept_so_a_mistake_costs_a_tap():
+    from app.services import voicelead
+    said = "quoted Reyes Roofing eighteen four, chase Thursday"
+    assert voicelead._tidy({"who": "Reyes Roofing"}, said)["heard"] == said

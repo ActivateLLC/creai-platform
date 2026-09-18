@@ -13,8 +13,9 @@ import logging
 import time
 from collections import defaultdict, deque
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
+from ..core import tenancy as T
 from ..services import speech
 
 log = logging.getLogger("creai.speech")
@@ -54,3 +55,17 @@ async def transcribe(request: Request,
         # These messages are written to be read by the person, so pass them through.
         raise HTTPException(400, str(exc))
     return {"text": text}
+
+
+@router.post("/v1/speech/lead")
+async def speech_lead(body: dict, ctx: T.Ctx = Depends(T.current_ctx)):
+    """One spoken sentence to a lead, shown before it is saved.
+
+    Separate from transcription on purpose: the words are useful on their own,
+    and a parse that fails should still leave the person holding what they said.
+    """
+    from ..services import voicelead
+    try:
+        return await voicelead.lead_from_speech(str(body.get("said") or ""))
+    except voicelead.LeadError as exc:
+        raise HTTPException(422, str(exc))
