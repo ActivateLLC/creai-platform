@@ -1532,6 +1532,20 @@ async def test_a_failed_render_says_what_went_wrong(api):
     assert row["error"] and "isn't switched on" in row["error"]
 
 
+async def _settle():
+    """Let the tasks sweep() fired actually run.
+
+    sweep hands each claim to asyncio.create_task, so a single sleep(0) only
+    yields once and the task may not have run yet — which made this test fail
+    about one run in five for a reason that had nothing to do with claiming.
+    """
+    for _ in range(20):
+        pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        if not pending:
+            break
+        await asyncio.sleep(0.01)
+
+
 @pytest.mark.asyncio
 async def test_two_workers_cannot_claim_the_same_render(api):
     """Claiming happens in SQL, so a second instance picking up the queue does not
@@ -1557,9 +1571,9 @@ async def test_two_workers_cannot_claim_the_same_render(api):
     videoworker.run = watch
     try:
         await videoworker.sweep(limit=20)
-        await asyncio.sleep(0)
+        await _settle()
         await videoworker.sweep(limit=20)
-        await asyncio.sleep(0)
+        await _settle()
     finally:
         videoworker.run = original
     assert claimed.count(made["id"]) == 1, claimed
