@@ -2053,3 +2053,110 @@ def test_every_brief_demands_motion_in_the_opening_and_an_offer_at_the_end():
     for v in admutate.plan({"trade": "baker", "shows": "x"}, want=10, seed=6):
         assert "first two seconds must move" in v["brief"]
         assert "last third states what to do and why now" in v["brief"]
+
+
+def test_a_read_has_an_arc_rather_than_one_setting_for_every_line():
+    """The fault was not the model: every line got the same instruction, which is
+    a voice setting, not a performance."""
+    from app.services import voicedirect as vd
+    read = vd.plan_read("problem", [
+        {"beat": "open", "text": "Six forty-seven. You are not done."},
+        {"beat": "agitate", "text": "The paperwork is at home."},
+        {"beat": "payoff", "text": "Entered."},
+        {"beat": "cta", "text": "Build yours free at Creai dot dev."}])
+    feelings = [l["feeling"] for l in read]
+    assert len(set(feelings)) == len(feelings)          # every beat directed differently
+    assert "weary" in feelings[0] and "conviction" in feelings[-1]
+
+
+def test_a_line_the_customer_says_is_not_performed():
+    from app.services import voicedirect as vd
+    read = vd.plan_read("problem", [
+        {"beat": "turn", "text": "Quoted Reyes Roofing eighteen four.", "in_character": True}])
+    assert "not performing" in read[0]["feeling"]
+
+
+def test_brand_names_are_spelled_for_the_ear_not_the_eye():
+    """The viewer reads the brand spelled properly and hears it said properly."""
+    from app.services import voicedirect as vd
+    say, note = vd.phonetic("Build yours free at Creai dot dev.")
+    assert say == "Build yours free at Kree-aye dot dev." and note
+    assert vd.phonetic("Arbi finds it while you sleep.")[0].startswith("AR-bee")
+    assert vd.phonetic("Creative work")[0] == "Creative work"     # no false match
+
+
+def test_the_direction_travels_to_any_speech_model():
+    from app.services import voicedirect as vd
+    read = vd.plan_read("problem", [{"beat": "cta", "text": "Try Arbi free."}])[0]
+    assert isinstance(read["openai"], str) and read["openai"]
+    assert "[" in read["gemini"] or "voice actor" in read["gemini"]
+    el = read["elevenlabs"]
+    assert 0 < el["stability"] <= 1
+    # the call to action wants to land the same way every time; feeling beats want range
+    assert el["stability"] > vd.plan_read(
+        "problem", [{"beat": "open", "text": "Six forty-seven."}])[0]["elevenlabs"]["stability"]
+
+
+def test_the_variant_engine_carries_another_products_audience():
+    """Arbi's audience is not plumbers, and the framework should not need editing."""
+    from app.services import admutate
+    vs = admutate.plan({"trade": "reseller",
+                        "audiences": ["reseller", "dropshipper", "bargain hunter"],
+                        "shows": "a price gap found automatically"}, want=10, seed=3)
+    assert {v["trade"] for v in vs} <= {"reseller", "dropshipper", "bargain hunter"}
+
+
+# ---------------------------------------------------------------- directing the read
+
+def test_every_beat_gets_its_own_direction_not_one_setting_for_the_whole_ad():
+    """The fault this fixes: one instruction for every line is a voice setting,
+    not a performance. A read with no arc sounds like a script being read."""
+    from app.services import voicedirect as vd
+    read = vd.plan_read("problem", [
+        {"beat": "open", "text": "Six forty-seven. You are not done."},
+        {"beat": "agitate", "text": "The paperwork is at home."},
+        {"beat": "payoff", "text": "Entered."},
+        {"beat": "cta", "text": "Build yours free at Creai dot dev."}])
+    feelings = [l["feeling"] for l in read]
+    assert len(set(feelings)) == len(feelings)          # no two beats read alike
+    assert "weary" in read[0]["feeling"]
+    assert "conviction" in read[-1]["feeling"]
+
+
+def test_the_customers_own_line_is_never_performed():
+    """Somebody talking into a phone is not acting, and a performed version loses
+    the very thing the ad demonstrates."""
+    from app.services import voicedirect as vd
+    read = vd.plan_read("problem", [
+        {"beat": "turn", "in_character": True, "text": "Quoted Reyes Roofing eighteen four."}])
+    assert "not performing" in read[0]["feeling"]
+    assert "no emphasis on any word" in read[0]["delivery"]
+
+
+def test_a_brand_name_is_spelled_for_the_ear_not_the_eye():
+    from app.services import voicedirect as vd
+    say, note = vd.phonetic("Build yours free at Creai dot dev.")
+    assert say == "Build yours free at Kree-aye dot dev."
+    assert "today" in note
+    assert vd.phonetic("nothing here")[0] == "nothing here"
+    # a second product is an entry, not an edit
+    assert vd.phonetic("Arbi finds it")[0] == "AR-bee finds it"
+
+
+def test_the_direction_travels_to_whichever_model_is_used():
+    """The arc belongs to the ad; the dialect belongs to the supplier."""
+    from app.services import voicedirect as vd
+    read = vd.plan_read("problem", [{"beat": "cta", "text": "Build yours free at Creai dot dev."}])[0]
+    assert isinstance(read["openai"], str) and read["openai"]
+    assert "[" not in read["openai"]                     # openai takes prose
+    assert isinstance(read["elevenlabs"], dict)
+    assert read["elevenlabs"]["stability"] > vd.for_elevenlabs(
+        vd.direct("problem", "open"))["stability"]       # the ask lands the same way twice
+
+
+def test_an_arc_that_does_not_exist_is_refused():
+    from app.services import voicedirect as vd
+    with pytest.raises(vd.DirectionError):
+        vd.arc("nonsense")
+    with pytest.raises(vd.DirectionError):
+        vd.direct("problem", "no-such-beat")

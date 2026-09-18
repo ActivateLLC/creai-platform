@@ -58,7 +58,9 @@ AXES = {
     "angle": tuple(ANGLES),
     # The first line decides whether the rest is watched at all.
     "hook": ("objection", "moment", "number", "confession", "question"),
-    # Same product, different person — the one that most changes who responds.
+    # Who it is for. The axis that most changes who responds, and the one that
+    # differs per product: Creai serves trades, Arbi serves people selling and
+    # people buying. Supplied per concept; this is only the fallback.
     "trade": ("plumber", "electrician", "bookkeeper", "baker", "landscaper", "dentist"),
     # What the first frame is. Cold product open is the current best guess, not a law.
     "open": ("product", "person", "result"),
@@ -149,6 +151,8 @@ def plan(concept: dict, want: int = 12, seed: int | None = None) -> list[dict]:
     rng = random.Random(seed if seed is not None else 0)
 
     angles = available_angles(concept)
+    # A concept may bring its own audiences. Arbi's are not plumbers.
+    audiences = tuple(concept.get("audiences") or AXES["trade"])
     grid = [c for c in itertools.product(angles, AXES["hook"], AXES["open"], AXES["length"],
                                          AXES["style"], AXES["cta"], AXES["pace"])]
     rng.shuffle(grid)
@@ -180,8 +184,8 @@ def plan(concept: dict, want: int = 12, seed: int | None = None) -> list[dict]:
         if length == 15 and pace == "measured":
             continue                            # fifteen seconds is not measured
 
-        trade = base_trade if len(out) % 2 == 0 else rng.choice(
-            [t for t in AXES["trade"] if t != base_trade])
+        others = [t for t in audiences if t != base_trade] or list(audiences)
+        trade = base_trade if len(out) % 2 == 0 else rng.choice(others)
 
         v = {"angle": angle, "hook": hook, "open": open_on, "length": length,
              "style": style, "cta": cta, "pace": pace, "trade": trade}
