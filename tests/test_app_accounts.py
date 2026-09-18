@@ -269,3 +269,61 @@ def test_me_is_recognised_through_a_local_alias():
     r = appfs.review({"app.js": src,
                       "app.json": '{"collections": {"notes": {"read": "own", "write": "own"}}}'})
     assert not any("me()" in n for n in r["notes"])
+
+
+# ---------------------------------------------------------------- forgotten passwords
+
+@pytest.mark.asyncio
+async def test_a_reset_link_works_once_and_then_never_again(api):
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    await api.post("/v1/appauth/signup", headers=visitor,
+                   json={"email": "fay@example.com", "password": "first-password"})
+
+    found = await appauth.begin_reset(pid, "fay@example.com")
+    assert found and found[0] == "fay@example.com"
+    token = found[1]
+
+    r = await api.post("/v1/appauth/reset", headers=visitor,
+                       json={"token": token, "password": "second-password"})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["email"] == "fay@example.com"
+    assert r.json()["session"]                      # signed in straight after
+
+    # the same link a second time is dead, because the old hash signed it
+    again = await api.post("/v1/appauth/reset", headers=visitor,
+                           json={"token": token, "password": "third-password"})
+    assert again.status_code == 400 and "already been used" in again.json()["detail"]
+
+    # and the new password is the one that works
+    ok = await api.post("/v1/appauth/signin", headers=visitor,
+                        json={"email": "fay@example.com", "password": "second-password"})
+    assert ok.status_code == 200
+    old = await api.post("/v1/appauth/signin", headers=visitor,
+                         json={"email": "fay@example.com", "password": "first-password"})
+    assert old.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_forgot_says_the_same_thing_whether_or_not_the_account_exists(api):
+    _owner, pid, org = await _published_app(api)
+    visitor = {"X-App-Token": appfs.token(pid, org, "public")}
+    a = await api.post("/v1/appauth/forgot", headers=visitor, json={"email": "nobody@example.com"})
+    await api.post("/v1/appauth/signup", headers=visitor,
+                   json={"email": "gus@example.com", "password": "a-good-password"})
+    b = await api.post("/v1/appauth/forgot", headers=visitor, json={"email": "gus@example.com"})
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json() == {"sent": True}
+
+
+@pytest.mark.asyncio
+async def test_a_reset_link_is_useless_in_another_app(api):
+    _o1, pid1, org1 = await _published_app(api)
+    _o2, pid2, org2 = await _published_app(api)
+    await api.post("/v1/appauth/signup", headers={"X-App-Token": appfs.token(pid1, org1, "public")},
+                   json={"email": "hal@example.com", "password": "a-good-password"})
+    token = (await appauth.begin_reset(pid1, "hal@example.com"))[1]
+    r = await api.post("/v1/appauth/reset",
+                       headers={"X-App-Token": appfs.token(pid2, org2, "public")},
+                       json={"token": token, "password": "new-password-here"})
+    assert r.status_code == 400

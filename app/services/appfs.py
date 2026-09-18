@@ -279,6 +279,13 @@ const report = (message) => fetch(API + '/_report', { method: 'POST',
 // People who use this app. Their accounts belong to this app alone.
 let CURRENT = null;
 const auth = {
+  // Forgotten passwords. forgot() always succeeds, so a stranger can't learn who
+  // has an account; the code arrives by email.
+  forgot: (email) => authCall('/forgot', { email }),
+  async reset(token, password) {
+    const d = await authCall('/reset', { token, password });
+    remember(d.session); CURRENT = d.user; return d.user;
+  },
   async signUp(email, password, name) {
     const d = await authCall('/signup', { email, password, name });
     remember(d.session); CURRENT = d.user; return d.user;

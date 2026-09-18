@@ -78,6 +78,46 @@ async def signin(body: SignInIn, request: Request, x_app_token: str | None = Hea
     return {"user": user, "session": session}
 
 
+class ForgotIn(BaseModel):
+    email: str = Field(max_length=200)
+
+
+class ResetIn(BaseModel):
+    token: str = Field(max_length=400)
+    password: str = Field(max_length=appauth.MAX_PASSWORD)
+
+
+@router.post("/forgot")
+async def forgot(body: ForgotIn, request: Request, x_app_token: str | None = Header(None)):
+    """Always the same answer, account or no account: this endpoint can't be used
+    to find out who has one."""
+    pid, oid, _role = _app(x_app_token)
+    _limit(f"{pid}:{request.client.host if request.client else '?'}")
+    found = await appauth.begin_reset(pid, body.email)
+    if found:
+        email, token = found
+        from ..services import mailer
+        try:
+            mailer.send_notice(email, "Reset your password",
+                               "Someone asked to reset the password for your account.\n\n"
+                               f"Use this code within 30 minutes:\n\n{token}\n\n"
+                               "If it wasn't you, ignore this message — nothing has changed.")
+        except Exception:                       # a mail outage must not leak the answer
+            log.exception("reset mail failed for project %s", pid)
+    return {"sent": True}
+
+
+@router.post("/reset")
+async def reset(body: ResetIn, x_app_token: str | None = Header(None)):
+    pid, oid, _role = _app(x_app_token)
+    try:
+        user = await appauth.finish_reset(pid, body.token, body.password)
+    except appauth.AuthError as exc:
+        raise HTTPException(400, str(exc))
+    # Signed in straight away, so a reset ends with the person inside the app.
+    return {"user": user, "session": appauth.session(pid, oid, user["id"])}
+
+
 @router.get("/me")
 async def me(x_app_token: str | None = Header(None), x_app_session: str | None = Header(None)):
     """Who is signed in, if anyone. Never an error: not signed in is an answer."""

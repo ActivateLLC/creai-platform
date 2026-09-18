@@ -26,6 +26,7 @@ from ..core.config import settings
 from ..core.db import conn
 
 SESSION_TTL = 30 * 24 * 3600        # a month, then sign in again
+RESET_TTL = 30 * 60                 # a reset link is good for half an hour
 MIN_PASSWORD = 8
 MAX_PASSWORD = 200                  # hashing is the expensive part; cap the input
 MAX_USERS = 5_000                   # per app, alongside the record cap
@@ -85,6 +86,57 @@ def open_session(tok: str) -> tuple[int, int, int]:
     if not hmac.compare_digest(sig, want) or int(exp) < time.time():
         raise AuthError("please sign in again")
     return int(pid), int(oid), int(uid)
+
+
+# ---------------------------------------------------------------- forgotten passwords
+
+def reset_token(project_id: int, user_id: int, pw_hash: str) -> str:
+    """A one-shot link. The current password hash is part of the signature, so the
+    link stops working the moment the password changes — used once, or never."""
+    body = f"{project_id}.{user_id}.{int(time.time()) + RESET_TTL}"
+    sig = hmac.new(settings.secret_key.encode(),
+                   b"appreset:" + body.encode() + b":" + pw_hash.encode(),
+                   hashlib.sha256).hexdigest()[:32]
+    return base64.urlsafe_b64encode(f"{body}.{sig}".encode()).decode().rstrip("=")
+
+
+async def begin_reset(project_id: int, email: str) -> tuple[str, str] | None:
+    """(email, token) for the caller to send, or None when there is no such account.
+    The route says the same thing either way, so this can't be used to find out who
+    has an account."""
+    email = (email or "").strip().lower()
+    async with conn() as c:
+        r = await c.fetchrow(
+            "SELECT id, email, pw, blocked FROM app_users WHERE project_id=$1 AND lower(email)=$2",
+            project_id, email)
+    if not r or r["blocked"]:
+        return None
+    return r["email"], reset_token(project_id, r["id"], r["pw"])
+
+
+async def finish_reset(project_id: int, token: str, password: str) -> dict:
+    """Set a new password from a reset link, then every old session is worthless."""
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
+        pid, uid, exp, sig = raw.split(".")
+    except (ValueError, UnicodeDecodeError):
+        raise AuthError("that link is not valid — ask for a new one")
+    if int(pid) != project_id or int(exp) < time.time():
+        raise AuthError("that link has expired — ask for a new one")
+    async with conn() as c:
+        r = await c.fetchrow("SELECT id, email, name, pw, created_at FROM app_users WHERE id=$1 AND project_id=$2",
+                             int(uid), project_id)
+    if not r:
+        raise AuthError("that link is not valid — ask for a new one")
+    want = hmac.new(settings.secret_key.encode(),
+                    b"appreset:" + f"{pid}.{uid}.{exp}".encode() + b":" + r["pw"].encode(),
+                    hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig, want):
+        raise AuthError("that link has already been used — ask for a new one")
+    new = hash_password(password)
+    async with conn() as c:
+        await c.execute("UPDATE app_users SET pw=$1 WHERE id=$2", new, r["id"])
+    return _public(r)
 
 
 # ---------------------------------------------------------------- accounts
