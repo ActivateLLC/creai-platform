@@ -2435,3 +2435,48 @@ def test_an_effect_is_short_and_a_bed_is_not():
     from app.services import sound
     assert sound.bed_prompt({"voice": "plain"}, "calm").endswith("Loopable.")
     assert "no vocals" in sound.bed_prompt({"voice": "plain"})
+
+
+# ---------------------------------------------------------------- the cutter
+
+@pytest.mark.asyncio
+async def test_a_plan_the_checker_rejects_is_never_rendered():
+    """A variant that opens on a still frame or ends on the person diminished is
+    not an experiment, it is a wasted impression somebody paid for."""
+    import pathlib
+    from app.services import cutter
+    flat = {"scenes": [{"line": "x", "say": "narrator", "angle": "eye", "move": "still",
+                        "music": "under", "tone": "flat", "seconds": 3}]}
+    with pytest.raises(cutter.CutError) as e:
+        await cutter.cut(flat, {0: "/dev/null"}, pathlib.Path("/tmp/never"))
+    assert "saying nothing" in str(e.value)
+
+
+@pytest.mark.asyncio
+async def test_a_missing_asset_names_the_scene_rather_than_going_black():
+    """A black frame nobody notices until the ad is live is the worst outcome."""
+    import pathlib
+    from app.services import cutter
+    good = {"scenes": [
+        {"line": "a", "say": "narrator", "angle": "high", "move": "push", "seconds": 2},
+        {"line": "b", "say": "narrator", "angle": "over", "move": "push", "seconds": 2},
+        {"line": "c", "say": "narrator", "angle": "low", "move": "still", "seconds": 2}]}
+    with pytest.raises(cutter.CutError) as e:
+        await cutter.cut(good, {0: "/tmp/nope.mp4"}, pathlib.Path("/tmp/never2"))
+    assert "scene 1" in str(e.value)
+
+
+def test_a_scenes_beat_follows_its_position_in_the_arc():
+    from app.services import cutter
+    assert cutter._beat_for(0, 5) == "open"
+    assert cutter._beat_for(1, 5) == "agitate"
+    assert cutter._beat_for(3, 5) == "payoff"
+    assert cutter._beat_for(4, 5) == "cta"
+
+
+def test_audio_is_re_encoded_rather_than_stream_copied():
+    """Copying compressed fragments together produces a file that plays as noise,
+    and nothing in the build reports it."""
+    src = open("app/services/cutter.py").read()
+    assert "plays as noise" in src
+    assert 'args += ["-c", "copy"] if out.suffix == ".mp4"' in src
