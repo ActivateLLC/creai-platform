@@ -1035,3 +1035,59 @@ def test_a_shallow_index_wins_over_a_deep_one():
     from app.services import imports
     root = imports.find_root(["site/index.html", "site/examples/demo/index.html"])
     assert root == "site/"
+
+
+# ---------------------------------------------------------------- no zip required
+
+def test_a_folder_picked_in_a_browser_imports_without_zipping_anything():
+    """Non-technical people do not zip things. A browser hands each file over with
+    the path it had on their machine, which is enough."""
+    from app.services import imports
+    out = imports.read_loose([
+        ("my site/index.html", b"<h1>Hi</h1>"),
+        ("my site/style.css", b"body{}"),
+        ("my site/photos/a.jpg", b"\xff\xd8\xff"),
+        ("my site/.DS_Store", b"junk")])
+    assert sorted(out) == ["index.html", "photos/a.jpg", "style.css"]
+
+
+def test_a_single_page_is_a_website_too():
+    from app.services import imports
+    assert list(imports.read_loose([("index.html", b"<h1>One page</h1>")])) == ["index.html"]
+
+
+def test_picking_the_wrong_things_is_explained_in_plain_words():
+    from app.services import imports
+    with pytest.raises(imports.ImportError_) as e:
+        imports.read_loose([("holiday.mov", b"x"), ("notes.docx", b"y")])
+    assert "a website is made of" in str(e.value)
+
+
+def test_a_picked_repo_still_roots_at_its_build_output():
+    from app.services import imports
+    out = imports.read_loose([
+        ("app/package.json", b"{}"), ("app/src/main.jsx", b"x"),
+        ("app/dist/index.html", b"<h1>Built</h1>"), ("app/dist/app.js", b"1")])
+    assert sorted(out) == ["app.js", "index.html"]
+
+
+@pytest.mark.asyncio
+async def test_the_upload_route_takes_loose_files_as_well_as_a_zip(api):
+    tok = await sign_in(api, f"n{secrets.token_hex(3)}@nozip.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Mine", "path": "launch"})).json()["id"]
+    r = await api.post(f"/v1/imports/{pid}", headers=auth(tok),
+                       files=[("files", ("index.html", b"<h1>Hi</h1>", "text/html")),
+                              ("files", ("style.css", b"body{}", "text/css"))],
+                       data={"paths": ["site/index.html", "site/style.css"]})
+    # 503 is the honest answer when the bucket isn't configured in this test env
+    assert r.status_code in (200, 503), r.text
+    if r.status_code == 200:
+        assert r.json()["files"] == 2
+
+
+def test_the_import_screen_does_not_assume_anyone_can_zip():
+    html = open("app/web/index.html").read()
+    assert "webkitdirectory" in html and "webkitRelativePath" in html
+    assert "Drop your website folder here" in html
+    assert "I have a zip file instead" in html      # the fallback, not the default

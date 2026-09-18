@@ -173,6 +173,50 @@ def read_zip(data: bytes) -> dict[str, bytes]:
     return out
 
 
+def read_loose(named: list[tuple[str, bytes]]) -> dict[str, bytes]:
+    """The same checks, for files picked straight out of a folder rather than
+    zipped. Browsers hand us each file with the path it had on the person's
+    machine, which is enough to rebuild the shape of the site."""
+    total, out = 0, {}
+    for raw_name, blob in named:
+        path = _clean(raw_name)
+        if not path:
+            continue
+        ext = posixpath.splitext(path)[1].lower()
+        if ext in SERVER_SIDE:
+            raise ImportError_(
+                f"{posixpath.basename(path)} needs a server to run it. Creai hosts static "
+                "sites: pages, styles, scripts and pictures.")
+        if ext not in TYPES:
+            continue
+        if len(blob) > MAX_FILE:
+            raise ImportError_(f"{posixpath.basename(path)} is over "
+                               f"{MAX_FILE // (1024 * 1024)} MB")
+        total += len(blob)
+        if total > MAX_TOTAL or len(out) >= MAX_FILES:
+            raise ImportError_("that's more than Creai can host in one site "
+                               f"({MAX_FILES} files or {MAX_TOTAL // (1024 * 1024)} MB)")
+        out[path] = blob
+    if not out:
+        raise ImportError_("none of those were files a website is made of — "
+                           "pages, styles, scripts or pictures")
+
+    prefix = _strip_wrapper(list(out))
+    if prefix:
+        out = {p[len(prefix):]: b for p, b in out.items() if p.startswith(prefix)}
+    root = find_root(list(out))
+    if root is None:
+        if any(p == m or p.endswith("/" + m) for p in out for m in SOURCE_MARKERS):
+            raise ImportError_(
+                "that looks like source code that hasn't been built yet. Run your build "
+                "and choose the folder it produces — normally dist, build or out.")
+        raise ImportError_("there's no index.html in what you picked — that's the page "
+                           "a visitor lands on. Choose the folder that contains it.")
+    if root:
+        out = {p[len(root):]: b for p, b in out.items() if p.startswith(root)}
+    return out
+
+
 def mime_for(path: str) -> str:
     return TYPES.get(posixpath.splitext(path)[1].lower(), "application/octet-stream")
 

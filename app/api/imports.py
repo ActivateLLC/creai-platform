@@ -32,17 +32,32 @@ async def _owned(c, project_id: int, org_id: int):
 
 
 @router.post("/v1/imports/{project_id}")
-async def upload(project_id: int, file: UploadFile = File(...),
+async def upload(project_id: int, request: Request,
                  ctx: T.Ctx = Depends(T.requires("write"))):
-    """Take a zipped folder and keep it, ready to serve."""
+    """Take a site: a zipped folder, or the files themselves. Most people have
+    never zipped anything, so choosing a folder has to work just as well."""
     if not assets.configured():
         raise HTTPException(503, "Hosting isn't switched on yet.")
     async with conn() as c:
-        p = await _owned(c, project_id, ctx.org_id)
+        await _owned(c, project_id, ctx.org_id)
 
-    data = await file.read(imports.MAX_TOTAL + 1)
+    form = await request.form()
+    uploads = [v for v in form.getlist("file") + form.getlist("files")
+               if isinstance(v, UploadFile)]
+    if not uploads:
+        raise HTTPException(400, "Choose the folder your website is in, or a zip of it.")
+    # Browsers send the path each file had on the person's machine alongside it.
+    paths = [str(p) for p in form.getlist("paths")]
+
     try:
-        files = imports.read_zip(data)
+        if len(uploads) == 1 and (uploads[0].filename or "").lower().endswith(".zip"):
+            files = imports.read_zip(await uploads[0].read(imports.MAX_TOTAL + 1))
+        else:
+            named = []
+            for i, up in enumerate(uploads):
+                name = paths[i] if i < len(paths) else (up.filename or f"file{i}")
+                named.append((name, await up.read(imports.MAX_FILE + 1)))
+            files = imports.read_loose(named)
     except imports.ImportError_ as exc:
         raise HTTPException(400, str(exc))
 
