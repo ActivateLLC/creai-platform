@@ -2236,8 +2236,26 @@ async function projectActions(p, card) {
     try { await api('/v1/projects/' + p.id, { method: 'DELETE' }); loadProjects(); }
     catch (e) { flash(e.message); }
   };
+  // Taking your work with you is a right, not a feature: it sits in plain sight
+  // beside the other controls, with no plan check and no ceremony.
+  const take = el('button', null, 'Export'); take.type = 'button';
+  take.onclick = async () => {
+    take.disabled = true; take.textContent = 'Preparing…';
+    try {
+      const r = await fetch(API_BASE + '/v1/projects/' + p.id + '/export',
+        { headers: { Authorization: 'Bearer ' + S.token } });
+      if (!r.ok) throw new Error('Could not prepare that download.');
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement('a');
+      a.href = url; a.download = (p.business || p.name || 'project') + '.zip';
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      readyToast('Downloaded ' + (p.business || p.name));
+    } catch (e) { flash(e.message); }
+    finally { take.disabled = false; take.textContent = 'Export'; }
+  };
   const cancel = el('button', null, 'Close'); cancel.type = 'button'; cancel.onclick = () => box.remove();
-  row.append(rename, archive, del, cancel);
+  row.append(rename, take, archive, del, cancel);
   box.append(row);
   card.append(box);
 }

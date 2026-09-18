@@ -869,3 +869,66 @@ async def test_nothing_is_written_when_there_is_nothing_to_report(monkeypatch):
     monkeypatch.setattr(quality, "conn", lambda *a, **k: called.append(1))
     await quality.record(1, 2, "site", [])
     assert not called
+
+
+# ---------------------------------------------------------------- taking it with you
+
+@pytest.mark.asyncio
+async def test_a_site_exports_as_a_page_that_stands_on_its_own(api):
+    import io, zipfile
+    tok = await sign_in(api, f"x{secrets.token_hex(3)}@leaving.io")
+    r = await api.post("/v1/projects", headers=auth(tok), json={"name": "Copperline", "path": "launch"})
+    pid = r.json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        await c.execute("UPDATE projects SET answers=$1 WHERE id=$2",
+                        {"site": {"business": "Copperline", "headline": "Leaks fixed"}}, pid)
+
+    out = await api.get(f"/v1/projects/{pid}/export", headers=auth(tok))
+    assert out.status_code == 200
+    assert out.headers["content-type"] == "application/zip"
+    z = zipfile.ZipFile(io.BytesIO(out.content))
+    assert set(z.namelist()) == {"index.html", "site.json", "README.md"}
+    page = z.read("index.html").decode()
+    assert "Copperline" in page and "<!doctype html>" in page.lower()
+
+
+@pytest.mark.asyncio
+async def test_an_app_export_is_honest_about_what_still_needs_creai(api):
+    import io, zipfile
+    tok = await sign_in(api, f"y{secrets.token_hex(3)}@leaving.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Portal", "path": "app"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await appfs.write(pid, org, {"app.js": "export const x = 1;\n"})
+
+    out = await api.get(f"/v1/projects/{pid}/export", headers=auth(tok))
+    z = zipfile.ZipFile(io.BytesIO(out.content))
+    assert "files/app.js" in z.namelist()
+    readme = z.read("README.md").decode()
+    for depends in ("creai.db", "creai.auth", "creai.files", "creai.pay"):
+        assert depends in readme, depends
+    assert "need nothing from Creai" in readme          # and what doesn't
+
+
+@pytest.mark.asyncio
+async def test_another_workspace_cannot_export_your_project(api):
+    tok = await sign_in(api, f"z{secrets.token_hex(3)}@leaving.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Mine", "path": "launch"})).json()["id"]
+    other = await sign_in(api, f"w{secrets.token_hex(3)}@elsewhere.io")
+    assert (await api.get(f"/v1/projects/{pid}/export", headers=auth(other))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_data_export_never_carries_password_material(api):
+    tok = await sign_in(api, f"v{secrets.token_hex(3)}@leaving.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Portal", "path": "app"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await appauth.sign_up(pid, org, "member@example.com", "a-good-password", "Mem")
+    out = await api.get(f"/v1/projects/{pid}/export/data", headers=auth(tok))
+    assert out.status_code == 200
+    body = out.text
+    assert "member@example.com" in body
+    assert "scrypt" not in body and "pw" not in out.json()["users"][0]

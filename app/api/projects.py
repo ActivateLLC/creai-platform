@@ -101,6 +101,29 @@ class ProjectPatch(BaseModel):
     archived: bool | None = None
 
 
+@router.get("/{project_id}/export")
+async def export_project(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
+    """Take your work with you. No plan check and no ceremony: a customer who
+    cannot leave was never really a customer."""
+    from fastapi.responses import Response
+    from ..services import export as export_svc
+    try:
+        filename, data = await export_svc.bundle(project_id, ctx.org_id)
+    except LookupError:
+        raise HTTPException(404, "no such project")
+    await log_event(ctx.org_id, "project.exported", filename, project_id, ctx.user_id)
+    return Response(data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/{project_id}/export/data")
+async def export_data(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
+    """Everything an app has stored, as JSON. Never password material."""
+    from ..services import export as export_svc
+    await log_event(ctx.org_id, "project.exported_data", "", project_id, ctx.user_id)
+    return await export_svc.records(project_id, ctx.org_id)
+
+
 @router.patch("/{project_id}")
 async def update(project_id: int, body: ProjectPatch, ctx: T.Ctx = Depends(T.requires("write"))):
     sets, args = [], []
