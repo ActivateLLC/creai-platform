@@ -128,10 +128,16 @@ def _site_response(html: str, status: int = 200) -> HTMLResponse:
         "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin"})
 
 
-BADGE = ('<a href="https://www.creai.dev/?ref=badge" rel="noopener" style="position:fixed;right:14px;bottom:14px;'
-         'z-index:99;display:inline-flex;gap:6px;align-items:center;padding:7px 12px;border-radius:999px;'
-         'background:#141414;color:#F4F1EA;font:600 12px/1 system-ui,sans-serif;text-decoration:none;'
-         'box-shadow:0 4px 16px #0003">Made with Creai</a>')
+# There was a "Made with Creai" badge pinned to every free site. It is gone.
+#
+# A free site already lives at something.creai.dev, so the badge said the same
+# thing a second time — and the second time it read as a penalty for not paying
+# yet. Customers of other builders complain about exactly this, and they are
+# right to: it is a mark on their work, shown to their customers, for a business
+# they are still deciding to start.
+#
+# The upgrade should be worth buying on its own (your own domain, monthly
+# credits), not a way to remove something we put there.
 
 
 @router.get("/s/{slug}", response_class=HTMLResponse, include_in_schema=False)
@@ -143,11 +149,7 @@ async def serve(slug: str):
             "SELECT html, org_id FROM site_releases WHERE slug=$1 AND live ORDER BY id DESC LIMIT 1", slug)
     if not r:
         return _site_response(PLACEHOLDER.replace("{msg}", "This site isn't published."), 404)
-    from ..services import plans
-    html = r["html"]
-    if not await plans.has(r["org_id"], "no_badge"):
-        html = html.replace("</body>", BADGE + "</body>", 1)
-    return _site_response(html)
+    return _site_response(r["html"])
 
 
 PLACEHOLDER = """<!doctype html><html lang="en"><meta charset="utf-8">

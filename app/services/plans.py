@@ -1,8 +1,8 @@
 """
 Plans: the recurring side of Creai.
 
-  free    a Creai address, "Made with Creai" badge, credits for building
-  launch  own domain hosted, no badge, monthly credits; yearly includes a domain
+  free    a Creai address and credits for building — nothing added to the site
+  launch  own domain hosted, monthly credits; yearly includes a domain
   growth  launch + scheduled social publishing, more credits
 
 Money rules:
@@ -21,12 +21,14 @@ from ..core.config import settings
 from ..core.db import conn
 from . import billing
 
+ALL = ("free", "launch", "growth")
+
 PLANS = {
     "free": {"name": "Free", "monthly": 0, "yearly": 0, "credits": 0,
              "features": ["Free Creai address", "Build sites and apps with credits",
-                          "Made with Creai badge"]},
+                          "No badge on your site"]},
     "launch": {"name": "Launch", "monthly": 1200, "yearly": 12000, "credits": 1000,
-               "features": ["Your own domain, hosted with HTTPS", "No Creai badge",
+               "features": ["Your own domain, hosted with HTTPS",
                             "1,000 credits every month", "Yearly: first-year domain included",
                             "Domain renewals included on yearly"]},
     "growth": {"name": "Growth", "monthly": 3500, "yearly": 35000, "credits": 3000,
@@ -66,7 +68,10 @@ async def current(org_id: int) -> dict:
 
 async def has(org_id: int, feature: str) -> bool:
     plan = (await current(org_id))["plan"]
-    need = {"custom_domain": PAID, "no_badge": PAID, "social_publish": ("growth",)}[feature]
+    # "no_badge" was here when free sites carried a "Made with Creai" mark. The
+    # badge is gone, so every plan has it; kept as a name so any old caller still
+    # gets a true answer rather than a KeyError.
+    need = {"custom_domain": PAID, "no_badge": ALL, "social_publish": ("growth",)}[feature]
     return plan in need
 
 

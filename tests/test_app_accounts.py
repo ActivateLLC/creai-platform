@@ -1608,3 +1608,31 @@ def test_the_make_it_button_says_the_price_before_it_is_pressed():
     assert 'f"Make it ({cost} credits)"' in agent_src
     html = open("app/web/index.html").read()
     assert "new_video" in html and "/render" in html
+
+
+@pytest.mark.asyncio
+async def test_a_free_site_carries_no_badge(api):
+    """A free site already lives at something.creai.dev. A badge on top of that is
+    the same message twice, and the second time it reads as a penalty."""
+    tok = await sign_in(api, f"bd{secrets.token_hex(3)}@free.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Free shop", "path": "launch"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        await c.execute(
+            """INSERT INTO site_releases (org_id, project_id, slug, html, live)
+               VALUES ($1,$2,'freeshop','<!doctype html><html><body><h1>Hi</h1></body></html>',true)""",
+            org, pid)
+    page = await api.get("/s/freeshop")
+    assert page.status_code == 200
+    assert "Made with Creai" not in page.text
+    assert "ref=badge" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_every_plan_is_badge_free_including_the_free_one(api):
+    from app.services import plans
+    r = await api.get("/v1/plans")
+    text = str(r.json())
+    assert "Made with Creai badge" not in text
+    assert "No Creai badge" not in text        # nothing to sell the removal of

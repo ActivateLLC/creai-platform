@@ -1263,8 +1263,10 @@ async function loadDomains() {
     };
     api('/v1/plans').then(p => {
       if (p.current.plan !== 'free') return;
-      const up = el('p', 'note', 'Free sites show a small “Made with Creai” badge. ');
-      const l = el('button', 'btn ghost', 'Remove it with Launch'); l.type = 'button'; l.onclick = openPlans;
+      const up = el('div'); up.style.marginTop = '10px';
+      up.append(el('p', 'note', 'Your free address is yours to keep — no badge on your site, nothing added to your pages.'));
+      const l = el('button', 'btn ghost', 'Use your own domain'); l.type = 'button';
+      l.style.marginTop = '6px'; l.onclick = openPlans;
       up.append(l); pubCard.append(up);
     }).catch(() => {});
     api('/v1/sites/' + S.project.id + '/release').then(show).catch(() => { state.textContent = ''; });
@@ -1389,7 +1391,7 @@ async function startPurchase(domain, box) {
   if (!quote.hosting_included) {
     const nudge = el('div', 'card'); nudge.style.borderColor = 'var(--leaf)';
     nudge.append(el('strong', null, quote.includable ? 'Get this domain free with Launch yearly' : 'Put your site on this domain with Launch'),
-      el('p', 'note', 'Launch puts your site on your own domain, removes the badge and adds 1,000 credits a month.'
+      el('p', 'note', 'Launch puts your site on your own domain and adds 1,000 credits a month.'
         + (quote.includable ? ' Yearly plans include a domain like this one every year, renewals covered.' : ' Yearly plans include a standard domain (like a .com) every year.')));
     const see = el('button', 'btn primary', 'See Launch'); see.type = 'button'; see.onclick = openPlans;
     nudge.append(see); card.append(nudge);
@@ -2100,7 +2102,7 @@ async function planCard() {
     }
     return card;
   }
-  card.append(el('p', 'note', 'Build free with credits. Upgrade to put your site on your own domain, drop the badge, and get credits every month.'));
+  card.append(el('p', 'note', 'Build free with credits. Upgrade to put your site on your own domain and get credits every month.'));
   if (!p.payments_enabled && !NATIVE) {
     const w = el('p', 'note', 'Checkout is being switched on \u2014 plans and top-ups will be available shortly. Nothing is charged until then.');
     w.style.cssText = 'border:1px solid var(--warn);padding:10px 12px;color:var(--warn)';
