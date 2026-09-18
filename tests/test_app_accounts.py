@@ -6,6 +6,7 @@ reach another member's rows, and the server must enforce that rather than the
 app remembering to.
 """
 
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -1545,5 +1546,36 @@ async def test_two_workers_cannot_claim_the_same_render(api):
     async with db.conn() as c:
         await c.execute("""UPDATE videos SET state='rendering',
                            updated_at = now() - interval '10 minutes' WHERE id=$1""", made["id"])
-    first, second = await videoworker.sweep(), await videoworker.sweep()
-    assert first == 1 and second == 0
+    # Count the claims of THIS video, not of everything the suite left behind:
+    # a test that depends on what ran before it fails for the wrong reason.
+    claimed = []
+    original = videoworker.run
+
+    async def watch(vid):
+        claimed.append(vid)
+
+    videoworker.run = watch
+    try:
+        await videoworker.sweep(limit=20)
+        await asyncio.sleep(0)
+        await videoworker.sweep(limit=20)
+        await asyncio.sleep(0)
+    finally:
+        videoworker.run = original
+    assert claimed.count(made["id"]) == 1, claimed
+
+
+def test_the_videos_screen_exists_and_stops_asking_when_nobody_is_looking():
+    """A render takes minutes, so the screen polls — but a pane nobody has open
+    should not keep questioning the server."""
+    html = open("app/web/index.html").read()
+    assert 'id="tVideos"' in html and 'id="pVideos"' in html
+    assert "loadVideos" in html
+    assert "!$('pVideos').hidden" in html          # polling is conditional on being visible
+    assert "clearTimeout(videoPoll)" in html       # and never stacks up
+    assert "Video: '\u25b6'" in html               # a video has its own mark in the list
+
+
+def test_a_failed_render_offers_a_way_back():
+    html = open("app/web/index.html").read()
+    assert "Try again" in html

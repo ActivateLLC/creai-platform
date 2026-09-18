@@ -627,6 +627,7 @@ html[data-theme=day] .paybtn{color:#fff}
       <button class="tab" role="tab" id="tCredits" aria-selected="false" type="button" hidden>Credits</button>
       <button class="tab" role="tab" id="tProjects" aria-selected="false" type="button" hidden>Projects</button>
       <button class="tab" role="tab" id="tFiles" aria-selected="false" type="button" hidden>Files</button>
+      <button class="tab" role="tab" id="tVideos" aria-selected="false" type="button" hidden>Videos</button>
       <button class="tab" role="tab" id="tHistory" aria-selected="false" type="button" hidden>History</button>
       <button class="tab" role="tab" id="tImport" aria-selected="false" type="button" hidden>Import</button>
       <button class="tab" role="tab" id="tPay" aria-selected="false" type="button" hidden>Payments</button>
@@ -647,6 +648,7 @@ html[data-theme=day] .paybtn{color:#fff}
     <div class="pane" id="pPay" hidden></div>
     <div class="pane" id="pImport" hidden></div>
     <div class="pane" id="pHistory" hidden></div>
+    <div class="pane" id="pVideos" hidden></div>
     <div class="pane" id="pProjects" hidden></div>
     <div class="pane" id="pFiles" hidden></div>
     <div class="pane" id="pConnect" hidden></div>
@@ -1196,7 +1198,7 @@ async function afterSignIn(justSigned) {
   }
   creditNotice();
   if (justSigned) addAgent('Saved to your workspace, with 150 free credits to keep building. You can connect a domain or ask me to draft your first posts whenever you are ready.');
-  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('tPay').hidden = false; $('tImport').hidden = false; $('tHistory').hidden = false; $('credBtn').hidden = false;
+  $('tPosts').hidden = false; $('tDomain').hidden = false; $('tCredits').hidden = false; $('tProjects').hidden = false; $('tFiles').hidden = false; $('tConnect').hidden = false; $('tPay').hidden = false; $('tImport').hidden = false; $('tHistory').hidden = false; $('tVideos').hidden = false; $('credBtn').hidden = false;
   refreshPreview(); loadPosts(); loadDomains(); loadCredits();
 }
 
@@ -1608,6 +1610,81 @@ function money(cents, currency) {
 // works, dragging it in works, and a single page works.
 // Every version this project has had. Moments, not commit hashes: a list you can
 // read, a look before you leap, and one button to put it back.
+// Videos a project has made, and what a render is doing right now. A render takes
+// minutes, so the screen keeps itself honest by asking rather than by hoping.
+let videoPoll = null;
+
+async function loadVideos() {
+  if (!S.token || !S.project) return;
+  const pane = $('pVideos'); pane.replaceChildren();
+  const head = el('div'); head.style.marginBottom = '14px';
+  head.append(el('h2', null, 'Videos'),
+    el('p', 'muted', 'Ask in the chat for the video you want — a hook, what it shows, how long. Creai writes the scenes, makes the pictures, reads the lines and cuts it.'));
+  pane.append(head);
+
+  let list = [];
+  try { list = (await api('/v1/videos/' + S.project.id)).videos; }
+  catch (e) { pane.append(el('p', 'err', e.message)); return; }
+
+  if (!list.length) {
+    pane.append(el('p', 'empty', 'Nothing made yet. Describe the video in the chat and it appears here.'));
+    return;
+  }
+
+  let working = false;
+  for (const v of list) {
+    const card = el('div', 'card'); card.style.marginBottom = '10px';
+    const top = el('div', 'row');
+    top.append(el('strong', null, v.title || 'Untitled'));
+    top.append(el('span', 'ptag', v.shape));
+    card.append(top);
+
+    if (v.state === 'rendering') {
+      working = true;
+      const bar = el('div', 'bar'); const fill = el('div', 'fill');
+      fill.style.width = Math.max(4, v.progress || 0) + '%';
+      bar.append(fill); card.append(bar);
+      card.append(el('p', 'muted', 'Making it… ' + (v.progress || 0) + '%'));
+    } else if (v.state === 'failed') {
+      card.append(el('p', 'err', v.error || 'That render did not finish.'));
+      const again = el('button', 'btn ghost', 'Try again'); again.type = 'button';
+      again.onclick = async () => {
+        try { await api('/v1/videos/' + v.id + '/render', { method: 'POST' }); loadVideos(); }
+        catch (e) { flash(e.message); }
+      };
+      card.append(again);
+    } else if (v.state === 'ready') {
+      const meta = [];
+      if (v.seconds) meta.push(Math.round(v.seconds) + 's');
+      if (v.credits) meta.push(v.credits + ' credits');
+      card.append(el('p', 'muted', meta.join(' · ')));
+      const open = el('button', 'btn', 'Watch it'); open.type = 'button';
+      open.onclick = async () => {
+        try {
+          const one = await api('/v1/videos/one/' + v.id);
+          if (one.url) window.open(one.url, '_blank', 'noopener');
+          else flash('That video is not ready to open yet.');
+        } catch (e) { flash(e.message); }
+      };
+      card.append(open);
+    } else {
+      const go = el('button', 'btn', 'Make it'); go.type = 'button';
+      go.onclick = async () => {
+        go.disabled = true; go.textContent = 'Starting…';
+        try { await api('/v1/videos/' + v.id + '/render', { method: 'POST' }); loadVideos(); }
+        catch (e) { go.disabled = false; go.textContent = 'Make it'; flash(e.message); }
+      };
+      card.append(go);
+    }
+    pane.append(card);
+  }
+
+  // Only poll while something is actually being made, and stop the moment the
+  // person leaves: a screen nobody is looking at should not be asking questions.
+  clearTimeout(videoPoll);
+  if (working && !$('pVideos').hidden) videoPoll = setTimeout(loadVideos, 6000);
+}
+
 async function loadHistory() {
   if (!S.token || !S.project) return;
   const pane = $('pHistory'); pane.replaceChildren();
@@ -2198,7 +2275,7 @@ setInterval(checkVersion, 5 * 60 * 1000);
 
 // ------------------------------------------------------------ projects
 const PJ = { list: [], loaded: 0, pending: null };
-const KIND_ICON = { Site: '◻', App: '▣', Marketing: '◈', Domain: '◉', Project: '○' };
+const KIND_ICON = { Site: '◻', App: '▣', Game: '◆', Video: '▶', Marketing: '◈', Domain: '◉', Project: '○' };
 function ago(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   if (s < 90) return 'just now';
@@ -2991,7 +3068,7 @@ function revealTab(tab) {
   strip.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' });
 }
 function showPane(which) {
-  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect'], ['tPay', 'pPay', 'pay'], ['tImport', 'pImport', 'import'], ['tHistory', 'pHistory', 'history']]) {
+  for (const [t, p, k] of [['tSite', 'pSite', 'site'], ['tPosts', 'pPosts', 'posts'], ['tDomain', 'pDomain', 'domain'], ['tCredits', 'pCredits', 'credits'], ['tProjects', 'pProjects', 'projects'], ['tFiles', 'pFiles', 'files'], ['tConnect', 'pConnect', 'connect'], ['tPay', 'pPay', 'pay'], ['tImport', 'pImport', 'import'], ['tHistory', 'pHistory', 'history'], ['tVideos', 'pVideos', 'videos']]) {
     $(t).setAttribute('aria-selected', String(k === which)); $(p).hidden = k !== which;
     if (k === which) revealTab($(t));
     if (k === which && window.gsap && !reduced) gsap.fromTo($(p), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' });
@@ -3006,6 +3083,7 @@ $('tConnect').onclick = () => { showPane('connect'); loadConnections(); };
 $('tPay').onclick = () => { showPane('pay'); loadPayments(); };
 $('tImport').onclick = () => { showPane('import'); loadImport(); };
 $('tHistory').onclick = () => { showPane('history'); loadHistory(); };
+$('tVideos').onclick = () => { showPane('videos'); loadVideos(); };
 $('tFiles').onclick = () => { showPane('files'); loadFiles(); };
 $('tProjects').onclick = () => { showPane('projects'); loadProjects(); };
 $('credBtn').onclick = () => { showPane('credits'); loadCredits(); };
