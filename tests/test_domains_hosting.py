@@ -239,7 +239,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     slug = pub["url"].rsplit("/", 1)[1]
     page = await api.get(f"/s/{slug}")
     assert page.status_code == 200 and "Your car, spotless" in page.text
-    assert "Made with Creai" in page.text                               # free plan shows the badge
+    assert "Made with Creai" not in page.text        # nothing is added to a customer's site
     assert "script-src 'sha256-" in page.headers["content-security-policy"]
     assert (await api.get("/s/nope-000000")).status_code == 404
 
