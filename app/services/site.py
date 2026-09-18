@@ -227,12 +227,15 @@ SLOP = (
     "delve", "tapestry", "we pride ourselves", "passionate about", "embark",
     "discover the difference", "your trusted partner", "innovative solutions",
 )
-PLACEHOLDER = re.compile(r"lorem ipsum|\bTBD\b|\bXXX\b", re.I)
+PLACEHOLDER = re.compile(r"lorem ipsum|\bTBD\b|\bXXX\b"
+                         r"|\[[A-Za-z][^\]]{1,40}\]|\{\{[^}]{1,40}\}\}", re.I)
 EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
 
 
 def _all_text(s: dict) -> str:
-    bits = [s["headline"], s["subline"], s["cta"]]
+    # The business name is visible in the header, the footer and the tab title,
+    # so it belongs in every copy check the rest of the page gets.
+    bits = [s["business"], s["headline"], s["subline"], s["cta"]]
     for sec in s["sections"]:
         bits += [sec.get("title", ""), sec.get("body", ""), sec.get("button", "")]
         for it in sec.get("items", []):
@@ -261,7 +264,9 @@ def critique(site: dict) -> list[str]:
     if s["headline"].count("!") or s["subline"].count("!") > 1:
         issues.append("Drop the exclamation marks.")
     if PLACEHOLDER.search(_all_text(s)):
-        issues.append("Replace filler text; use [BRACKETED] placeholders only for facts the person must supply.")
+        issues.append("There is placeholder text on the page. Choose a real or plausible "
+                      "stand-in, use it everywhere, and say what you assumed — a visitor "
+                      "reading [Artist Name] sees a broken page, not a draft.")
     if len(s["sections"]) < 2:
         issues.append("Add at least two sections that fit this business.")
     kinds = [x["kind"] for x in s["sections"]]

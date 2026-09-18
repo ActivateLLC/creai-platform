@@ -408,3 +408,34 @@ def test_a_dropped_connection_says_something_useful():
     html = open("app/web/index.html").read()
     assert "connection dropped before the reply came back" in html
     assert "You're offline" in html
+
+
+# ---------------------------------------------------------------- placeholders
+
+def test_bracketed_placeholders_are_reported_including_in_the_business_name():
+    """Shipped twice in real builds: [Artist Name] in the header, footer and tab
+    title. The old rule scanned everything except the business name — and told the
+    agent to use brackets in the first place."""
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "[Artist Name] Tattoo", "headline": "Black ink.",
+                                "cta": "Book", "contact": {"email": "a@b.com"},
+                                "sections": [{"kind": "about", "body": "x"}]})
+    issues = [i for i in site_spec.critique(spec) if "placeholder" in i.lower()]
+    assert issues and "broken page" in issues[0]
+
+
+def test_the_advice_no_longer_recommends_brackets():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "X", "headline": "lorem ipsum", "cta": "Go",
+                                "contact": {"email": "a@b.com"}})
+    issues = " ".join(site_spec.critique(spec))
+    assert "[BRACKETED]" not in issues
+
+
+def test_a_real_name_passes():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "Vera Ink", "headline": "Black ink. Milwaukee skin.",
+                                "cta": "Book a session", "contact": {"email": "a@b.com"},
+                                "sections": [{"kind": "about", "body": "x"},
+                                             {"kind": "cta", "body": "y"}]})
+    assert not [i for i in site_spec.critique(spec) if "placeholder" in i.lower()]
