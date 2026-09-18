@@ -199,6 +199,10 @@ CREATE TABLE IF NOT EXISTS approvals (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS approvals_queue_idx ON approvals(org_id, state, created_at DESC);
+-- A post that will go out on its own unless it is stopped. The window is when it
+-- becomes cancellable-until rather than waiting on a yes.
+ALTER TABLE approvals ADD COLUMN IF NOT EXISTS autonomous BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE approvals ADD COLUMN IF NOT EXISTS holds_until TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS events (
   id          BIGSERIAL PRIMARY KEY,
@@ -391,6 +395,13 @@ CREATE TABLE IF NOT EXISTS org_settings (
 ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS registrant_enc TEXT;
 ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS low_alert_at TIMESTAMPTZ;
 ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS empty_alert_at TIMESTAMPTZ;
+-- The moment the owner said the brand is right. Autonomy is gated on it, because
+-- posting in somebody's voice before they have agreed what their voice is is the
+-- one mistake that cannot be taken back.
+ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS brand_confirmed_at TIMESTAMPTZ;
+-- One switch that stops everything, instantly, across every channel.
+ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS social_paused BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS weekly_post_cap INTEGER NOT NULL DEFAULT 14;
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_opened_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
@@ -569,6 +580,9 @@ CREATE TABLE IF NOT EXISTS social_channels (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Posting without asking first, per channel, and only after the owner has said the
+-- brand is right. Off until they turn it on.
+ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS autonomous BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS social_channels_org_idx ON social_channels(org_id, network);
 
 -- Short-lived sign-in handshakes and one-time handoff codes (no org yet).

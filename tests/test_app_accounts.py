@@ -6,6 +6,8 @@ reach another member's rows, and the server must enforce that rather than the
 app remembering to.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.services import appauth, appfs
@@ -1264,3 +1266,117 @@ async def test_something_taken_down_by_support_cannot_be_remixed(api):
 async def test_the_gallery_needs_no_account_to_look_at(api):
     r = await api.get("/v1/gallery")
     assert r.status_code == 200 and "items" in r.json()
+
+
+# ---------------------------------------------------------------- earned autonomy
+
+def test_posts_that_make_promises_always_wait_for_a_person():
+    """Prices and offers create obligations; awards and ratings are checkable facts
+    a model can get wrong in a way that reads as lying. Trust level is irrelevant."""
+    from app.services import autonomy
+    for text in ("Boiler swaps from $1,200 this month",
+                 "20% off drain clearing until Friday",
+                 "Free callout for new customers",
+                 "Rated 5 stars by our customers",
+                 "Award-winning plumbing in Milwaukee",
+                 "We're the best plumbers in town",
+                 "Fully licensed and insured"):
+        assert autonomy.why_a_human(text), text
+
+
+def test_ordinary_posts_are_allowed_through():
+    from app.services import autonomy
+    for text in ("Frozen pipe season is here. A trickle of water overnight helps.",
+                 "We replaced a water heater in Bay View this morning.",
+                 "Booking into next week for drain work."):
+        assert autonomy.why_a_human(text) is None, text
+
+
+@pytest.mark.asyncio
+async def test_autonomy_cannot_be_switched_on_before_the_brand_is_confirmed(api):
+    from app.services import autonomy
+    tok = await sign_in(api, f"a{secrets.token_hex(3)}@voice.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        ch = await c.fetchval(
+            """INSERT INTO social_channels (org_id, postiz_id, network, identifier, name)
+               VALUES ($1,$2,'instagram','instagram','Shop') RETURNING id""",
+            org, secrets.token_hex(6))
+    with pytest.raises(PermissionError):
+        await autonomy.set_channel(org, ch, True)
+
+    await autonomy.confirm_brand(org, True)
+    assert (await autonomy.set_channel(org, ch, True))["autonomous"] is True
+
+
+@pytest.mark.asyncio
+async def test_taking_back_the_brand_stops_every_channel(api):
+    """If the voice is in question, nothing should still be speaking in it."""
+    from app.services import autonomy
+    tok = await sign_in(api, f"b{secrets.token_hex(3)}@voice.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    async with db.conn() as c:
+        ch = await c.fetchval(
+            """INSERT INTO social_channels (org_id, postiz_id, network, identifier, name)
+               VALUES ($1,$2,'facebook','facebook','Shop') RETURNING id""",
+            org, secrets.token_hex(6))
+    await autonomy.confirm_brand(org, True)
+    await autonomy.set_channel(org, ch, True)
+    await autonomy.confirm_brand(org, False)
+    async with db.conn() as c:
+        assert await c.fetchval("SELECT autonomous FROM social_channels WHERE id=$1", ch) is False
+
+
+@pytest.mark.asyncio
+async def test_pausing_stops_everything_at_once(api):
+    from app.services import autonomy
+    tok = await sign_in(api, f"c{secrets.token_hex(3)}@voice.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await autonomy.confirm_brand(org, True)
+    async with db.conn() as c:
+        ch = await c.fetchval(
+            """INSERT INTO social_channels (org_id, postiz_id, network, identifier, name)
+               VALUES ($1,$2,'x','x','Shop') RETURNING id""", org, secrets.token_hex(6))
+    await autonomy.set_channel(org, ch, True)
+    assert (await autonomy.decide(org, "x", "Frozen pipe season is here."))["autonomous"]
+    await autonomy.pause(org, True)
+    out = await autonomy.decide(org, "x", "Frozen pipe season is here.")
+    assert out["autonomous"] is False and "paused" in out["reason"]
+
+
+@pytest.mark.asyncio
+async def test_the_weekly_cap_stops_a_loop_from_spamming_an_account(api):
+    from app.services import autonomy
+    tok = await sign_in(api, f"d{secrets.token_hex(3)}@voice.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await autonomy.confirm_brand(org, True)
+    async with db.conn() as c:
+        await c.execute(
+            """INSERT INTO social_channels (org_id, postiz_id, network, identifier, name)
+               VALUES ($1,$2,'threads','threads','Shop')""", org, secrets.token_hex(6))
+        await c.execute("UPDATE org_settings SET weekly_post_cap=2 WHERE org_id=$1", org)
+        for _ in range(2):
+            await c.execute(
+                """INSERT INTO approvals (org_id, kind, payload, state, executed_at)
+                   VALUES ($1,'post','{}','done', now())""", org)
+    async with db.conn() as c:
+        ch = await c.fetchval("SELECT id FROM social_channels WHERE org_id=$1", org)
+    await autonomy.set_channel(org, ch, True)
+    out = await autonomy.decide(org, "threads", "A normal post about our week.")
+    assert out["autonomous"] is False and "limit" in out["reason"]
+
+
+@pytest.mark.asyncio
+async def test_an_autonomous_post_is_stoppable_for_a_window_not_instant(api):
+    from app.services import autonomy
+    tok = await sign_in(api, f"e{secrets.token_hex(3)}@voice.io")
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await autonomy.confirm_brand(org, True)
+    async with db.conn() as c:
+        ch = await c.fetchval(
+            """INSERT INTO social_channels (org_id, postiz_id, network, identifier, name)
+               VALUES ($1,$2,'linkedin','linkedin','Shop') RETURNING id""",
+            org, secrets.token_hex(6))
+    await autonomy.set_channel(org, ch, True)
+    out = await autonomy.decide(org, "linkedin", "We fixed a burst pipe in Riverwest today.")
+    assert out["autonomous"] and out["holds_until"] > datetime.now(timezone.utc)

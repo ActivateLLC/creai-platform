@@ -141,3 +141,45 @@ async def discard(approval_id: int, ctx: T.Ctx = Depends(T.requires("approve")))
     if row["kind"] == "post":
         await social_publish.cancel(approval_id, ctx.org_id)
     return {"id": approval_id, "state": "discarded"}
+
+
+# ---------------------------------------------------------------- autonomy
+
+@router.get("/autonomy")
+async def autonomy(ctx: T.Ctx = Depends(T.current_ctx)):
+    """Where this workspace stands: brand confirmed, which channels post on their
+    own, whether everything is paused."""
+    from ..services import autonomy as auto
+    state = await auto.settings_for(ctx.org_id)
+    async with conn() as c:
+        rows = await c.fetch(
+            """SELECT id, network, name, autonomous FROM social_channels
+               WHERE org_id=$1 AND status='active' ORDER BY network""", ctx.org_id)
+    return {**state, "posted_this_week": await auto.posted_this_week(ctx.org_id),
+            "channels": [dict(r) for r in rows]}
+
+
+@router.post("/autonomy/brand")
+async def confirm_brand(on: bool = True, ctx: T.Ctx = Depends(T.requires("approve"))):
+    """Say the brand is right — or take it back, which also stops every channel."""
+    from ..services import autonomy as auto
+    return await auto.confirm_brand(ctx.org_id, on)
+
+
+@router.post("/autonomy/channel/{channel_id}")
+async def channel(channel_id: int, on: bool = True,
+                  ctx: T.Ctx = Depends(T.requires("approve"))):
+    from ..services import autonomy as auto
+    try:
+        return await auto.set_channel(ctx.org_id, channel_id, on)
+    except PermissionError as exc:
+        raise HTTPException(409, str(exc))
+    except LookupError:
+        raise HTTPException(404, "no such channel")
+
+
+@router.post("/autonomy/pause")
+async def pause(on: bool = True, ctx: T.Ctx = Depends(T.requires("approve"))):
+    """Stop everything, now. Held posts stay held until this is turned back off."""
+    from ..services import autonomy as auto
+    return await auto.pause(ctx.org_id, on)
