@@ -1059,7 +1059,7 @@ function runAction(a) {
   if (a.kind === 'build_plan') return send('Build the plan you just proposed.', 'build');
   if (a.kind === 'connect' && S.token) { showPane('connect'); return loadConnections(); }
   if (a.kind === 'new_app' && S.token) {
-    api('/v1/projects', { method: 'POST', body: JSON.stringify({ name: 'New app', path: 'app' }) })
+    api('/v1/projects', { method: 'POST', body: JSON.stringify({ name: a.name || 'New app', path: 'app' }) })
       .then(p => openProject(p.id))
       .then(() => { setIntent('build'); setMobile('chat'); $('input').focus(); })
       .catch(e => addAgent(e.message));

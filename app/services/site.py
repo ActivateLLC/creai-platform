@@ -488,7 +488,7 @@ def render(site: dict | None, app_url: str | None = None) -> str:
 --line:{line};--muted:{muted}}}
 *{{box-sizing:border-box}}html{{scroll-behavior:smooth}}
 body{{margin:0;font:17px/1.6 var(--body);color:{'#F4F4F4' if dark_body else '#161616'};{surface};overflow-x:hidden}}
-img{{max-width:100%;display:block}}
+img{{max-width:100%;display:block;border-radius:var(--r)}}
 .nav{{display:flex;justify-content:space-between;align-items:center;padding:22px 6vw;font-weight:600;
 background:var(--bg);color:var(--ink)}}
 .nav a{{color:inherit;text-decoration:none;font-size:14px;border:1px solid currentColor;padding:6px 14px;border-radius:999px}}

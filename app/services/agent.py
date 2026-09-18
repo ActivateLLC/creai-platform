@@ -32,6 +32,8 @@ APP_MAX_STEPS = 24
 # turn runs long enough that the browser gives up mid-request, which reads to the
 # person as a failure even though the work succeeded.
 MAX_IMAGES_PER_TURN = 2
+# Looking costs a render round-trip, so it is worth doing and worth bounding.
+MAX_LOOKS_PER_TURN = 2
 APP_MAX_TOKENS = 32000
 MAX_THREAD = 40          # messages kept per draft or project
 MAX_USER_CHARS = 4000
@@ -66,10 +68,14 @@ invoices, documents, memberships, a dashboard "for each customer" — that is an
 accounts, which Creai builds natively (window.creai.auth, and "own" access in app.json). Build it \
 here. Never send them to a third party's portal (QuickBooks, Stripe, Xero, FreshBooks, Wave) for \
 the sign-in itself; linking out is only right when the person explicitly asks to keep using a tool \
-they already have. If the project is currently a site and the ask needs accounts, say so plainly \
-and create the app rather than writing a page that advertises a portal that does not exist.
+they already have. If the project is currently a SITE, you cannot build the app here — a site project holds no \
+sign-in. Call start_app in that same turn to give them the button that creates it, then build the \
+site part you can. Never repeat a plan you have already offered: if you have called start_app, \
+say it is waiting on that button and move on.
 3. Build. Make real edits with your tools; never describe changes you didn't make.
-4. Verify. Read what your tools return. Fix every item in update_site's quality list, and every \
+4. Verify. Read what your tools return, and LOOK at the result with the look tool before you call \
+a build finished — spacing, hierarchy, contrast, crowding and whether the first screen earns the \
+scroll are things you cannot judge from a spec. Fix what you see. Fix every item in update_site's quality list, and every \
 problem check_app reports, before you reply. Don't stop at "probably fine".
 5. Report. In a few plain sentences say what you changed and why it helps, name anything you \
 couldn't do, and ask the ONE question that would most improve the result.
@@ -196,6 +202,30 @@ TOOL_UPDATE_SITE = {
                         "properties": {k: {"type": "string"} for k in ("email", "phone", "area")}},
         },
     },
+}
+
+TOOL_LOOK = {
+    "name": "look",
+    "description": "Look at what you just built, as a picture, on a phone and on a desktop. Use it "
+                   "after a substantial build and before you claim it is done: you cannot judge "
+                   "hierarchy, spacing, contrast, crowding or whether a hero actually lands "
+                   "without seeing it. Then fix what you see and say what you changed.",
+    "input_schema": {"type": "object", "properties": {
+        "widths": {"type": "array", "items": {"type": "string", "enum": ["phone", "desktop"]},
+                   "description": "Defaults to both."}}},
+}
+
+TOOL_START_APP = {
+    "name": "start_app",
+    "description": "Offer to start the app this business needs — a portal, bookings, orders, a "
+                   "members area, anything where people sign in and see their own things. A site "
+                   "project cannot hold sign-in, so this is the only way to build one. The person "
+                   "gets a button that creates the app and opens it. Use it in the same turn you "
+                   "explain what the app will do; never describe an app you have not offered.",
+    "input_schema": {"type": "object", "properties": {
+        "name": {"type": "string", "description": "What to call it, e.g. 'Client portal'"},
+        "label": {"type": "string", "description": "The button, e.g. 'Build the client portal'"}},
+        "required": ["name"]},
 }
 
 TOOL_GENERATE_IMAGE = {
@@ -486,6 +516,7 @@ class Turn:
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
     app_checked: bool = False
+    looks: int = 0                # renders of its own work, capped like pictures
     images_made: int = 0          # capped per turn: pictures are slow, and a turn
                                   # that outlives the browser looks like a crash
     game_built: bool = False
@@ -755,7 +786,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
                  TOOL_SAVE_ANSWER, TOOL_SUGGEST]
     elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
-                 TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+                 TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_LOOK, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
         if ideas is not None:
             tools.append(TOOL_SUGGEST_IMPROVEMENTS)
     elif intent == "build" and bridge is not None:
@@ -774,7 +805,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
                 tools.append(TOOL_REVISE_POST)
             system += PROJECT_EXTRA
     elif intent == "build":
-        tools = [TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
+        tools = [TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_START_APP, TOOL_LOOK,
+                 TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
         if ideas is not None:
             tools.append(TOOL_SUGGEST_IMPROVEMENTS)
         if project and queue_posts is not None:
@@ -858,8 +890,19 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         results = []
         for u in uses:
             result = await _tool(turn, u["name"], u.get("input") or {}, queue_posts, bridge, app, game)
-            results.append({"type": "tool_result", "tool_use_id": u["id"],
-                            "content": json.dumps(result)})
+            shots = result.pop("_shots", None) if isinstance(result, dict) else None
+            if shots:
+                # The model looks at the page rather than imagining it.
+                blocks = []
+                for width, b64 in list(shots.items())[:2]:
+                    blocks.append({"type": "text", "text": f"{width}:"})
+                    blocks.append({"type": "image", "source": {
+                        "type": "base64", "media_type": "image/png", "data": b64}})
+                blocks.append({"type": "text", "text": json.dumps(result)})
+                results.append({"type": "tool_result", "tool_use_id": u["id"], "content": blocks})
+            else:
+                results.append({"type": "tool_result", "tool_use_id": u["id"],
+                                "content": json.dumps(result)})
         turn.thread.append({"role": "user", "content": results})
     else:
         turn.reply = turn.reply or "I've made those changes — have a look at the preview."
@@ -942,6 +985,40 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             turn.actions.append({"kind": "review_posts", "label": "Review drafts"}) \
                 if not any(a.get("kind") == "review_posts" for a in turn.actions) else None
             return {"ok": True, **out}
+
+        if name == "look":
+            if turn.looks >= MAX_LOOKS_PER_TURN:
+                return {"ok": False, "error": "you have already looked twice this turn; "
+                                              "make your changes and look again next turn"}
+            from . import review as render_svc
+            widths = [w for w in (args.get("widths") or ["phone", "desktop"])
+                      if w in ("phone", "desktop")] or ["phone", "desktop"]
+            try:
+                if app is not None:
+                    files = await appfs.files(*app)
+                    html = appfs.preview(files, turn.site, appfs.token(*app), settings.public_url)
+                else:
+                    html = site.render(turn.site)
+                out = await render_svc.shots(html, widths)
+            except Exception as exc:
+                return {"ok": False, "error": f"couldn't render it just now ({exc})"}
+            turn.looks += 1
+            shots = out.get("shots") or {}
+            if not shots:
+                return {"ok": False, "error": "the renderer came back empty"}
+            return {"ok": True, "_shots": shots, "measure": out.get("measure") or {},
+                    "note": "This is the page as a visitor sees it. Judge it honestly and fix "
+                            "what is weak before you reply."}
+
+        if name == "start_app":
+            label = str(args.get("label") or f"Build the {args.get('name') or 'app'}").strip()[:40]
+            if not any(a.get("kind") == "new_app" for a in turn.actions):
+                turn.actions.append({"kind": "new_app", "label": label,
+                                     "name": str(args.get("name") or "App").strip()[:60]})
+            turn.log.append(f"offered to build {args.get('name') or 'the app'}")
+            return {"ok": True, "offered": label,
+                    "note": "The person now has a button that creates the app and opens it. "
+                            "Finish this turn by building the site part you can build."}
 
         if name == "generate_image":
             from . import images

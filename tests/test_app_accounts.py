@@ -439,3 +439,33 @@ def test_a_real_name_passes():
                                 "sections": [{"kind": "about", "body": "x"},
                                              {"kind": "cta", "body": "y"}]})
     assert not [i for i in site_spec.critique(spec) if "placeholder" in i.lower()]
+
+
+# ---------------------------------------------------------------- the agent's tools
+
+def test_the_agent_can_start_an_app_from_a_site():
+    """Without this it proposed a portal, offered a button, and proposed again
+    forever — a site project has no way to hold sign-in."""
+    from app.services import agent
+    assert agent.TOOL_START_APP["name"] == "start_app"
+    site_tools = agent.TOOL_UPDATE_SITE, agent.TOOL_START_APP, agent.TOOL_LOOK
+    assert all(t.get("name") for t in site_tools)
+
+
+def test_the_agent_can_see_what_it_built():
+    from app.services import agent
+    assert agent.TOOL_LOOK["name"] == "look"
+    assert agent.MAX_LOOKS_PER_TURN <= 3
+
+
+def test_screenshots_reach_the_model_as_images_not_as_text():
+    """A base64 blob pasted into JSON teaches it nothing; an image block does."""
+    src = open("app/services/agent.py").read()
+    assert '"_shots"' in src
+    assert '"media_type": "image/png"' in src
+
+
+def test_content_images_are_not_square_cornered():
+    from app.services import site as site_spec
+    css = site_spec.render(site_spec.merge({}, {"business": "X", "headline": "Y"}))
+    assert "img{max-width:100%;display:block;border-radius:var(--r)}" in css
