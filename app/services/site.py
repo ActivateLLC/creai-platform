@@ -229,7 +229,11 @@ SLOP = (
 )
 PLACEHOLDER = re.compile(r"lorem ipsum|\bTBD\b|\bXXX\b"
                          r"|\[[A-Za-z][^\]]{1,40}\]|\{\{[^}]{1,40}\}\}", re.I)
-EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
+# Emoji are a different typeface on every device, sit off the baseline, and can't
+# take a brand colour. They are never an icon. Typographic arrows and dashes are
+# not emoji and stay allowed.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\U0001F1E6-\U0001F1FF"
+                   "\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u2049\u203C]")
 
 
 def _all_text(s: dict) -> str:
@@ -259,8 +263,11 @@ def critique(site: dict) -> list[str]:
         issues.append(f"Headline is {words} words; keep it to 10 or fewer.")
     if s["headline"].lower().startswith(("welcome", "we are", "we're")):
         issues.append("Lead the headline with what the customer gets, not a greeting.")
-    if EMOJI.search(s["headline"] + s["cta"]):
-        issues.append("Remove emoji from the headline and main button.")
+    found_emoji = EMOJI.search(_all_text(s))
+    if found_emoji:
+        issues.append(f'Remove the emoji ({found_emoji.group(0)}). They render differently on '
+                      "every device and can't take the brand colour. Where an icon is wanted, "
+                      "use the built-in vector set instead.")
     if s["headline"].count("!") or s["subline"].count("!") > 1:
         issues.append("Drop the exclamation marks.")
     if PLACEHOLDER.search(_all_text(s)):

@@ -522,3 +522,50 @@ def test_icons_are_inline_vectors_needing_no_request():
     svg = site_spec.icon("wrench")
     assert svg.startswith("<svg") and "stroke=\"currentColor\"" in svg
     assert site_spec.icon("not-a-real-icon") == ""
+
+
+# ---------------------------------------------------------------- no emoji as icons
+
+def test_emoji_are_refused_everywhere_on_a_site():
+    from app.services import site as site_spec
+
+    def issues(**kw):
+        spec = site_spec.merge({}, dict(
+            {"business": "X", "headline": "Fast repairs", "cta": "Book",
+             "contact": {"email": "a@b.com"},
+             "sections": [{"kind": "about", "body": "x"}, {"kind": "cta", "body": "y"}]}, **kw))
+        return [i for i in site_spec.critique(spec) if "emoji" in i.lower()]
+
+    assert issues(cta="Book now 🔧")
+    assert issues(business="Plumbing 💧")
+    assert issues(sections=[{"kind": "services", "items": [{"name": "✅ Fast", "detail": "x"}]},
+                            {"kind": "cta", "body": "y"}])
+    assert issues(sections=[{"kind": "about", "body": "x"},
+                            {"kind": "cta", "body": "y", "button": "Go 🚀"}])
+
+
+def test_typographic_marks_are_not_emoji():
+    """Arrows and dashes are typography, and the tattoo site used them well."""
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "X", "headline": "Fast repairs — done right",
+                                "cta": "Book now →", "contact": {"email": "a@b.com"},
+                                "sections": [{"kind": "about", "body": "x"},
+                                             {"kind": "cta", "body": "y"}]})
+    assert not [i for i in site_spec.critique(spec) if "emoji" in i.lower()]
+
+
+def test_emoji_in_app_code_is_refused_and_points_at_the_icon_set():
+    src = ("import { html, render } from 'htm/preact';\n"
+           "const b = html`<button class=\"btn\">🔧 Fix it</button>`;\n"
+           "render(b, document.getElementById('root'));")
+    problems = [p for p in appfs.review({"app.js": src})["problems"] if "emoji" in p.lower()]
+    assert problems and "lucide" in problems[0]
+
+
+def test_an_app_using_the_real_icon_set_passes():
+    src = ("import { html, render } from 'htm/preact';\n"
+           "import { createIcons, icons } from 'lucide';\n"
+           "render(html`<button class=\"btn\"><i data-lucide=\"wrench\"></i> Fix it</button>`,"
+           " document.getElementById('root'));\n"
+           "createIcons({ icons });")
+    assert not [p for p in appfs.review({"app.js": src})["problems"] if "emoji" in p.lower()]

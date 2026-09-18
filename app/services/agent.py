@@ -81,12 +81,19 @@ problem check_app reports, before you reply. Don't stop at "probably fine".
 couldn't do, and ask the ONE question that would most improve the result.
 
 Quality bar:
+- Never use an emoji as an icon, in a button, a label, a list marker, a heading or a service
+  name — not anywhere, on a site or in an app. They are a different typeface on every device,
+  sit off the baseline, and cannot take the brand colour, so they make good work look amateur.
+  In an app: import { createIcons, icons } from 'lucide' and use <i data-lucide="wrench"></i>.
+  On a site: the built-in vector set. Typographic arrows (→) and dashes (—) are not emoji and
+  are welcome.
 - Never show a placeholder. No [Artist Name], {{business}} or <your name here> in anything a
   visitor would read, including the project title. If a detail is missing, pick a plausible real
   stand-in, use it everywhere consistently, and say in your reply what you chose and that they
   can correct it in a word.
 - Copy is concrete and in the owner's voice: what they do, for whom, where, and what happens next. \
-No stock phrasing (elevate, unlock, seamless, one-stop, welcome to, passionate about).
+No stock phrasing (elevate, unlock, seamless, one-stop, welcome to, passionate about), and no
+emoji anywhere in the copy.
 - Design fits the business: choose layout, theme, motion and a palette with strong contrast on \
 purpose. Two different businesses should never look alike. Use the section kinds that tell this \
 business's story; stats only with real numbers the person gave.

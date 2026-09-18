@@ -66,6 +66,12 @@ IMPORTS = {
     "creai/game": "",                        # filled in per preview from GAME_KIT
 }
 
+# Emoji are never an icon: a different typeface on every device, off the baseline,
+# unable to take a brand colour, and inconsistent between a phone and a desktop.
+# lucide is in the import map for exactly this.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\U0001F1E6-\U0001F1FF"
+                   "\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u2049\u203C]")
+
 PATH = re.compile(r"^(?:[a-z0-9][a-z0-9_-]{0,40}/){0,3}[a-z0-9][a-z0-9_.-]{0,60}\.(js|css|json|md)$")
 MAX_FILE = 120_000
 MAX_FILES = 40
@@ -633,6 +639,12 @@ def review(app_files: dict[str, str]) -> dict:
     if missing:
         notes.append("No visitor access rule yet for: " + ", ".join(missing)
                      + " (owner-only once published; add them to app.json if visitors should use them).")
+    hit = EMOJI.search(code_all)
+    if hit:
+        problems.append(f"{hit.group(0)} is an emoji being used as an icon. They look different on "
+                        "every device and can't take the brand colour. Import { createIcons, icons } "
+                        "from 'lucide' and use an <i data-lucide=\"name\"></i>, or an inline SVG.")
+
     # Accounts: the two halves have to agree, or people meet a locked door.
     uses_auth = "creai.auth" in code_all
     wants_signin = signin_required(app_files)
