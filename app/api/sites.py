@@ -1,9 +1,9 @@
 """
-Publishing sites on CreAI, and serving customer domains.
+Publishing sites on Creai, and serving customer domains.
 
 A release is the rendered HTML at publish time. Sites never carry script, and are
 served with a CSP that says so. Requests that arrive on a customer's own domain
-get only that customer's published site or app — never the CreAI app itself.
+get only that customer's published site or app — never the Creai app itself.
 """
 
 import re
@@ -43,7 +43,7 @@ async def _project(c, project_id: int, org_id: int):
     if not p:
         raise HTTPException(404, "no such project")
     if p["path"] in ("app", "market") or (p["answers"] or {}).get("source"):
-        raise HTTPException(409, "This project isn't a CreAI site.")
+        raise HTTPException(409, "This project isn't a Creai site.")
     return p
 
 
@@ -114,7 +114,7 @@ def _site_response(html: str, status: int = 200) -> HTMLResponse:
 BADGE = ('<a href="https://www.creai.dev/?ref=badge" rel="noopener" style="position:fixed;right:14px;bottom:14px;'
          'z-index:99;display:inline-flex;gap:6px;align-items:center;padding:7px 12px;border-radius:999px;'
          'background:#141414;color:#F4F1EA;font:600 12px/1 system-ui,sans-serif;text-decoration:none;'
-         'box-shadow:0 4px 16px #0003">Made with CreAI</a>')
+         'box-shadow:0 4px 16px #0003">Made with Creai</a>')
 
 
 @router.get("/s/{slug}", response_class=HTMLResponse, include_in_schema=False)
@@ -162,7 +162,7 @@ async def _release_for_host(host: str):
                ORDER BY (status = 'live') DESC, id DESC LIMIT 1""", name)
         out = None
         if d and not await plans.has(d["org_id"], "custom_domain"):
-            # No plan: never go dark — send visitors to the free CreAI address.
+            # No plan: never go dark — send visitors to the free Creai address.
             slug = await c.fetchval(
                 """SELECT slug FROM (SELECT slug, id FROM site_releases WHERE project_id=$1 AND live
                    UNION ALL SELECT slug, id FROM app_releases WHERE project_id=$1 AND live) r
@@ -219,5 +219,5 @@ class CustomDomains:
             page = appfs.preview(files, spec, appfs.token(pid, oid, "public"), settings.public_url)
             resp = HTMLResponse(page, headers={"Content-Security-Policy": APP_CSP, "Cache-Control": "no-store"})
         else:
-            resp = _site_response(PLACEHOLDER.replace("{msg}", f"{host} is set up with CreAI. The site is on its way."))
+            resp = _site_response(PLACEHOLDER.replace("{msg}", f"{host} is set up with Creai. The site is on its way."))
         return await resp(scope, receive, send)

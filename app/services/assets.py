@@ -1,5 +1,5 @@
 """
-Photos, videos and files people give CreAI as context — and use on their sites.
+Photos, videos and files people give Creai as context — and use on their sites.
 
 Storage is a private S3-compatible bucket (Railway Buckets). Rules:
 
@@ -103,7 +103,7 @@ async def start_upload(org_id: int, user_id: int, *, name: str, mime: str, size:
     if not configured():
         raise AssetError("uploads aren't switched on yet")
     if mime not in TYPES:
-        raise AssetError("CreAI accepts photos (JPEG, PNG, WebP, GIF), videos (MP4, MOV, WebM) and PDFs")
+        raise AssetError("Creai accepts photos (JPEG, PNG, WebP, GIF), videos (MP4, MOV, WebM) and PDFs")
     kind = TYPES[mime][0]
     if not 0 < size <= MAX_BYTES[kind]:
         raise AssetError(f"{kind.capitalize()}s can be up to {MAX_BYTES[kind] // (1024 * 1024)} MB")

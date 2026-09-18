@@ -86,8 +86,8 @@ async def quote(body: QuoteIn, ctx: T.Ctx = Depends(T.requires("billing"))):
         raise HTTPException(503, str(exc))
     if not d["available"]:
         reasons = {"domain_unavailable": "That domain is already taken.",
-                   "premium": "That's a premium domain, which CreAI can't sell yet.",
-                   "extension_not_supported_via_api": "CreAI can't register that ending yet.",
+                   "premium": "That's a premium domain, which Creai can't sell yet.",
+                   "extension_not_supported_via_api": "Creai can't register that ending yet.",
                    "extension_not_supported": "That ending isn't supported.",
                    "extension_disallows_registration": "That ending doesn't allow new registrations."}
         return {"domain": name, "available": False, "message": reasons.get(d["reason"], "That domain isn't available.")}
@@ -209,7 +209,7 @@ async def purchase(body: PurchaseIn, ctx: T.Ctx = Depends(T.requires("billing"))
     else:
         hosted = {"ok": False, "upgrade": "launch",
                   "message": "Your domain is yours. Add a Launch plan to put your site on it — until then your "
-                             "site stays on its free CreAI address."}
+                             "site stays on its free Creai address."}
     return {"domain": name, "id": did, "status": "registered", "credits_spent": cost,
             "expires_at": reg.get("expires_at"), "hosting": hosted}
 
@@ -306,7 +306,7 @@ async def verify(domain_id: int, ctx: T.Ctx = Depends(T.requires("write"))):
 
 @router.post("/{domain_id}/host")
 async def host_domain(domain_id: int, ctx: T.Ctx = Depends(T.requires("write"))):
-    """Point a verified or purchased domain at CreAI hosting (safe to repeat)."""
+    """Point a verified or purchased domain at Creai hosting (safe to repeat)."""
     async with conn() as c:
         d = await _own(c, domain_id, ctx.org_id)
         taken = await c.fetchval(

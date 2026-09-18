@@ -1,5 +1,5 @@
 """
-CreAI renderer — the platform's eyes.
+Creai renderer — the platform's eyes.
 
 Two jobs, both in a throwaway browser page:
 
@@ -9,7 +9,7 @@ Two jobs, both in a throwaway browser page:
   /smoke  load an app the way the preview does, collect console errors, then click
           through its main controls and submit its first form to see it actually work.
 
-The browser never sees CreAI's cookies: pages are loaded from the HTML we pass in,
+The browser never sees Creai's cookies: pages are loaded from the HTML we pass in,
 scripts run in a page with no origin of ours, and every request to anywhere other
 than the allowed asset hosts is blocked. One shared token guards the service.
 """
@@ -46,7 +46,7 @@ async def lifespan(_: FastAPI):
     await pw.stop()
 
 
-app = FastAPI(title="CreAI renderer", lifespan=lifespan)
+app = FastAPI(title="Creai renderer", lifespan=lifespan)
 
 
 def check(token: str | None):

@@ -1,1 +1,1 @@
-# CreAI Platform.
+# Creai Platform.

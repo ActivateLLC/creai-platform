@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <script>(function(){var t;try{t=localStorage.getItem('creai_theme')}catch(e){}if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'studio':'day';document.documentElement.dataset.theme=t})()</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>CreAI — from idea to a live business</title>
-<meta name="description" content="Describe your business. CreAI builds the site, connects your domain and drafts your first campaign — you approve every step.">
+<title>Creai — from idea to a live business</title>
+<meta name="description" content="Describe your business. Creai builds the site, connects your domain and drafts your first campaign — you approve every step.">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=VT323&display=swap">
@@ -566,7 +566,7 @@ html[data-theme=day] .paybtn{color:#fff}
 <div class="veil" aria-hidden="true"></div>
 <header>
   <img class="mark" src="/logo-mark.png" alt="">
-  <span class="brand">CreAI</span>
+  <span class="brand">Creai</span>
   <span class="spacer"></span>
   <button class="themebtn" id="thBtn" type="button" aria-label="Change theme"><span class="sw" aria-hidden="true"></span><span id="thName">Day</span></button>
   <button class="chipbtn" id="credBtn" type="button" hidden aria-label="Credits"><span class="dot">●</span><span id="credTxt">–</span></button>
@@ -589,7 +589,7 @@ html[data-theme=day] .paybtn{color:#fff}
       <div class="chips" id="starters"></div>
       <div class="tray" id="tray" aria-label="Attached files"></div>
       <div class="bar">
-        <label for="input" class="sr">Message CreAI</label>
+        <label for="input" class="sr">Message Creai</label>
         <textarea id="input" rows="1" placeholder="Describe your business…"></textarea>
         <div class="intent">
           <button class="intentbtn" id="intentBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span id="intentName">Build</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
@@ -680,7 +680,7 @@ html[data-theme=day] .paybtn{color:#fff}
     <div class="rd-foot">
       <button class="ghostbtn" type="button" id="rdApply" disabled>Select to improve</button>
       <button class="paybtn" type="button" id="rdLaunch"><span class="spin" aria-hidden="true"></span><span id="rdLaunchLabel">Launch now</span></button>
-      <small id="rdHint">Tick what you'd like CreAI to do. You can launch any time and keep editing.</small>
+      <small id="rdHint">Tick what you'd like Creai to do. You can launch any time and keep editing.</small>
     </div>
   </div>
 </dialog>
@@ -712,7 +712,7 @@ html[data-theme=day] .paybtn{color:#fff}
 <dialog id="dGrow">
   <form id="fGrow">
     <h2>Grow your business</h2>
-    <p class="muted">Share your website. CreAI reads it to learn your voice, services and colours, then plans posts that link back to it.</p>
+    <p class="muted">Share your website. Creai reads it to learn your voice, services and colours, then plans posts that link back to it.</p>
     <label for="growUrl">Your website</label>
     <input type="text" id="growUrl" placeholder="yourbusiness.com" inputmode="url" autocomplete="url" required>
     <p class="err" id="growErr" style="margin:0"></p>
@@ -746,7 +746,7 @@ const STARTERS = [
   'Bookkeeping for small construction companies.'
 ];
 
-// Inside the CreAI mobile app this same page runs from the device, so API calls
+// Inside the Creai mobile app this same page runs from the device, so API calls
 // go to the live server and the draft travels in a header instead of a cookie.
 const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const PLATFORM = NATIVE ? window.Capacitor.getPlatform() : 'web';
@@ -803,7 +803,7 @@ function renderThread(messages) {
     for (const w of ['Say', 'it.']) h1.append(el('span', null, w));
     h.append(lab, h1, el('p', null, 'What are you starting? One sentence is plenty — type it, or tap the mic and say it.'));
     if (S.project && S.project.path === 'app') {
-      h.querySelector('p:last-child').textContent = 'Describe the app: who uses it, what they need to do, and what it should remember. CreAI writes the code and runs it here.';
+      h.querySelector('p:last-child').textContent = 'Describe the app: who uses it, what they need to do, and what it should remember. Creai writes the code and runs it here.';
     } else if (S.project && S.project.path === 'market') {
       h.querySelector('p:last-child').textContent = 'Marketing ' + (S.project.brand?.name || S.project.name) + '. Ask for a week of posts, a launch campaign, or ideas for slow days.';
     } else if (!S.project || S.project.source !== 'webflow') {
@@ -864,7 +864,7 @@ async function refreshPreview() {
   }
   if (fr.getAttribute('src')) fr.removeAttribute('src');
   const isApp = !!(S.project && S.project.path === 'app');
-  // Apps may run scripts, but never with CreAI's origin (no allow-same-origin).
+  // Apps may run scripts, but never with Creai's origin (no allow-same-origin).
   fr.setAttribute('sandbox', isApp ? 'allow-scripts allow-forms allow-modals' : '');
   $('stage').hidden = isApp ? true : $('stage').hidden;
   if (isApp) { lastAppError = ''; setStatus('App · running in a sandbox', 'var(--leaf)'); }
@@ -873,8 +873,8 @@ async function refreshPreview() {
     const headers = S.token && S.project ? { Authorization: 'Bearer ' + S.token } : {};
     const r = await fetch(API_BASE + path, { credentials: NATIVE ? 'omit' : 'same-origin', headers: draftHeaders(headers) });
     let html = await r.text();
-    // A preview is built from text, so links resolve against CreAI's own address.
-    // Pin them to the preview itself so "#contact" scrolls instead of loading CreAI.
+    // A preview is built from text, so links resolve against Creai's own address.
+    // Pin them to the preview itself so "#contact" scrolls instead of loading Creai.
     if (!isApp) html = html.replace(/<head([^>]*)>/i, '<head$1><base href="about:srcdoc">');
     $('preview').srcdoc = html;
   } catch (_) {}
@@ -995,7 +995,7 @@ function openSign(after, title) {
   $('codeRow').hidden = true; $('signGo').textContent = 'Email me a code'; $('signErr').textContent = '';
   $('dSign').showModal();
 }
-$('signBtn').onclick = () => { if (S.token) return signOut(); openSign(null, 'Sign in to CreAI'); };
+$('signBtn').onclick = () => { if (S.token) return signOut(); openSign(null, 'Sign in to Creai'); };
 $('fSign').onsubmit = async (e) => {
   e.preventDefault(); $('signErr').textContent = '';
   const email = $('email').value.trim();
@@ -1121,14 +1121,14 @@ async function loadDomains() {
   if (!S.token) return;
   const pane = $('pDomain'); pane.replaceChildren();
   const head = el('div'); head.style.marginBottom = '16px';
-  head.append(el('h2', null, 'Go live'), el('p', 'muted', 'Publish on a free CreAI address, buy a new domain, or use one you already own. Nothing is bought or published without your OK.'));
+  head.append(el('h2', null, 'Go live'), el('p', 'muted', 'Publish on a free Creai address, buy a new domain, or use one you already own. Nothing is bought or published without your OK.'));
   pane.append(head);
 
-  // 1. Publish on CreAI
+  // 1. Publish on Creai
   const isApp = S.project && S.project.path === 'app';
   const isSite = S.project && !isApp && S.project.path !== 'market' && !isExternal();
   const pubCard = el('div', 'card');
-  pubCard.append(el('p', 'label', '1 · Publish on CreAI'));
+  pubCard.append(el('p', 'label', '1 · Publish on Creai'));
   if (!S.project) pubCard.append(el('p', 'note', 'Sign in and save your site to a project to publish it.'));
   else if (isApp) pubCard.append(el('p', 'note', 'Apps publish from the bar above the preview.'));
   else if (!isSite) pubCard.append(el('p', 'note', 'This project publishes through its own platform.'));
@@ -1145,7 +1145,7 @@ async function loadDomains() {
     };
     api('/v1/plans').then(p => {
       if (p.current.plan !== 'free') return;
-      const up = el('p', 'note', 'Free sites show a small “Made with CreAI” badge. ');
+      const up = el('p', 'note', 'Free sites show a small “Made with Creai” badge. ');
       const l = el('button', 'btn ghost', 'Remove it with Launch'); l.type = 'button'; l.onclick = openPlans;
       up.append(l); pubCard.append(up);
     }).catch(() => {});
@@ -1225,7 +1225,7 @@ async function loadDomains() {
       };
       c.append(chk);
     } else if (!live) {
-      const host = el('button', 'btn', 'Point to my CreAI site'); host.type = 'button';
+      const host = el('button', 'btn', 'Point to my Creai site'); host.type = 'button';
       const note = el('p', 'note', '');
       host.onclick = async () => {
         host.disabled = true;
@@ -1275,7 +1275,7 @@ async function startPurchase(domain, box) {
         + (quote.includable ? ' Yearly plans include a domain like this one every year, renewals covered.' : ' Yearly plans include a standard domain (like a .com) every year.')));
     const see = el('button', 'btn primary', 'See Launch'); see.type = 'button'; see.onclick = openPlans;
     nudge.append(see); card.append(nudge);
-    card.append(el('p', 'note', 'Or buy just the domain now. Your site stays on its free CreAI address until you add a plan.'));
+    card.append(el('p', 'note', 'Or buy just the domain now. Your site stays on its free Creai address until you add a plan.'));
   }
   const inputs = {};
   const fields = el('div', 'formgrid');
@@ -1313,7 +1313,7 @@ async function startPurchase(domain, box) {
         project_id: S.project ? S.project.id : null,
         contact: (saved && fields.hidden) ? null : contact }) });
       addTool('bought ' + r.domain + ' · ' + r.credits_spent.toLocaleString() + ' credits');
-      addAgent(r.domain + ' is yours.' + (r.hosting && r.hosting.ok ? ' It\u2019s pointed at your CreAI site and should work within minutes.' : ' ' + ((r.hosting && r.hosting.message) || '')));
+      addAgent(r.domain + ' is yours.' + (r.hosting && r.hosting.ok ? ' It\u2019s pointed at your Creai site and should work within minutes.' : ' ' + ((r.hosting && r.hosting.message) || '')));
       if (r.hosting && r.hosting.upgrade) { const row2 = el('div', 'acts'); const b2 = el('button', 'btn', 'See plans'); b2.type = 'button'; b2.onclick = openPlans; row2.append(b2); $('thread').append(row2); }
       loadDomains(); loadReadiness(true); api('/v1/billing').then(b => setBalance(b.balance)).catch(() => {});
     } catch (err) { msg.textContent = err.message; btn.disabled = false; }
@@ -1399,7 +1399,7 @@ async function loadPosts() {
     const acts = el('div', 'row');
     const ok = el('button', 'btn primary', 'Approve'); ok.type = 'button';
     const ed = el('button', 'btn', 'Edit'); ed.type = 'button';
-    const ask = el('button', 'btn', 'Ask CreAI to change'); ask.type = 'button';
+    const ask = el('button', 'btn', 'Ask Creai to change'); ask.type = 'button';
     const no = el('button', 'btn ghost', 'Discard'); no.type = 'button';
     ok.onclick = async () => { await api('/v1/approvals/' + r.id + '/approve', { method: 'POST' }).catch(() => {}); loadPosts(); };
     ed.onclick = () => postEditor(r, c);
@@ -1411,7 +1411,7 @@ async function loadPosts() {
   if (offerMarketing) {
     const m = el('div', 'card');
     m.append(el('p', 'label', 'Marketing (optional)'),
-      el('p', 'note', 'When your site is ready, CreAI can learn your brand from it and draft posts for you to review. Turning this on doesn\u2019t start anything by itself, and you can keep building your site.'));
+      el('p', 'note', 'When your site is ready, Creai can learn your brand from it and draft posts for you to review. Turning this on doesn\u2019t start anything by itself, and you can keep building your site.'));
     const add = el('button', 'btn', 'Turn on marketing'); add.type = 'button';
     add.onclick = () => enableMarketing().catch(e => addAgent(e.message));
     m.append(add); pane.append(m);
@@ -1509,7 +1509,7 @@ async function loadConnections() {
   const pane = $('pConnect'); pane.replaceChildren();
   const head = el('div'); head.style.marginBottom = '16px';
   head.append(el('h2', null, 'Edit a site you already have'),
-    el('p', 'muted', 'Connect your platform once. CreAI edits pages, copy, SEO, CMS and layout; anything public or permanent waits for your OK.'));
+    el('p', 'muted', 'Connect your platform once. Creai edits pages, copy, SEO, CMS and layout; anything public or permanent waits for your OK.'));
   pane.append(head);
   let list = [];
   try { list = await api('/v1/connections'); } catch (e) { pane.append(el('p', 'err', e.message)); return; }
@@ -1699,7 +1699,7 @@ async function planCard() {
   card.append(top);
   if (cur.plan !== 'free') {
     const when = cur.renews_at ? new Date(cur.renews_at).toLocaleDateString() : '';
-    card.append(el('p', 'note', cur.cancel_at_period_end ? 'Ends ' + when + '. Your site moves to its free CreAI address after that — nothing goes offline.'
+    card.append(el('p', 'note', cur.cancel_at_period_end ? 'Ends ' + when + '. Your site moves to its free Creai address after that — nothing goes offline.'
       : 'Renews ' + when + '. We email you a week before.' + (cur.domain_included ? ' Your included domain is ready to claim under Domain.' : '')));
     if (NATIVE) card.append(el('p', 'note', 'Manage your plan at app.creai.dev.'));
     else {
@@ -1756,7 +1756,7 @@ async function planCard() {
   toggle.append(yb, mb); card.append(toggle, grid);
   if (!p.payments_enabled) { /* explained at the top of the card */ }
   else if (!p.can_buy) card.append(el('p', 'note', 'Ask your workspace owner to upgrade.'));
-  card.append(el('p', 'note', 'Cancel any time in one tap. If a plan ends, your site stays up on its free CreAI address.'));
+  card.append(el('p', 'note', 'Cancel any time in one tap. If a plan ends, your site stays up on its free Creai address.'));
   draw();
   return card;
 }
@@ -1798,7 +1798,7 @@ async function loadCredits() {
       catch (e) { used.textContent = e.message; }
     };
     row.append(inp, save);
-    capCard.append(used, row, el('p', 'note', 'CreAI stops before a message would go over it. Fixing errors in apps CreAI built is free (up to three tries per error).'));
+    capCard.append(used, row, el('p', 'note', 'Creai stops before a message would go over it. Fixing errors in apps Creai built is free (up to three tries per error).'));
   })();
   pane.append(capCard);
   if (NATIVE) {
@@ -1890,7 +1890,7 @@ async function checkVersion() {
   if (v === APP_VERSION.loaded) return;
   APP_VERSION.shown = true;
   const t = el('div', 'rtoast update'); t.setAttribute('role', 'status');
-  t.append('A newer version of CreAI is ready.');
+  t.append('A newer version of Creai is ready.');
   const go = el('button', null, 'Refresh'); go.type = 'button';
   go.onclick = () => {
     // keep anything typed so a refresh never loses it
@@ -2259,7 +2259,7 @@ async function checkUploads() {
 async function loadFiles() {
   const pane = $('pFiles'); pane.replaceChildren();
   const head = el('div');
-  head.append(el('h2', null, 'Your files'), el('p', 'muted', 'Photos, videos and PDFs you\u2019ve shared. CreAI uses them as context and can put them on your site.'));
+  head.append(el('h2', null, 'Your files'), el('p', 'muted', 'Photos, videos and PDFs you\u2019ve shared. Creai uses them as context and can put them on your site.'));
   pane.append(head);
   const r = await checkUploads();
   if (!r) return;
@@ -2372,7 +2372,7 @@ function updateFoot() {
   const n = RD.pick.size;
   const btn = $('rdApply');
   btn.disabled = !n;
-  if (!n) { btn.textContent = 'Select to improve'; $('rdHint').textContent = 'Tick what you\u2019d like CreAI to do. You can launch any time and keep editing.'; return; }
+  if (!n) { btn.textContent = 'Select to improve'; $('rdHint').textContent = 'Tick what you\u2019d like Creai to do. You can launch any time and keep editing.'; return; }
   btn.textContent = 'Apply ' + n + ' selected';
   const e = RD.est;
   $('rdHint').textContent = e ? 'About ' + e.low + '\u2013' + (e.high + (n - 1) * Math.max(1, Math.floor(e.high / 3))) + ' credits, as one message.' : 'Sent as one message.';
@@ -2399,7 +2399,7 @@ function itemRow(it, n) {
   const title = el('div', 'ri-title', it.label);
   if (it.decision === 'skip') title.append(el('span', 'ri-tag' + (it.level === 'essential' ? ' warn' : ''), it.level === 'essential' ? 'Your call \u00b7 still needed' : 'Skipped'));
   else if (it.decision === 'later') title.append(el('span', 'ri-tag', 'Later'));
-  else if (it.suggested) title.append(el('span', 'ri-tag', 'CreAI suggests'));
+  else if (it.suggested) title.append(el('span', 'ri-tag', 'Creai suggests'));
   body.append(title, el('p', 'ri-why', it.why));
   if (it.detail && !it.done) body.append(el('p', 'ri-detail', it.detail));
   if (!it.done) {
@@ -2455,7 +2455,7 @@ function renderSheet(quiet) {
   }
   if (r.suggestions.length) {
     const g = el('section', 'rd-group');
-    const h = el('h3', null, 'CreAI suggests'); h.append(el('em', null, 'optional \u00b7 doesn\u2019t affect the score'));
+    const h = el('h3', null, 'Creai suggests'); h.append(el('em', null, 'optional \u00b7 doesn\u2019t affect the score'));
     g.append(h);
     r.suggestions.forEach(sg => g.append(itemRow({ key: 's:' + sg.id, level: 'idea', label: sg.title, why: sg.why,
       request: sg.request, done: false, suggested: true }, n++)));
@@ -2597,7 +2597,7 @@ async function openPay(pack) {
     const holder = el('div'); holder.style.opacity = '0';
     const pe = elements.create('payment', {
       layout: { type: 'tabs', defaultCollapsed: false },
-      business: { name: 'CreAI' },
+      business: { name: 'Creai' },
       wallets: { applePay: 'auto', googlePay: 'auto' },
       terms: { card: 'never' }
     });

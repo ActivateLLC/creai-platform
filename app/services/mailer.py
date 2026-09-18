@@ -11,7 +11,7 @@ from ..core.config import settings
 
 log = logging.getLogger("creai.mailer")
 
-CODE_BODY = """Your CreAI sign-in code is {code}
+CODE_BODY = """Your Creai sign-in code is {code}
 
 It expires in 15 minutes and can only be used once.
 
@@ -40,10 +40,10 @@ def _send(to: str, subject: str, text: str) -> bool:
 
 
 def send_code(to: str, code: str) -> bool:
-    return _send(to, "Your CreAI sign-in code", CODE_BODY.format(code=code))
+    return _send(to, "Your Creai sign-in code", CODE_BODY.format(code=code))
 
 
-INVITE_BODY = """{org} invited you to their CreAI workspace.
+INVITE_BODY = """{org} invited you to their Creai workspace.
 
 Accept the invitation:
 

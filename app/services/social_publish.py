@@ -1,8 +1,8 @@
 """
-Social publishing through CreAI's self-hosted Postiz.
+Social publishing through Creai's self-hosted Postiz.
 
-CreAI holds one Postiz organisation. Each connected social account (a Postiz
-"integration") is mapped to exactly one CreAI workspace in our own database, and
+Creai holds one Postiz organisation. Each connected social account (a Postiz
+"integration") is mapped to exactly one Creai workspace in our own database, and
 a post is only ever sent to a channel mapped to the workspace that approved it.
 
 Delivery is deliberately conservative: a post that a platform would reject
@@ -21,7 +21,7 @@ from ..core.db import conn, log_event
 
 log = logging.getLogger("creai.social")
 
-# CreAI network name → Postiz integration identifiers that can carry it
+# Creai network name → Postiz integration identifiers that can carry it
 IDENTIFIERS = {
     "instagram": ("instagram", "instagram-standalone"),
     "facebook": ("facebook",),
@@ -76,7 +76,7 @@ async def assign(integration_id: str, org_id: int) -> dict:
         raise PostizError("no such channel in Postiz")
     network = next((k for k, ids in IDENTIFIERS.items() if found["identifier"] in ids), None)
     if not network:
-        raise PostizError(f"CreAI doesn't publish to {found['identifier']} yet")
+        raise PostizError(f"Creai doesn't publish to {found['identifier']} yet")
     async with conn() as c:
         row = await c.fetchrow(
             """INSERT INTO social_channels (org_id, postiz_id, network, identifier, name, picture)

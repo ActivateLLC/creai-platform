@@ -3,7 +3,7 @@ Webflow: connect a customer's existing site and let the agent edit it.
 
 Three parts:
 
-  OAuth    CreAI registers itself with Webflow's MCP server (dynamic client
+  OAuth    Creai registers itself with Webflow's MCP server (dynamic client
            registration), then each workspace authorises with PKCE. Tokens are
            sealed in the vault and refreshed automatically.
 
@@ -67,7 +67,7 @@ async def _client_id() -> str:
         return cid
     async with httpx.AsyncClient(timeout=30) as x:
         r = await x.post(f"{AUTH_BASE}/oauth/register", json={
-            "client_name": "CreAI",
+            "client_name": "Creai",
             "client_uri": "https://creai.dev",
             "redirect_uris": [uri],
             "grant_types": ["authorization_code", "refresh_token"],
@@ -251,7 +251,7 @@ def _args(org_id: int, arguments: dict, session: dict) -> dict:
     a = {k: v for k, v in (arguments or {}).items() if k not in INJECTED}
     a["agent_id"] = f"{settings.agent_model}|creai|w{org_id}"
     a["session_id"] = session.get("id") or "start"
-    a["context"] = "CreAI assistant editing the customer's Webflow site at their request."
+    a["context"] = "Creai assistant editing the customer's Webflow site at their request."
     return a
 
 

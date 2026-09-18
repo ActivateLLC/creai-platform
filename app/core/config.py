@@ -52,7 +52,7 @@ class Settings:
 
     # email — Resend
     resend_key: str = _req("RESEND_API_KEY", "")
-    mail_from: str = _req("MAIL_FROM", "CreAI <hello@creai.dev>")
+    mail_from: str = _req("MAIL_FROM", "Creai <hello@creai.dev>")
 
     # publishing — self-hosted Postiz, called over HTTP only.
     # Postiz is AGPL: it runs as a separate service and none of its code is
@@ -71,7 +71,7 @@ class Settings:
     image_model: str = os.getenv("IMAGE_MODEL", "Tongyi-MAI/Z-Image-Turbo")
     image_provider: str = os.getenv("IMAGE_PROVIDER", "fal-ai")
 
-    # social publishing — CreAI's self-hosted Postiz
+    # social publishing — Creai's self-hosted Postiz
     postiz_url: str = _req("POSTIZ_URL",
                            "https://postiz-v2113-production-ed5a.up.railway.app/api/public/v1")
     postiz_api_key: str = _req("POSTIZ_API_KEY", "")

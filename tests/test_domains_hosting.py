@@ -1,4 +1,4 @@
-"""Domain purchase (registrar mocked), CreAI hosting, and custom-domain serving."""
+"""Domain purchase (registrar mocked), Creai hosting, and custom-domain serving."""
 
 import os
 import secrets
@@ -239,7 +239,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     slug = pub["url"].rsplit("/", 1)[1]
     page = await api.get(f"/s/{slug}")
     assert page.status_code == 200 and "Your car, spotless" in page.text
-    assert "Made with CreAI" in page.text                               # free plan shows the badge
+    assert "Made with Creai" in page.text                               # free plan shows the badge
     assert "script-src 'none'" in page.headers["content-security-policy"]
     assert (await api.get("/s/nope-000000")).status_code == 404
 
@@ -249,7 +249,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
 
     # attach a domain and request it by Host
     await grant_plan(org, "launch")
-    assert "Made with CreAI" not in (await api.get(f"/s/{slug}")).text
+    assert "Made with Creai" not in (await api.get(f"/s/{slug}")).text
     async with db.conn() as c:
         await c.execute("""INSERT INTO domains (org_id, project_id, name, source, status)
                            VALUES ($1,$2,$3,'registered','registered')""", org, pid, served)
@@ -257,7 +257,7 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     sites._cache.clear()
     for host in (served, "www." + served):
         r = await api.get("/", headers={"Host": host})
-        assert r.status_code == 200 and "Your car, spotless" in r.text and "CreAI · split" in r.text
+        assert r.status_code == 200 and "Your car, spotless" in r.text and "Creai · split" in r.text
         assert "script-src 'none'" in r.headers["content-security-policy"]
     # the platform is never reachable through a customer's domain
     for path in ("/v1/auth/me", "/v1/projects", "/app.js", "/s/" + slug):
@@ -265,12 +265,12 @@ async def test_publish_site_and_serve_on_custom_domain(api, monkeypatch):
     # unknown hosts fall through to the platform as before
     assert (await api.get("/health", headers={"Host": "healthcheck.railway.app"})).status_code == 200
 
-    # domain without a release shows a placeholder, not the CreAI app
+    # domain without a release shows a placeholder, not the Creai app
     async with db.conn() as c:
         await c.execute("""INSERT INTO domains (org_id, name, source, status)
                            VALUES ($1,$2,'registered','registered')""", org, empty)
     r = await api.get("/", headers={"Host": empty})
-    assert "on its way" in r.text and "CreAI" in r.text and "<script" not in r.text
+    assert "on its way" in r.text and "Creai" in r.text and "<script" not in r.text
 
     await api.post(f"/v1/sites/{pid}/unpublish", headers=auth(tok))
     assert (await api.get(f"/s/{slug}")).status_code == 404

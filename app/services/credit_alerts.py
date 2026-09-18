@@ -81,13 +81,13 @@ async def check(org_id: int) -> str | None:
     kind = None
     if bal <= 0 and (empty_at is None or empty_at < since):
         kind, col = "empty", "empty_alert_at"
-        subject = "You're out of CreAI credits"
+        subject = "You're out of Creai credits"
         body = (f"Your workspace has used all its credits, so new messages are paused. Everything you've "
                 f"built is saved, and published sites stay online.\n\n{refill}"
                 f"To keep building now, top up at {base} (Credits).\n")
     elif 0 < bal <= threshold and (low_at is None or low_at < since):
         kind, col = "low", "low_alert_at"
-        subject = f"{bal:,} CreAI credits left"
+        subject = f"{bal:,} Creai credits left"
         body = (f"Heads up: your workspace has {bal:,} credits left. {refill}"
                 f"You can top up or change your monthly limit any time at {base} (Credits).\n")
     if not kind:

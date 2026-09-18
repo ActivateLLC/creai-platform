@@ -1,5 +1,5 @@
 """
-CreAI Platform API.
+Creai Platform API.
 
 Build-to-launch: generate a site, register a domain, deploy it, market it.
 Phase 0 is the launch chain — domains, DNS and deploy — because if that cannot be
@@ -103,11 +103,11 @@ async def lifespan(app: FastAPI):
     await db.disconnect()
 
 
-app = FastAPI(title="CreAI Platform", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Creai Platform", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    # the web app, local dev, and the CreAI mobile app (Capacitor on iOS / Android)
+    # the web app, local dev, and the Creai mobile app (Capacitor on iOS / Android)
     allow_origins=[settings.public_url, "http://localhost:3000",
                    "capacitor://localhost", "https://localhost"],
     allow_credentials=True,
@@ -172,7 +172,7 @@ WEB = Path(__file__).parent / "web"
 
 @app.get("/", include_in_schema=False)
 async def index():
-    # CreAI never runs inside a frame: not a preview, not anyone else's page.
+    # Creai never runs inside a frame: not a preview, not anyone else's page.
     return FileResponse(WEB / "index.html", headers={
         "Cache-Control": "no-cache", "X-Frame-Options": "DENY",
         "Content-Security-Policy": "frame-ancestors 'none'"})

@@ -1,4 +1,4 @@
-# CreAI renderer
+# Creai renderer
 
 The platform's eyes. Two endpoints, both guarded by `X-Render-Token`:
 
@@ -10,6 +10,6 @@ The platform's eyes. Two endpoints, both guarded by `X-Render-Token`:
   touching real data.
 
 Requests to anything other than the allowed asset hosts are blocked, and the browser
-never holds CreAI credentials.
+never holds Creai credentials.
 
 Env: `RENDER_TOKEN` (required), `RENDER_ALLOWED_HOSTS` (optional, comma separated).

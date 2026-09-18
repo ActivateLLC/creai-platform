@@ -25,7 +25,7 @@ log = logging.getLogger("creai.models")
 
 @dataclass(frozen=True)
 class Model:
-    key: str                 # what CreAI calls it (and bills it as)
+    key: str                 # what Creai calls it (and bills it as)
     provider: str            # anthropic | meta
     api_model: str           # what the provider calls it
     input: float             # USD per million tokens

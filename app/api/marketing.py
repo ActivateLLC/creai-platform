@@ -1,5 +1,5 @@
 """
-Marketing: for a business that only wants growth, or on top of a site CreAI
+Marketing: for a business that only wants growth, or on top of a site Creai
 built or a site the customer connected. Every project can have it.
 """
 

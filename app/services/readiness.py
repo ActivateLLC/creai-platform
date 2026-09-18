@@ -97,11 +97,11 @@ def site_items(spec: dict, published: bool, domain: bool, marketing: bool) -> li
               "faq" in kinds,
               "Add an FAQ with the questions my customers usually ask. Ask me for any facts you need."),
         _item("published", "golive", "Published",
-              "Your site is live on a free CreAI address.", published, action="publish"),
+              "Your site is live on a free Creai address.", published, action="publish"),
         _item("domain", "golive", "Your own domain",
               "A domain like yourbusiness.com looks established.", domain, action="domain"),
         _item("marketing", "golive", "Marketing switched on",
-              "CreAI drafts posts from your site for you to approve.", marketing, action="marketing"),
+              "Creai drafts posts from your site for you to approve.", marketing, action="marketing"),
     ]
 
 
@@ -133,7 +133,7 @@ def app_items(files: dict, spec: dict, errors: int, published: bool, domain: boo
               s["theme"] and s["palette"] != site_spec.DEFAULT_PALETTE,
               "Choose a theme and colours for my app that suit my brand."),
         _item("published", "golive", "Published",
-              "Your app is live at its own CreAI address.", published, action="publish_app"),
+              "Your app is live at its own Creai address.", published, action="publish_app"),
         _item("domain", "golive", "Your own domain",
               "Put the app on a domain you own.", domain, action="domain"),
     ]

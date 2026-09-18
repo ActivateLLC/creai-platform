@@ -93,7 +93,7 @@ horizontal_alignment = 1
 ''',
     "main.gd": '''extends Node2D
 
-# CreAI will replace this with your game. Tell it what you want to play.
+# Creai will replace this with your game. Tell it what you want to play.
 
 var t := 0.0
 

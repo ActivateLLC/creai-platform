@@ -1,7 +1,7 @@
 """
 Buying domains for customers, through Cloudflare Registrar (API beta).
 
-Cloudflare sells at cost and charges CreAI's account, so CreAI takes payment
+Cloudflare sells at cost and charges Creai's account, so Creai takes payment
 first (in credits, at cost plus a small fee), registers the domain in the
 customer's own name, and refunds the credits if the registration doesn't go
 through. Registrations are non-refundable once they succeed, so nothing is
@@ -120,7 +120,7 @@ async def register(domain: str, contact: dict) -> dict:
 
 async def renewal_sweep() -> dict:
     """Charge renewal credits for domains within a day of renewing, once per term.
-    The registrar renews on CreAI's account; this keeps the customer's side square."""
+    The registrar renews on Creai's account; this keeps the customer's side square."""
     from datetime import timedelta
     from ..core.db import conn, log_event
     from . import billing

@@ -1,5 +1,5 @@
 """
-Data saved by apps CreAI builds.
+Data saved by apps Creai builds.
 
 Called from app previews, which run in a sandbox with an opaque origin. Access is
 by an app token (HMAC, scoped to one project, expiring), never by the owner's

@@ -45,8 +45,8 @@ def keys():
 
 
 def test_thread_translates_to_chat_completions():
-    msgs, fns = models.to_openai(THREAD, TOOLS, "You are CreAI")
-    assert msgs[0] == {"role": "system", "content": "You are CreAI"}
+    msgs, fns = models.to_openai(THREAD, TOOLS, "You are Creai")
+    assert msgs[0] == {"role": "system", "content": "You are Creai"}
     assert msgs[1] == {"role": "user", "content": "Make my headline punchier"}
     assert msgs[2]["role"] == "assistant" and msgs[2]["content"] == "On it."
     call = msgs[2]["tool_calls"][0]

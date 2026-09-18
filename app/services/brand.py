@@ -67,7 +67,7 @@ async def fetch(url: str) -> tuple[str, str]:
     url = normalise(url)
     loop = asyncio.get_running_loop()
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False,
-                                 headers={"User-Agent": "CreAI-BrandReader/1.0"}) as x:
+                                 headers={"User-Agent": "Creai-BrandReader/1.0"}) as x:
         for _ in range(MAX_REDIRECTS + 1):
             host = urlparse(url).hostname
             if not await loop.run_in_executor(None, _public, host):

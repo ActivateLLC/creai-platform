@@ -84,11 +84,11 @@ async def test_emails_once_per_refill(api, monkeypatch):
     await set_balance(org, 25)
     assert await credit_alerts.check(org) == "low"
     assert await credit_alerts.check(org) is None                 # not repeated
-    assert api.sent[-1][0] == email and "25 CreAI credits left" in api.sent[-1][1]
+    assert api.sent[-1][0] == email and "25 Creai credits left" in api.sent[-1][1]
     await set_balance(org, 0)
     assert await credit_alerts.check(org) == "empty"
     assert await credit_alerts.check(org) is None
-    assert "out of CreAI credits" in api.sent[-1][1] and "published sites stay online" in api.sent[-1][2]
+    assert "out of Creai credits" in api.sent[-1][1] and "published sites stay online" in api.sent[-1][2]
     n = len(api.sent)
 
     # a top-up re-arms both alerts
@@ -97,7 +97,7 @@ async def test_emails_once_per_refill(api, monkeypatch):
     await set_balance(org, 150)
     assert await credit_alerts.check(org) == "low"                # threshold is now 20% of 1,000
     assert await credit_alerts.check(org) is None
-    assert len(api.sent) == n + 1 and "150 CreAI credits left" in api.sent[-1][1]
+    assert len(api.sent) == n + 1 and "150 Creai credits left" in api.sent[-1][1]
 
     # members who aren't owners don't get billing email; unconfigured mail isn't marked as sent
     monkeypatch.setattr(mailer, "send_notice", lambda *a: False)

@@ -1,4 +1,4 @@
-# CreAI Platform
+# Creai Platform
 
 Build-to-launch. Generate a site, register a domain, deploy it, market it.
 

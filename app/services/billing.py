@@ -1,7 +1,7 @@
 """
 Credits and payments.
 
-Customers buy credit packs inside the app, in a CreAI-styled payment panel
+Customers buy credit packs inside the app, in a Creai-styled payment panel
 (Stripe's Payment Element underneath: cards, Apple Pay, Google Pay, Klarna).
 Card details go straight from the browser to the processor; they never touch
 this server. Every agent turn is metered on the tokens it actually used and
@@ -52,7 +52,7 @@ PACKS = {
 
 STRIPE = "https://api.stripe.com/v1"
 # Wallets (Apple Pay, Google Pay) ride on "card". Link is deliberately left out
-# so the panel stays CreAI-branded.
+# so the panel stays Creai-branded.
 PAYMENT_METHODS = ["card", "klarna"]
 STATEMENT_SUFFIX = "CREDITS"
 WEBHOOK_TOLERANCE = 300
@@ -141,7 +141,7 @@ async def charge_usage(org_id: int, actor_id: int, project_id: int,
                        waived: str | None = None) -> tuple[int, int]:
     """Deduct a turn's usage. Returns (credits charged, new balance).
 
-    A waived turn is still recorded, at zero, so the owner can see what CreAI
+    A waived turn is still recorded, at zero, so the owner can see what Creai
     absorbed and why (for example: fixing an error the AI introduced)."""
     credits, cost = credits_for(calls)
     if credits and not waived:
@@ -309,7 +309,7 @@ async def create_payment(org_id: int, user_id: int, email: str, pack_id: str) ->
         "amount": pack["price_cents"],
         "currency": "usd",
         "payment_method_types": PAYMENT_METHODS,
-        "description": f"CreAI {pack['name']} — {pack['credits']:,} credits",
+        "description": f"Creai {pack['name']} — {pack['credits']:,} credits",
         "receipt_email": email,
         "statement_descriptor_suffix": STATEMENT_SUFFIX,
         "metadata": {"app": "creai", "org_id": org_id, "pack": pack_id,

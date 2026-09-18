@@ -65,7 +65,7 @@ async def api(monkeypatch):
 
 async def test_front_page_and_logo_are_served(api):
     r = await api.get("/")
-    assert r.status_code == 200 and "CreAI" in r.text
+    assert r.status_code == 200 and "Creai" in r.text
     r = await api.get("/logo.svg")
     assert r.status_code == 200 and r.text.lstrip().startswith("<svg")
 
@@ -278,7 +278,7 @@ def test_renderer_design_system_is_safe_and_varied():
     for layout in s.LAYOUTS:
         for motion in s.MOTIONS:
             html = s.render(s.merge({}, {"business": "Shine", "layout": layout, "theme": "studio", "motion": motion}))
-            assert f"CreAI · {layout} · studio · {motion}" in html
+            assert f"Creai · {layout} · studio · {motion}" in html
             if motion != "none":
                 assert "prefers-reduced-motion:no-preference" in html   # motion always opt-out-able
 

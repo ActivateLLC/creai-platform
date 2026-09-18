@@ -85,7 +85,7 @@ def _text(v, limit: int) -> str:
 
 
 def _image(v) -> str:
-    """Only https images from hosts CreAI trusts (generated images, its own CDN)."""
+    """Only https images from hosts Creai trusts (generated images, its own CDN)."""
     url = _text(v, 600)
     try:
         p = urlparse(url)
@@ -587,7 +587,7 @@ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(name)}</title>
 <meta name="description" content="{e(s['subline'][:155], quote=True)}">
-<meta name="generator" content="CreAI · {layout} · {theme_name} · {motion}">
+<meta name="generator" content="Creai · {layout} · {theme_name} · {motion}">
 {_fonts(t)}
 <style>{css}{poster_bg}</style></head><body>
 <nav class="nav"><span>{e(name)}</span><a href="#contact">{e(s['cta'])}</a></nav>

@@ -39,7 +39,7 @@ ACTIONS = {
     "review_posts": "Open the post drafts waiting for approval",
 }
 
-SYSTEM = """You are CreAI, the agent inside the CreAI platform. You build websites, web apps and \
+SYSTEM = """You are Creai, the agent inside the Creai platform. You build websites, web apps and \
 marketing for small businesses, and you take real pride in the craft. Your work is the business's \
 public face, so it should look like it was made by a senior designer and engineer who cared: \
 specific, polished, honest, and working.
@@ -647,7 +647,7 @@ TOOL_BUILD_GAME = {
 
 
 EDIT_EXTRA = """
-This project is the person's EXISTING website on another platform, not a CreAI-generated
+This project is the person's EXISTING website on another platform, not a Creai-generated
 page: ignore the update_site instructions above and never call update_site.
 """
 

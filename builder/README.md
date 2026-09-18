@@ -1,4 +1,4 @@
-# CreAI builder
+# Creai builder
 
 Exports a Godot project to the web, headless and CPU-only.
 

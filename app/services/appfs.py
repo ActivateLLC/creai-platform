@@ -3,7 +3,7 @@ App projects: working web apps the agent writes as code.
 
 Apps are small ES-module projects (Preact + htm, no build step) stored as files in
 the database. The preview runs them inside an iframe sandboxed WITHOUT
-allow-same-origin, so app code gets an opaque origin: it cannot read CreAI's
+allow-same-origin, so app code gets an opaque origin: it cannot read Creai's
 cookies, storage or session, and the page's CSP limits where it can connect.
 Data an app saves goes through the app-data API with a token scoped to that one
 app. Styling comes from the same themes as sites, via a component kit.
@@ -54,7 +54,7 @@ function App() {
       <header class="topbar"><strong>New app</strong></header>
       <section class="page">
         <h1>Describe your app in the chat</h1>
-        <p class="muted">CreAI will build the screens, forms and data here.</p>
+        <p class="muted">Creai will build the screens, forms and data here.</p>
         <button class="btn" onClick=${() => setCount(count + 1)}>Clicked ${count}</button>
       </section>
     </main>`;

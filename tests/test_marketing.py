@@ -227,5 +227,5 @@ async def test_people_and_the_agent_can_revise_drafted_posts(api, monkeypatch):
     assert "revised post" in " ".join(out["log"])
     async with db.conn() as c:
         rows = {r["id"]: r for r in await c.fetch("SELECT id, state, payload FROM approvals WHERE id = ANY($1::bigint[])", ids)}
-    assert rows[ids[0]]["payload"]["text"] == "Agent rewrite" and rows[ids[0]]["payload"]["edited_by"] == "CreAI"
+    assert rows[ids[0]]["payload"]["text"] == "Agent rewrite" and rows[ids[0]]["payload"]["edited_by"] == "Creai"
     assert rows[ids[1]]["state"] == "discarded" and rows[ids[2]]["state"] == "scheduled"

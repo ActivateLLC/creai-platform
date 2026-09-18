@@ -1,5 +1,5 @@
 """
-Publishing apps CreAI built.
+Publishing apps Creai built.
 
 A release is a snapshot of the app's files. The public page serves the latest live
 release under a sandbox CSP, so app code runs with an opaque origin even as a

@@ -1,5 +1,5 @@
 """
-Serving customer domains from CreAI's Railway service.
+Serving customer domains from Creai's Railway service.
 
 Each domain is added to the service through Railway's public API, which returns
 the DNS records it needs (a CNAME to route traffic and a TXT to prove ownership).

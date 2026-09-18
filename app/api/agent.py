@@ -204,7 +204,7 @@ async def project_say(project_id: int, body: SayIn,
                      AND created_at > now() - interval '1 day' RETURNING id""",
                 project_id, ctx.org_id, err, FREE_FIXES)
         if row:
-            waived = "fixing an error in the app CreAI built"
+            waived = "fixing an error in the app Creai built"
 
     have = await billing.balance(ctx.org_id)
     if not waived and have < billing.MIN_TO_START[tier]:
@@ -300,7 +300,7 @@ async def project_say(project_id: int, body: SayIn,
             from ..services import posts as post_svc
             from ..services import social_publish
             await social_publish.cancel(post_id, ctx.org_id)
-            return await post_svc.update(ctx.org_id, post_id, project_id=project_id, editor="CreAI", **changes)
+            return await post_svc.update(ctx.org_id, post_id, project_id=project_id, editor="Creai", **changes)
 
         async def discard(self, post_id):
             async with conn() as c:
@@ -352,7 +352,7 @@ async def project_preview(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
     if p_path(p) == "app":
         page = appfs.preview(await appfs.files(project_id, ctx.org_id), answers.get("site"),
                              appfs.token(project_id, ctx.org_id), settings.public_url)
-        # Even if opened directly, app code never runs with CreAI's origin.
+        # Even if opened directly, app code never runs with Creai's origin.
         return HTMLResponse(page, headers={
             "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-modals; frame-ancestors 'self'",
             "Cache-Control": "no-store"})

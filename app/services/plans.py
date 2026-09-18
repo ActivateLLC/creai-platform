@@ -1,7 +1,7 @@
 """
-Plans: the recurring side of CreAI.
+Plans: the recurring side of Creai.
 
-  free    a CreAI address, "Made with CreAI" badge, credits for building
+  free    a Creai address, "Made with Creai" badge, credits for building
   launch  own domain hosted, no badge, monthly credits; yearly includes a domain
   growth  launch + scheduled social publishing, more credits
 
@@ -10,7 +10,7 @@ Money rules:
   * Monthly credits are granted once per paid invoice (monthly) or once per month
     of a paid year (yearly), keyed so they can never be granted twice.
   * A lapsed plan never takes a site offline: custom domains fall back to the
-    free CreAI address.
+    free Creai address.
   * Customers are told before renewals, and can cancel in one tap (Stripe portal).
 """
 
@@ -23,10 +23,10 @@ from . import billing
 
 PLANS = {
     "free": {"name": "Free", "monthly": 0, "yearly": 0, "credits": 0,
-             "features": ["Free CreAI address", "Build sites and apps with credits",
-                          "Made with CreAI badge"]},
+             "features": ["Free Creai address", "Build sites and apps with credits",
+                          "Made with Creai badge"]},
     "launch": {"name": "Launch", "monthly": 1200, "yearly": 12000, "credits": 1000,
-               "features": ["Your own domain, hosted with HTTPS", "No CreAI badge",
+               "features": ["Your own domain, hosted with HTTPS", "No Creai badge",
                             "1,000 credits every month", "Yearly: first-year domain included",
                             "Domain renewals included on yearly"]},
     "growth": {"name": "Growth", "monthly": 3500, "yearly": 35000, "credits": 3000,
@@ -101,7 +101,7 @@ async def _price_id(plan: str, interval: str) -> str:
         return found["data"][0]["id"]
     p = PLANS[plan]
     product = await billing._stripe("POST", "/products", {
-        "name": f"CreAI {p['name']}", "metadata": {"app": "creai", "plan": plan}})
+        "name": f"Creai {p['name']}", "metadata": {"app": "creai", "plan": plan}})
     price = await billing._stripe("POST", "/prices", {
         "product": product["id"], "currency": "usd", "unit_amount": p[interval],
         "recurring": {"interval": INTERVALS[interval]}, "lookup_key": key,
@@ -156,7 +156,7 @@ _portal_config: str | None = None
 
 
 async def _portal_configuration() -> str:
-    """CreAI's own portal settings (the account's default may serve other products).
+    """Creai's own portal settings (the account's default may serve other products).
     Found by metadata, created once if missing."""
     global _portal_config
     if _portal_config:
@@ -173,7 +173,7 @@ async def _portal_configuration() -> str:
         products.append({"product": price["product"], "prices": ids})
     base = settings.public_url.rstrip("/")
     cfg = await billing._stripe("POST", "/billing_portal/configurations", {
-        "business_profile": {"headline": "CreAI — manage your plan",
+        "business_profile": {"headline": "Creai — manage your plan",
                              "privacy_policy_url": "https://www.creai.dev/privacy",
                              "terms_of_service_url": "https://www.creai.dev/terms"},
         "default_return_url": f"{base}/?plan=managed",
@@ -303,10 +303,10 @@ async def remind_upcoming(invoice: dict) -> str | None:
     when = _ts(invoice.get("next_payment_attempt") or invoice.get("period_end"))
     if not email or not when:
         return None
-    body = (f"Your CreAI plan renews on {when:%B %d, %Y} for ${amount:,.2f}.\n\n"
-            f"Nothing to do if you'd like to keep it. To change or cancel, open CreAI, go to "
+    body = (f"Your Creai plan renews on {when:%B %d, %Y} for ${amount:,.2f}.\n\n"
+            f"Nothing to do if you'd like to keep it. To change or cancel, open Creai, go to "
             f"Credits → Manage plan. It takes one tap.\n")
     import asyncio
     await asyncio.get_running_loop().run_in_executor(
-        None, mailer.send_notice, email, "Your CreAI plan renews soon", body)
+        None, mailer.send_notice, email, "Your Creai plan renews soon", body)
     return email

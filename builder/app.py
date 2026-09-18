@@ -1,5 +1,5 @@
 """
-CreAI builder — turns a Godot project into something that plays in a browser.
+Creai builder — turns a Godot project into something that plays in a browser.
 
 The agent writes ordinary Godot files (project.godot, .tscn scenes, .gd scripts) and
 posts them here. This service writes them to a scratch folder, adds a web export
@@ -62,7 +62,7 @@ def preset(threads: bool) -> str:
     return PRESET.format(threads="true" if threads else "false")
 
 
-app = FastAPI(title="CreAI builder")
+app = FastAPI(title="Creai builder")
 
 
 def check(token: str | None):

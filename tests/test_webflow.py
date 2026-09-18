@@ -1,6 +1,6 @@
 """
 Webflow connection tests. A fake Webflow (OAuth + MCP over Streamable HTTP)
-stands in for the real one, so these check what CreAI does: PKCE, sealed
+stands in for the real one, so these check what Creai does: PKCE, sealed
 tokens, refresh, the approval policy, injection of Webflow's required
 fields, and that no workspace can reach another's site.
 """

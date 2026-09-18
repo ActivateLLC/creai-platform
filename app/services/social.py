@@ -125,7 +125,7 @@ async def finish(provider: str, code: str, state: str) -> str:
         raise SocialError("unexpected issuer")
     aud = claims.get("aud")
     if (aud if isinstance(aud, list) else [aud]).count(p["id"]()) != 1:
-        raise SocialError("token was not issued for CreAI")
+        raise SocialError("token was not issued for Creai")
     if int(claims.get("exp") or 0) < time.time():
         raise SocialError("the sign-in expired — please try again")
     if not secrets.compare_digest(str(claims.get("nonce", "")), row["nonce"]):
