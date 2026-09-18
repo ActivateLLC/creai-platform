@@ -101,6 +101,15 @@ class ProjectPatch(BaseModel):
     archived: bool | None = None
 
 
+@router.get("/watch/all")
+async def watch_all(ctx: T.Ctx = Depends(T.current_ctx)):
+    """Check every address this workspace has online. Reports only what is
+    definitely wrong: a watcher that cries wolf gets muted, and then it is worse
+    than nothing."""
+    from ..services import watch
+    return (await watch.check_org(ctx.org_id)).as_dict()
+
+
 @router.get("/{project_id}/versions")
 async def versions(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
     """Every version this project has had, newest first."""

@@ -1651,3 +1651,62 @@ def test_the_badge_joke_survives_a_wrap_and_reduced_motion():
     quiet = block[block.index("@media (prefers-reduced-motion:reduce){"):]
     assert "text-decoration-color:currentColor" in quiet
     assert "opacity:1" in quiet
+
+
+# ---------------------------------------------------------------- watching what's live
+
+@pytest.mark.asyncio
+async def test_a_domain_left_pointing_at_an_old_host_is_named(monkeypatch):
+    """The bug this exists for: a CNAME left behind by something switched off a
+    year ago, quietly serving a stranger's error page."""
+    from app.services import watch
+    monkeypatch.setattr(watch, "_cname",
+                        lambda h: _resolve("b3b0847891f6fd20.vercel-dns-017.com"))
+    monkeypatch.setattr(watch, "_reach", lambda u: _resolve((503, "")))
+    found = await watch.check_host("arbi.example.dev")
+    assert any("Vercel" in f.what for f in found)
+    assert any(f.fix for f in found)          # and says what to do about it
+
+
+async def _resolve(v):
+    return v
+
+
+@pytest.mark.asyncio
+async def test_a_healthy_address_produces_no_noise(monkeypatch):
+    """A watcher that cries wolf is muted within a week, and then it is worse than
+    nothing because everyone believes it is working."""
+    from app.services import watch
+    monkeypatch.setattr(watch, "_cname", lambda h: _resolve(None))
+    monkeypatch.setattr(watch, "_reach", lambda u: _resolve((200, "")))
+    monkeypatch.setattr(watch, "_cert_days", lambda h: 60)
+    assert await watch.check_host("fine.example.dev") == []
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_that_fails_is_silence_not_a_warning(api, monkeypatch):
+    """Failing to check is not the same as finding a problem."""
+    from app.services import watch
+
+    async def boom(_h):
+        raise RuntimeError("resolver down")
+
+    monkeypatch.setattr(watch, "check_host", boom)
+    async with db.conn() as c:
+        org = await c.fetchval("SELECT id FROM organizations ORDER BY id LIMIT 1")
+        await c.execute("""INSERT INTO domains (org_id, name, status)
+                           VALUES ($1,'wobbly.example.dev','live')
+                           ON CONFLICT (org_id, name) DO NOTHING""", org)
+    report = await watch.check_org(org)
+    assert report.findings == []               # no invented problem
+
+
+@pytest.mark.asyncio
+async def test_a_certificate_about_to_lapse_is_flagged_before_it_does(monkeypatch):
+    from app.services import watch
+    monkeypatch.setattr(watch, "_cname", lambda h: _resolve(None))
+    monkeypatch.setattr(watch, "_reach", lambda u: _resolve((200, "")))
+    monkeypatch.setattr(watch, "_cert_days", lambda h: 5)
+    found = await watch.check_host("expiring.example.dev")
+    assert len(found) == 1 and found[0].severity == "soon"
+    assert "5 days" in found[0].what
