@@ -1380,3 +1380,16 @@ async def test_an_autonomous_post_is_stoppable_for_a_window_not_instant(api):
     await autonomy.set_channel(org, ch, True)
     out = await autonomy.decide(org, "linkedin", "We fixed a burst pipe in Riverwest today.")
     assert out["autonomous"] and out["holds_until"] > datetime.now(timezone.utc)
+
+
+def test_a_cta_section_linked_to_the_app_actually_renders():
+    """It didn't. _section referenced app_url without receiving it, so the very
+    thing the sign-in fix told the agent to do crashed the page."""
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "X", "headline": "Y", "cta": "Book",
+                                "contact": {"email": "a@b.com"},
+                                "sections": [{"kind": "cta", "body": "Sign in to see your invoices",
+                                              "button": "Sign in", "link": "app"}]})
+    html = site_spec.render(spec, "https://app.creai.dev/a/portal")
+    assert 'href="https://app.creai.dev/a/portal"' in html
+    assert 'href="#contact"' in site_spec.render(spec, None)

@@ -368,7 +368,7 @@ def _words(text: str) -> str:
                     for i, w in enumerate(text.split()))
 
 
-def _section(sec: dict, s: dict, n: int, layout: str) -> str:
+def _section(sec: dict, s: dict, n: int, layout: str, app_url: str | None = None) -> str:
     e = html.escape
     label = f'<span class="idx">{n:02d}</span>' if layout == "editorial" else ""
     title = f'<h2>{label}{e(sec["title"])}</h2>' if sec.get("title") else ""
@@ -431,7 +431,7 @@ def render(site: dict | None, app_url: str | None = None) -> str:
     name = s["business"] or "Your business"
     motion = s["motion"]
 
-    parts = [_section(sec, s, n, layout) for n, sec in enumerate(s["sections"], 1)]
+    parts = [_section(sec, s, n, layout, app_url) for n, sec in enumerate(s["sections"], 1)]
     c = s["contact"]
     contact = " · ".join(e(c[k]) for k in ("area", "phone", "email") if c.get(k))
     empty = "" if (s["headline"] or parts) else \
