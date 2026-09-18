@@ -1644,7 +1644,10 @@ def test_the_badge_joke_survives_a_wrap_and_reduced_motion():
     html = open("app/web/index.html").read()
     assert "text-decoration:line-through" in html
     assert "Just kidding" in html and "you take the credit" in html
-    # someone who has asked for less motion still gets the joke, not the setup
-    block = html[html.index("@media (prefers-reduced-motion:reduce){"):][:400]
-    assert "text-decoration-color:currentColor" in block
-    assert "opacity:1" in block
+    # Someone who asked for less motion still gets the joke, not the setup.
+    # Anchored from the .struck rule: the file has several reduced-motion blocks
+    # and the first one belongs to something else entirely.
+    block = html[html.index(".struck{"):][:900]
+    quiet = block[block.index("@media (prefers-reduced-motion:reduce){"):]
+    assert "text-decoration-color:currentColor" in quiet
+    assert "opacity:1" in quiet
