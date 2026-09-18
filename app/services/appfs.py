@@ -413,6 +413,53 @@ def _exports(src: str) -> tuple[set, bool]:
     return names, bool(re.search(r"^\s*export\s+default\b", src, re.M))
 
 
+def _strip_templates(src: str) -> str:
+    """Remove every template literal, including ones nested inside ${...}. A regex
+    can't do this: html`a ${cond && html`b`} c` needs a scanner, not a pattern.
+    Used so the JSX check doesn't see leftover markup from a conditional render."""
+    out, i, n = [], 0, len(src)
+    while i < n:
+        if src[i] != "`":
+            out.append(src[i]); i += 1; continue
+        i += 1                                     # inside a template literal
+        while i < n and src[i] != "`":
+            if src[i] == "\\":
+                i += 2
+            elif src[i] == "$" and i + 1 < n and src[i + 1] == "{":
+                i = _skip_expression(src, i + 2)    # may hold templates of its own
+            else:
+                i += 1
+        i += 1                                     # past the closing backtick
+        out.append(" ")
+    return "".join(out)
+
+
+def _skip_expression(src: str, i: int) -> int:
+    """Index just past the } closing a ${ expression, templates inside included."""
+    braces, n = 1, len(src)
+    while i < n and braces:
+        c = src[i]
+        if c == "\\":
+            i += 2; continue
+        if c == "{":
+            braces += 1
+        elif c == "}":
+            braces -= 1
+            if not braces:
+                return i + 1
+        elif c == "`":
+            i += 1
+            while i < n and src[i] != "`":
+                if src[i] == "\\":
+                    i += 2
+                elif src[i] == "$" and i + 1 < n and src[i + 1] == "{":
+                    i = _skip_expression(src, i + 2)
+                else:
+                    i += 1
+        i += 1
+    return i
+
+
 def _strip_comments(src: str) -> str:
     src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
     return re.sub(r"(?m)(^|[^:\\\\])//.*$", r"\1", src)
@@ -471,7 +518,7 @@ def review(app_files: dict[str, str]) -> dict:
         for hook in HOOKS:
             if re.search(rf"\b{hook}\s*\(", body) and hook not in imported and not re.search(rf"\bfunction\s+{hook}\b", body):
                 problems.append(f"{path}: calls {hook} without importing it from 'preact/hooks'.")
-        jsx_body = re.sub(r"html`(?:[^`\\]|\\.)*`", "", body, flags=re.S)
+        jsx_body = _strip_templates(body)
         if re.search(r"(=>|return|\(|=)\s*<[A-Za-z][\w.]*[\s/>]", jsx_body):
             problems.append(f"{path}: looks like JSX. Use html`<${{Component}} />` templates instead.")
         if re.search(r"\bclassName=", body):
@@ -508,7 +555,7 @@ def review(app_files: dict[str, str]) -> dict:
     if uses_auth and not wants_signin:
         notes.append("The app signs people in, but no collection uses \"user\" or \"own\", so "
                      "signing in changes nothing. Consider \"own\" for anything personal.")
-    if uses_auth and "creai.auth.me" not in code_all:
+    if uses_auth and not re.search(r"\bauth\.me\s*\(|\bme\s*\(\s*\)", code_all):
         notes.append("Call creai.auth.me() on load, so a returning person stays signed in.")
     if uses_auth and "signOut" not in code_all:
         notes.append("No way to sign out. Put it in the topbar.")

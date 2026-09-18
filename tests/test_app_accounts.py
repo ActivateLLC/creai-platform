@@ -237,3 +237,35 @@ async def test_the_owner_can_see_who_uses_their_app_but_never_a_password(api):
     users = r.json()["users"]
     assert [u["email"] for u in users] == ["eve@example.com"]
     assert "pw" not in users[0] and "password" not in str(users[0])
+
+
+# ---------------------------------------------------------------- the reviewer, again
+
+def test_nested_templates_are_not_mistaken_for_jsx():
+    """A conditional render nests html`` inside ${…}. The old regex stopped at the
+    first backtick and reported phantom JSX, which sends the agent chasing nothing."""
+    src = ("import { html, render } from 'htm/preact';\n"
+           "const err = '';\n"
+           "const view = () => html`<div>${err && html`<p class=\"muted\">${err}</p>`}</div>`;\n"
+           "render(view(), document.getElementById('root'));")
+    assert not [p for p in appfs.review({"app.js": src})["problems"] if "JSX" in p]
+
+
+def test_real_jsx_is_still_caught():
+    src = ("import { render } from 'preact';\n"
+           "const A = () => <div className='x' />;\n"
+           "render(<A />, document.getElementById('root'));")
+    assert any("JSX" in p for p in appfs.review({"app.js": src})["problems"])
+
+
+def test_me_is_recognised_through_a_local_alias():
+    """Apps normally do `const auth = window.creai.auth` and then call auth.me()."""
+    src = ("import { html, render } from 'htm/preact';\n"
+           "const auth = window.creai.auth;\n"
+           "auth.me().then(() => {});\n"
+           "auth.signOut();\n"
+           "const rows = window.creai.db.collection('notes');\n"
+           "render(html`<div />`, document.getElementById('root'));")
+    r = appfs.review({"app.js": src,
+                      "app.json": '{"collections": {"notes": {"read": "own", "write": "own"}}}'})
+    assert not any("me()" in n for n in r["notes"])
