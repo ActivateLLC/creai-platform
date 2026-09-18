@@ -762,6 +762,20 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const S = { token: null, me: null, project: null, busy: false, mode: 'best', intent: 'build', balance: null };
 try { S.mode = localStorage.getItem('creai_mode') || 'best'; } catch (_) {}
 try { S.token = localStorage.getItem('creai_token'); } catch (_) {}
+// Where this person arrived from, kept from the very first page load so it
+// survives the trip through the email code. Written once and never overwritten:
+// whatever introduced somebody is what earned the signup.
+try {
+  if (!localStorage.getItem('creai_first_touch')) {
+    const q = new URLSearchParams(location.search);
+    localStorage.setItem('creai_first_touch', JSON.stringify({
+      utm_source: q.get('utm_source') || null,
+      utm_medium: q.get('utm_medium') || null,
+      referrer: document.referrer || null,
+      landed_on: location.pathname + location.search
+    }));
+  }
+} catch (_) {}
 
 const STARTERS = [
   'Mobile car detailing in Milwaukee. I want people to book online.',
@@ -1137,7 +1151,10 @@ $('fSign').onsubmit = async (e) => {
       $('code').focus();
       return;
     }
-    const r = await api('/v1/auth/code', { method: 'POST', body: JSON.stringify({ email, code: $('code').value.trim() }) });
+    let touch = {};
+    try { touch = JSON.parse(localStorage.getItem('creai_first_touch') || '{}'); } catch (_) {}
+    const r = await api('/v1/auth/code', { method: 'POST',
+      body: JSON.stringify({ email, code: $('code').value.trim(), ...touch }) });
     S.token = r.token; try { localStorage.setItem('creai_token', r.token); } catch (_) {}
     $('dSign').close();
     await afterSignIn(true);

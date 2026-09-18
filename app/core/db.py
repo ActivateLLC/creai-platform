@@ -422,6 +422,16 @@ ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS empty_alert_at TIMESTAMPTZ;
 -- The moment the owner said the brand is right. Autonomy is gated on it, because
 -- posting in somebody's voice before they have agreed what their voice is is the
 -- one mistake that cannot be taken back.
+-- Where a person came from, recorded once, the first time we ever see them.
+-- First touch rather than last: the thing that introduced somebody is what earned
+-- the signup, and overwriting it with the last click credits the wrong channel.
+-- Kept on the user because a person is what gets acquired; the org follows.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS source TEXT;          -- content | partner | paid | pr | direct | referral
+ALTER TABLE users ADD COLUMN IF NOT EXISTS source_detail TEXT;   -- campaign, post, partner name
+ALTER TABLE users ADD COLUMN IF NOT EXISTS landed_on TEXT;       -- the first page they arrived at
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer TEXT;
+CREATE INDEX IF NOT EXISTS users_source_idx ON users(source, created_at DESC);
+
 ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS brand_confirmed_at TIMESTAMPTZ;
 -- One switch that stops everything, instantly, across every channel.
 ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS social_paused BOOLEAN NOT NULL DEFAULT false;

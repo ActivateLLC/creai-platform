@@ -1710,3 +1710,58 @@ async def test_a_certificate_about_to_lapse_is_flagged_before_it_does(monkeypatc
     found = await watch.check_host("expiring.example.dev")
     assert len(found) == 1 and found[0].severity == "soon"
     assert "5 days" in found[0].what
+
+
+# ---------------------------------------------------------------- the scoreboard
+
+def test_where_someone_came_from_is_classified_the_way_the_budget_is_split():
+    from app.services import metrics
+    assert metrics.classify(None, "cpc", None)[0] == "paid"
+    assert metrics.classify("partnerco", "affiliate", None)[0] == "partner"
+    assert metrics.classify(None, None, "https://www.google.com/search?q=x")[0] == "content"
+    assert metrics.classify(None, None, "https://chatgpt.com/")[0] == "content"
+    assert metrics.classify(None, None, "https://www.producthunt.com/posts/x")[0] == "pr"
+    assert metrics.classify(None, None, "https://someblog.example/post")[0] == "referral"
+    assert metrics.classify(None, None, None)[0] == "direct"       # never a guess
+
+
+@pytest.mark.asyncio
+async def test_first_touch_is_kept_and_a_later_visit_cannot_take_the_credit(api):
+    """Whatever introduced somebody earned the signup. Overwriting with the last
+    click moves budget to the wrong channel."""
+    from app.services import metrics
+    email = f"touch{secrets.token_hex(3)}@example.com"
+    async with db.conn() as c:
+        from app.core import tenancy as T
+        await T.start_session(c, email, None,
+                              first_touch={"channel": "content", "detail": "reddit.com",
+                                           "landed_on": "/build/ai-crm", "referrer": "https://reddit.com/"})
+        # they come back later through an ad
+        await T.start_session(c, email, None,
+                              first_touch={"channel": "paid", "detail": "google-ads",
+                                           "landed_on": "/", "referrer": "https://google.com/"})
+        row = await c.fetchrow("SELECT source, source_detail, landed_on FROM users WHERE email=$1",
+                               email)
+    assert row["source"] == "content"
+    assert row["source_detail"] == "reddit.com"
+    assert row["landed_on"] == "/build/ai-crm"
+
+
+@pytest.mark.asyncio
+async def test_the_scoreboard_says_what_it_cannot_measure(api):
+    """A zero in a row that is simply not instrumented reads as a fact, and a
+    stranger doing diligence finds the gap in an afternoon."""
+    from app.services import metrics
+    out = await metrics.funnel(30)
+    assert set(out["not_instrumented"]) == {"visitors", "cac", "ltv", "referral_rate"}
+    for reason in out["not_instrumented"].values():
+        assert len(reason) > 20                      # each says what it would need
+    assert "registered" in out["measured"] and "mrr_cents" in out["measured"]
+
+
+@pytest.mark.asyncio
+async def test_coverage_admits_how_little_history_has_a_source(api):
+    from app.services import metrics
+    cov = await metrics.coverage()
+    assert 0 <= cov["share"] <= 1
+    assert "permanently" in cov["note"]

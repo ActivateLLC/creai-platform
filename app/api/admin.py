@@ -182,3 +182,13 @@ async def quality(days: int = 7, admin=Depends(T.platform_admin)):
     """
     from ..services import quality as quality_svc
     return await quality_svc.digest(days=max(1, min(int(days), 90)))
+
+
+@router.get("/scoreboard")
+async def scoreboard(days: int = 30, admin=Depends(T.platform_admin)):
+    """The funnel, by channel, with the rows we cannot honestly fill in named as
+    missing rather than shown as zero."""
+    from ..services import metrics
+    return {"funnel": await metrics.funnel(days),
+            "by_channel": await metrics.by_channel(days),
+            "coverage": await metrics.coverage()}

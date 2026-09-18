@@ -72,7 +72,8 @@ async def issue_code(email: str) -> str:
     return code
 
 
-async def redeem_code(email: str, code: str) -> tuple[str, bool]:
+async def redeem_code(email: str, code: str,
+                      first_touch: dict | None = None) -> tuple[str, bool]:
     """Returns (session token, created_org). Creates the user and, on first
     sign-in, a personal workspace they own."""
     email = email.lower().strip()
@@ -84,18 +85,32 @@ async def redeem_code(email: str, code: str) -> tuple[str, bool]:
         if not row:
             raise HTTPException(401, "that code is wrong or has expired")
         await c.execute("UPDATE login_codes SET used_at=now() WHERE code_hash=$1", h)
-        return await start_session(c, email)
+        return await start_session(c, email, first_touch=first_touch)
 
 
-async def start_session(c, email: str, name: str | None = None) -> tuple[str, bool]:
+async def start_session(c, email: str, name: str | None = None,
+                        first_touch: dict | None = None) -> tuple[str, bool]:
     """Find or create the person and their first workspace; open a session.
-    Shared by every way of signing in, so they all land in the same account."""
+    Shared by every way of signing in, so they all land in the same account.
+
+    first_touch records where somebody came from, and is written once — COALESCE
+    keeps the original, because whatever introduced them is what earned the
+    signup. A later visit through an ad must not take the credit."""
     email = email.lower().strip()
     created = False
+    t = first_touch or {}
     user = await c.fetchrow(
-        """INSERT INTO users (email, name) VALUES ($1, $2)
+        """INSERT INTO users (email, name, source, source_detail, landed_on, referrer)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (email) DO UPDATE
-             SET name = COALESCE(users.name, EXCLUDED.name) RETURNING *""", email, name)
+             SET name = COALESCE(users.name, EXCLUDED.name),
+                 source = COALESCE(users.source, EXCLUDED.source),
+                 source_detail = COALESCE(users.source_detail, EXCLUDED.source_detail),
+                 landed_on = COALESCE(users.landed_on, EXCLUDED.landed_on),
+                 referrer = COALESCE(users.referrer, EXCLUDED.referrer)
+           RETURNING *""",
+        email, name, t.get("channel"), (t.get("detail") or "")[:200] or None,
+        (t.get("landed_on") or "")[:300] or None, (t.get("referrer") or "")[:400] or None)
 
     org_id = await c.fetchval(
         "SELECT org_id FROM memberships WHERE user_id=$1 ORDER BY created_at LIMIT 1",

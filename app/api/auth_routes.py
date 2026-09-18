@@ -1,6 +1,6 @@
 """Sign in, read yourself, switch workspace."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 
@@ -17,6 +17,11 @@ class StartIn(BaseModel):
 
 
 class CodeIn(BaseModel):
+    # Where they came from, sent by the client from what it saw on first load.
+    utm_source: str | None = None
+    utm_medium: str | None = None
+    referrer: str | None = None
+    landed_on: str | None = None
     email: EmailStr
     code: str
 
@@ -37,8 +42,19 @@ async def start(body: StartIn):
 
 
 @router.post("/code")
-async def redeem(body: CodeIn):
-    token, created = await T.redeem_code(str(body.email), body.code.strip())
+async def redeem(body: CodeIn, request: Request):
+    """Sign in, and — the first time only — record where this person came from.
+
+    Recorded here rather than on the marketing site because this is the moment a
+    person exists. Written once: whatever introduced them keeps the credit."""
+    from ..services import metrics
+    channel, detail = metrics.classify(body.utm_source, body.utm_medium,
+                                       body.referrer or request.headers.get("referer"))
+    token, created = await T.redeem_code(
+        str(body.email), body.code.strip(),
+        first_touch={"channel": channel, "detail": detail,
+                     "landed_on": body.landed_on,
+                     "referrer": body.referrer or request.headers.get("referer")})
     return {"token": token, "token_type": "bearer", "workspace_created": created}
 
 
