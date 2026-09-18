@@ -30,8 +30,32 @@ import re
 
 log = logging.getLogger("creai.admutate")
 
+# The five angles a creative library needs. These are not variations of each other
+# — they are different reasons to buy, and a set missing four of them is one idea
+# tested five ways.
+#
+# Note what 'proof' requires. It is reported as the largest single lever available,
+# and it is the one angle that cannot be written: it needs a customer who actually
+# said something. Generating it would be fabricating a testimonial, so it is
+# refused until real proof exists rather than quietly filled in.
+ANGLES = {
+    "demo":     "Show the value becoming obvious. Do not say it removes the stain; "
+                "show the stain going. This is the strongest angle for a product "
+                "nobody has seen before.",
+    "problem":  "Sit in the thing they already resent, before offering anything. "
+                "Name it more precisely than they would themselves.",
+    "outcome":  "Open at the end: the evening back, the job entered, the invoice "
+                "paid. Then show what produced it.",
+    "nothing":  "Compare with carrying on as they are — not with a competitor. "
+                "The real alternative is the spreadsheet and the memory.",
+    "proof":    "A real customer, in their own words, about their own result. "
+                "Requires a real quote from a real person; never written for them.",
+}
+NEEDS_REAL_PROOF = {"proof"}
+
 # The axes worth varying, and why each one is here rather than being a style knob.
 AXES = {
+    "angle": tuple(ANGLES),
     # The first line decides whether the rest is watched at all.
     "hook": ("objection", "moment", "number", "confession", "question"),
     # Same product, different person — the one that most changes who responds.
@@ -100,6 +124,19 @@ def _shape(line: str) -> str:
     return " ".join(sorted(set(words))[:8])
 
 
+def available_angles(concept: dict) -> tuple[str, ...]:
+    """Which angles can be made honestly for this concept right now.
+
+    'proof' drops out unless a real customer quote is supplied. An invented
+    testimonial is the one mistake that costs more than any variant can win, and
+    the absence is worth seeing in the plan rather than papering over.
+    """
+    have = [a for a in ANGLES if a not in NEEDS_REAL_PROOF]
+    if (concept.get("proof") or {}).get("quote") and (concept.get("proof") or {}).get("who"):
+        have.append("proof")
+    return tuple(have)
+
+
 def plan(concept: dict, want: int = 12, seed: int | None = None) -> list[dict]:
     """A set of variants worth running.
 
@@ -111,7 +148,8 @@ def plan(concept: dict, want: int = 12, seed: int | None = None) -> list[dict]:
     base_trade = concept.get("trade") or "plumber"
     rng = random.Random(seed if seed is not None else 0)
 
-    grid = [c for c in itertools.product(AXES["hook"], AXES["open"], AXES["length"],
+    angles = available_angles(concept)
+    grid = [c for c in itertools.product(angles, AXES["hook"], AXES["open"], AXES["length"],
                                          AXES["style"], AXES["cta"], AXES["pace"])]
     rng.shuffle(grid)
 
@@ -122,15 +160,17 @@ def plan(concept: dict, want: int = 12, seed: int | None = None) -> list[dict]:
     counts: dict[tuple[str, str], int] = {}
 
     def imbalance(c) -> int:
-        hook, open_on, length, style, cta, pace = c
+        angle, hook, open_on, length, style, cta, pace = c
+        # the angle is weighted: an unbalanced angle spread is a worse failure
+        # than an unbalanced pace, because angles are what actually differ
         pairs = (("hook", hook), ("open", open_on), ("length", str(length)),
                  ("style", style), ("cta", cta), ("pace", pace))
-        return sum(counts.get(p, 0) for p in pairs)
+        return counts.get(("angle", angle), 0) * 3 + sum(counts.get(p, 0) for p in pairs)
 
     out, seen = [], set()
     while len(out) < want and grid:
         grid.sort(key=imbalance)
-        hook, open_on, length, style, cta, pace = grid.pop(0)
+        angle, hook, open_on, length, style, cta, pace = grid.pop(0)
         # A cold product open cannot also be a person-first opening. Contradictions
         # produce variants that were never really the thing they claim to be.
         if style == "demo" and open_on == "person":
@@ -143,14 +183,15 @@ def plan(concept: dict, want: int = 12, seed: int | None = None) -> list[dict]:
         trade = base_trade if len(out) % 2 == 0 else rng.choice(
             [t for t in AXES["trade"] if t != base_trade])
 
-        v = {"hook": hook, "open": open_on, "length": length, "style": style,
-             "cta": cta, "pace": pace, "trade": trade}
+        v = {"angle": angle, "hook": hook, "open": open_on, "length": length,
+             "style": style, "cta": cta, "pace": pace, "trade": trade}
         k = _key(v)
         if k in seen:
             continue
         seen.add(k)
-        for name, val in (("hook", hook), ("open", open_on), ("length", str(length)),
-                          ("style", style), ("cta", cta), ("pace", pace)):
+        for name, val in (("angle", angle), ("hook", hook), ("open", open_on),
+                          ("length", str(length)), ("style", style), ("cta", cta),
+                          ("pace", pace)):
             counts[(name, val)] = counts.get((name, val), 0) + 1
         needs = v["style"] in NEEDS_A_PERSON
         out.append({**v, "id": hashlib.sha256(k.encode()).hexdigest()[:10],
@@ -168,12 +209,65 @@ def to_film(variants: list[dict]) -> list[dict]:
     return [v for v in variants if v.get("needs_a_person")]
 
 
+# One filmed clip, many variants.
+#
+# A person films the lines once. Every other version — different trade, different
+# hook, different length, another language — is the same footage redubbed, with
+# the mouth re-synced to new audio. The endorsement stays genuine because a real
+# person really said a version of it; only the wording moves.
+#
+# This is the only honest way to get UGC volume. Generating a presenter who does
+# not exist produces a testimonial nobody gave, and that is the one failure that
+# costs more trust than any variant can win.
+REDUB_RATE = 0.07          # VEED Lipsync v2 on fal, per second of output
+
+
+def shoot_list(variants: list[dict], concept: dict) -> dict:
+    """What to ask a person to say, once, so everything else can be redubbed.
+
+    Returns the lines to film and what the redubs would cost, so the decision to
+    book somebody is made against a number rather than a feeling.
+    """
+    filming = to_film(variants)
+    if not filming:
+        return {"lines": [], "variants": 0, "redub_seconds": 0, "redub_cost": 0.0}
+
+    # Film the longest version of each distinct opening. A shorter cut is a
+    # trim of a longer one; the reverse needs another shoot.
+    by_hook: dict[str, dict] = {}
+    for v in filming:
+        cur = by_hook.get(v["hook"])
+        if cur is None or v["length"] > cur["length"]:
+            by_hook[v["hook"]] = v
+
+    lines = [{
+        "hook": h,
+        "direction": HOOKS[h],
+        "seconds": v["length"],
+        "say": f"An opening line for a {v['trade']} in the style: {HOOKS[h]} "
+               f"Then: “{concept.get('said', '')}”",
+        "covers": sorted(x["id"] for x in filming if x["hook"] == h),
+    } for h, v in sorted(by_hook.items())]
+
+    seconds = sum(v["length"] for v in filming)
+    return {
+        "lines": lines,
+        "shoot_minutes": max(10, len(lines) * 4),
+        "variants": len(filming),
+        "redub_seconds": seconds,
+        "redub_cost": round(seconds * REDUB_RATE, 2),
+        "note": "Film these once. Every variant above is the same footage with the "
+                "mouth re-synced to new audio, so the person really did say it.",
+    }
+
+
 def brief(concept: dict, v: dict) -> str:
     """What the agent is told to write for this one variant."""
     shown = concept.get("shows") or "the product doing the thing"
     said = concept.get("said") or ""
     return "\n".join([
         f"Write a {v['length']}-second vertical ad for a {v['trade']}.",
+        f"Angle: {ANGLES[v['angle']]}",
         f"Style: {STYLE_RULES[v['style']]}",
         f"Open on: {v['open']}. {HOOKS[v['hook']]}",
         f"Pace: {'short lines, cut often' if v['pace'] == 'quick' else 'fewer lines, let them land'}.",
@@ -186,6 +280,9 @@ def brief(concept: dict, v: dict) -> str:
         "- The brand name does not appear in the opening line.",
         "- One idea per scene, written to work with the sound off.",
         "- Nothing claimed that the product does not do.",
+        "- The first two seconds must move. A still frame with text on it does not",
+        "  stop a thumb: something enters, changes or is said by a person.",
+        "- The last third states what to do and why now.",
     ]).strip()
 
 

@@ -2021,3 +2021,35 @@ def test_a_winner_cannot_be_declared_off_forty_impressions():
     fat = [{"hook": "objection", "plays": 2000, "actions": 80},
            {"hook": "number", "plays": 1500, "actions": 20}]
     assert admutate.enough(fat, "hook") is True
+
+
+def test_the_five_angles_are_a_first_class_axis():
+    """A library missing four angles is one idea tested five ways."""
+    from app.services import admutate
+    assert set(admutate.ANGLES) == {"demo", "problem", "outcome", "nothing", "proof"}
+    vs = admutate.plan({"trade": "plumber", "shows": "x"}, want=20, seed=4)
+    spread = {}
+    for v in vs:
+        spread[v["angle"]] = spread.get(v["angle"], 0) + 1
+    assert max(spread.values()) - min(spread.values()) <= 1
+
+
+def test_the_proof_angle_is_refused_until_a_real_customer_said_something():
+    """It is reported as the largest single lever and it is the one angle that
+    cannot be written. Writing it would be inventing a testimonial."""
+    from app.services import admutate
+    bare = {"trade": "plumber", "shows": "x"}
+    assert "proof" not in admutate.available_angles(bare)
+    assert "proof" not in {v["angle"] for v in admutate.plan(bare, want=20, seed=2)}
+    withq = {**bare, "proof": {"who": "Dana, Cannon Build",
+                               "quote": "I stopped doing paperwork on Sundays."}}
+    assert "proof" in admutate.available_angles(withq)
+
+
+def test_every_brief_demands_motion_in_the_opening_and_an_offer_at_the_end():
+    """A still frame with text on it does not stop a thumb, and everything
+    downstream is capped by the three-second gate."""
+    from app.services import admutate
+    for v in admutate.plan({"trade": "baker", "shows": "x"}, want=10, seed=6):
+        assert "first two seconds must move" in v["brief"]
+        assert "last third states what to do and why now" in v["brief"]
