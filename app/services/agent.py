@@ -192,9 +192,10 @@ TOOL_UPDATE_SITE = {
 
 TOOL_GENERATE_IMAGE = {
     "name": "generate_image",
-    "description": "Create an image for the site (hero or gallery). Returns a URL to put in "
-                   "hero_image or a gallery item. Describe subject, setting, light and style; no "
-                   "text, logos or real people's faces. Costs a few credits.",
+    "description": "Create an image. Returns a URL: put it in hero_image, a gallery item, or "
+                   "straight into an app's markup or CSS (backgrounds, empty states, cards, "
+                   "textures). Describe subject, setting, light and style; no text, logos or real "
+                   "people's faces. Costs a few credits.",
     "input_schema": {"type": "object", "properties": {
         "prompt": {"type": "string"},
         "shape": {"type": "string", "enum": ["square", "portrait", "landscape"]}},
@@ -538,7 +539,8 @@ names, fields, who can see them). For anything beyond a small change, sketch tha
 or two in your head, then build it completely. Don't leave TODOs or half-built screens.
 
 Platform rules (the preview enforces them):
-- Plain ES modules, no build step. Import only 'preact', 'preact/hooks' and 'htm/preact'. Use
+- Plain ES modules, no build step. Available: 'preact', 'preact/hooks', 'htm/preact', 'gsap' and
+  'gsap/ScrollTrigger' for motion, 'three' (plus 'three/addons/...') for 3D. Use
   html`...` tagged templates, never JSX; components render as html`<${Name} prop=${x} />`.
 - app.js is the entry and renders into document.getElementById('root'). Relative imports must
   include the .js extension ('./screens/list.js'). Every named import must be exported by that file.
@@ -546,10 +548,27 @@ Platform rules (the preview enforces them):
   components/*.js, lib/*.js. Keep files focused, under about 300 lines.
 - Data only through window.creai.db.collection('name'): list(), get(id), add(data),
   update(id, data), remove(id), all async. No localStorage, cookies, eval or calls to other sites.
-- Styling: the kit classes shell, topbar (nav buttons with aria-current), page, card, grid, stack,
-  row, btn (ghost, danger), badge, stat, empty, toast, plus labelled inputs, selects, textareas and
-  tables. Add styles.css only for what the kit lacks. Colours and fonts come from the project theme
-  (update_site palette/theme).
+- Styling: the kit classes shell, topbar (nav buttons with aria-current), page, card (flat to
+  stop it lifting), grid, stack, row, btn (ghost, danger), badge, stat, empty, toast, skeleton,
+  plus labelled inputs, selects, textareas and tables. The kit already carries layered surfaces,
+  three shadow depths (--lift-1/2/3), hover lift, staggered card entrance, focus rings, a dark
+  mode and reduced-motion. Use skeleton while data loads, never a bare "Loading…". Add styles.css
+  only for what the kit lacks. Colours and fonts come from the project theme (update_site
+  palette/theme).
+- Pitch the visuals to the job, and say which register you chose and why:
+    Calm       money, health, records, admin, anything someone checks quickly or under stress —
+               a client portal, invoices, bookings, a dashboard. Restraint reads as trustworthy:
+               the kit's defaults, real hierarchy, fast loads, no scroll effects. Motion only to
+               explain a change (a row settling, a total updating).
+    Crafted    marketing pages, portfolios, menus, launches, storefronts. GSAP for entrances and
+               scroll-linked reveals, generated imagery for hero and empty states, generous type.
+    Bold       games, playful tools, anything meant to be shown off. three for 3D, GSAP timelines,
+               full-bleed art. Go as far as the idea deserves.
+  A bank statement dressed as a game loses the customer; a portfolio dressed as a spreadsheet
+  loses them too. Never animate something a person needs to read quickly, keep every animation
+  under 400ms unless it is decorative, and never block a first render on a library.
+- Use generate_image for real pictures rather than grey placeholder blocks: hero art, empty
+  states, card backgrounds, textures. A generated image beats a box with a letter in it.
 - Access once published lives in app.json:
   {"collections": {"bookings": {"read": "own", "write": "user", "manage": "own"}}}
   read = list/get, write = add records, manage = edit/delete. Four levels, least to most trusted:
@@ -720,7 +739,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         system += GAME_EXTRA
     if intent == "build" and game is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_GAME,
-                 TOOL_BUILD_GAME, TOOL_DELETE_FILE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+                 TOOL_BUILD_GAME, TOOL_DELETE_FILE, TOOL_GENERATE_IMAGE,
+                 TOOL_SAVE_ANSWER, TOOL_SUGGEST]
     elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]

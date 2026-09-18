@@ -25,11 +25,15 @@ HTM = "3.1.1"
 ESM = "https://esm.sh"
 PHASER = "3.90.0"
 THREE = "0.170.0"
+GSAP = "3.13.0"
 IMPORTS = {
     "preact": f"{ESM}/preact@{PREACT}",
     "preact/hooks": f"{ESM}/preact@{PREACT}/hooks",
     "htm/preact": f"{ESM}/htm@{HTM}/preact?external=preact",
-    # games: 2D and 3D, pinned like everything else
+    # motion: the difference between a form on a page and something that feels built
+    "gsap": f"{ESM}/gsap@{GSAP}",
+    "gsap/ScrollTrigger": f"{ESM}/gsap@{GSAP}/ScrollTrigger",
+    # games and 3D, pinned like everything else
     "phaser": f"{ESM}/phaser@{PHASER}",
     "three": f"{ESM}/three@{THREE}",
     "three/addons/": f"{ESM}/three@{THREE}/examples/jsm/",
@@ -193,44 +197,91 @@ def kit_css(site: dict) -> str:
     return f"""
 :root{{--bg:{pal['bg']};--ink:{pal['ink']};--accent:{pal['accent']};--on:{on};--r:{t['radius']}px;
 --display:'{t['display']}',Georgia,serif;--body:'{t['body']}',system-ui,sans-serif;
---surface:#FFFFFF;--canvas:#F6F5F1;--text:#161616;--muted:#5A5A57;--line:#1414141F}}
+--surface:#FFFFFF;--canvas:#F6F5F1;--text:#161616;--muted:#5A5A57;--line:#1414141F;
+/* Layered surfaces: a card sits on the canvas, a raised thing sits on the card. */
+--sunk:#00000008;--raised:#FFFFFF;--glass:#FFFFFFB8;
+/* Depth that reads as light from above, not a grey blur. */
+--lift-1:0 1px 2px #14141412,0 1px 1px #1414140A;
+--lift-2:0 4px 12px -2px #14141418,0 2px 6px -2px #1414140F;
+--lift-3:0 18px 40px -12px #14141426,0 8px 16px -8px #14141414;
+--ring:0 0 0 1px #1414140F;
+--ease:cubic-bezier(.2,.7,.2,1);--quick:.18s;--calm:.42s}}
+@media (prefers-color-scheme:dark){{
+:root{{--surface:#17181A;--canvas:#101113;--text:#F2F1EE;--muted:#A0A09C;--line:#FFFFFF1A;
+--sunk:#00000040;--raised:#1F2023;--glass:#17181AC0;
+--lift-1:0 1px 2px #00000060;--lift-2:0 6px 16px -4px #00000070;
+--lift-3:0 22px 48px -16px #00000090;--ring:0 0 0 1px #FFFFFF14}}}}
 *{{box-sizing:border-box}}html,body{{margin:0;height:100%}}
-body{{font:16px/1.55 var(--body);color:var(--text);background:var(--canvas)}}
-h1,h2,h3{{font-family:var(--display);font-weight:{t['dw']};letter-spacing:{t['track']};line-height:1.1;margin:0 0 .5em}}
-h1{{font-size:clamp(28px,4vw,44px)}}h2{{font-size:26px}}h3{{font-size:19px;font-family:var(--body);font-weight:600;letter-spacing:0}}
+body{{font:16px/1.55 var(--body);color:var(--text);background:var(--canvas);
+-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}}
+h1,h2,h3{{font-family:var(--display);font-weight:{t['dw']};letter-spacing:{t['track']};line-height:1.08;margin:0 0 .5em}}
+h1{{font-size:clamp(30px,5vw,50px)}}h2{{font-size:clamp(22px,3vw,30px)}}
+h3{{font-size:19px;font-family:var(--body);font-weight:600;letter-spacing:0}}
 .shell{{min-height:100%;display:flex;flex-direction:column}}
-.topbar{{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;
-background:var(--bg);color:var(--ink)}}
+/* The bar stays put and separates from content by blur and a hairline, not a slab. */
+.topbar{{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
+gap:12px;padding:14px 20px;background:var(--bg);color:var(--ink);
+box-shadow:var(--lift-2);backdrop-filter:saturate(140%) blur(10px)}}
 .topbar nav{{display:flex;gap:6px;flex-wrap:wrap}}
 .topbar nav button,.tab{{background:transparent;color:inherit;border:1px solid transparent;padding:7px 12px;
-border-radius:999px;font:inherit;cursor:pointer}}
-.topbar nav button[aria-current=page],.tab[aria-selected=true]{{border-color:currentColor}}
-.page{{padding:28px 20px;max-width:1080px;width:100%;margin:0 auto}}
+border-radius:999px;font:inherit;cursor:pointer;transition:background var(--quick) var(--ease)}}
+.topbar nav button:hover,.tab:hover{{background:#FFFFFF1F}}
+.topbar nav button[aria-current=page],.tab[aria-selected=true]{{border-color:currentColor;background:#FFFFFF14}}
+.page{{padding:clamp(20px,4vw,40px) 20px;max-width:1080px;width:100%;margin:0 auto}}
 .muted{{color:var(--muted)}}
-.btn{{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--on);border:0;
-padding:11px 18px;border-radius:calc(var(--r) + 4px);font:600 15px var(--body);cursor:pointer;
-transition:transform .2s cubic-bezier(.2,.7,.2,1),filter .2s}}
-.btn:hover{{transform:translateY(-1px);filter:brightness(1.05)}}.btn:active{{transform:none}}
-.btn.ghost{{background:transparent;color:var(--text);border:1px solid var(--line)}}
-.btn.danger{{background:#B42318;color:#fff}}.btn[disabled]{{opacity:.5;cursor:not-allowed}}
-.card{{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;
-animation:in .35s cubic-bezier(.2,.7,.2,1) both}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}}
-.stack{{display:flex;flex-direction:column;gap:12px}}.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
+.btn{{position:relative;display:inline-flex;align-items:center;gap:8px;background:var(--accent);
+color:var(--on);border:0;padding:11px 18px;border-radius:calc(var(--r) + 4px);
+font:600 15px var(--body);cursor:pointer;box-shadow:var(--lift-1);
+transition:transform var(--quick) var(--ease),box-shadow var(--quick) var(--ease),filter var(--quick)}}
+.btn:hover{{transform:translateY(-1px);box-shadow:var(--lift-2);filter:brightness(1.04)}}
+.btn:active{{transform:translateY(0);box-shadow:var(--lift-1)}}
+.btn.ghost{{background:var(--surface);color:var(--text);box-shadow:var(--ring),var(--lift-1)}}
+.btn.danger{{background:#B42318;color:#fff}}
+.btn[disabled]{{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}}
+/* Cards lift toward the reader on hover, and arrive in sequence rather than all at once. */
+.card{{background:var(--surface);border-radius:var(--r);padding:clamp(16px,3vw,24px);
+box-shadow:var(--ring),var(--lift-1);
+transition:transform var(--calm) var(--ease),box-shadow var(--calm) var(--ease);
+animation:rise var(--calm) var(--ease) both}}
+.card:hover{{transform:translateY(-2px);box-shadow:var(--ring),var(--lift-3)}}
+.card.flat:hover{{transform:none;box-shadow:var(--ring),var(--lift-1)}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:clamp(12px,2vw,18px)}}
+.grid>*:nth-child(1){{animation-delay:.02s}}.grid>*:nth-child(2){{animation-delay:.06s}}
+.grid>*:nth-child(3){{animation-delay:.1s}}.grid>*:nth-child(4){{animation-delay:.14s}}
+.grid>*:nth-child(5){{animation-delay:.18s}}.grid>*:nth-child(n+6){{animation-delay:.22s}}
+.stack{{display:flex;flex-direction:column;gap:clamp(10px,2vw,16px)}}
+.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
 label{{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:500}}
-input,select,textarea{{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);
-background:#fff;color:var(--text)}}
-input:focus,select:focus,textarea:focus,.btn:focus-visible{{outline:2px solid var(--accent);outline-offset:1px}}
-table{{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--r);overflow:hidden}}
-th,td{{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}}th{{font-size:13px;color:var(--muted);font-weight:600}}
-.badge{{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;
-background:color-mix(in srgb,var(--accent) 18%,transparent)}}
-.stat{{font:{t['dw']} 34px/1 var(--display)}}
-.empty{{text-align:center;padding:48px 20px;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}}
-.toast{{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;
-padding:10px 16px;border-radius:999px;animation:in .3s both}}
-@keyframes in{{from{{opacity:0;transform:translateY(8px)}}to{{opacity:1;transform:none}}}}
-@media (prefers-reduced-motion:reduce){{*{{animation:none!important;transition:none!important}}}}
+input,select,textarea{{font:inherit;padding:11px 13px;border:0;border-radius:var(--r);
+background:var(--surface);color:var(--text);box-shadow:var(--ring);
+transition:box-shadow var(--quick) var(--ease)}}
+input:hover,select:hover,textarea:hover{{box-shadow:var(--ring),var(--lift-1)}}
+input:focus,select:focus,textarea:focus,.btn:focus-visible{{outline:0;
+box-shadow:0 0 0 2px var(--accent),var(--lift-1)}}
+table{{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface);
+border-radius:var(--r);overflow:hidden;box-shadow:var(--ring),var(--lift-1)}}
+th,td{{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line)}}
+tr:last-child td{{border-bottom:0}}
+tbody tr{{transition:background var(--quick) var(--ease)}}
+tbody tr:hover{{background:var(--sunk)}}
+th{{font-size:13px;color:var(--muted);font-weight:600;background:var(--sunk)}}
+.badge{{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;
+background:color-mix(in srgb,var(--accent) 18%,transparent);
+box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}}
+.stat{{font:{t['dw']} clamp(30px,5vw,40px)/1 var(--display)}}
+.empty{{text-align:center;padding:56px 24px;color:var(--muted);border-radius:var(--r);
+background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line)}}
+.toast{{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);
+color:var(--canvas);padding:11px 18px;border-radius:999px;box-shadow:var(--lift-3);
+animation:rise var(--quick) var(--ease) both;z-index:40}}
+/* A skeleton beats a spinner: the page keeps its shape while data lands. */
+.skeleton{{background:linear-gradient(90deg,var(--sunk),#8882 40%,var(--sunk) 80%);
+background-size:200% 100%;animation:sweep 1.4s linear infinite;border-radius:var(--r);
+min-height:14px;color:transparent}}
+@keyframes rise{{from{{opacity:0;transform:translateY(10px) scale(.985)}}to{{opacity:1;transform:none}}}}
+@keyframes sweep{{to{{background-position:-200% 0}}}}
+@media (prefers-reduced-motion:reduce){{*{{animation:none!important;transition:none!important}}
+.card:hover,.btn:hover{{transform:none}}}}
 """
 
 
@@ -513,8 +564,8 @@ def review(app_files: dict[str, str]) -> dict:
                         if name and name not in names:
                             problems.append(f"{path}: imports {{ {name} }} from {target}, which doesn't export it.")
             elif spec not in IMPORTS and not spec.startswith("three/addons/"):
-                problems.append(f"{path}: '{spec}' isn't available. Use preact, preact/hooks, htm/preact, "
-                                "phaser, three or creai/game.")
+                problems.append(f"{path}: '{spec}' isn't available. Use preact, preact/hooks, "
+                                "htm/preact, gsap, gsap/ScrollTrigger, three, phaser or creai/game.")
             for item in re.split(r"[,{}\s]+", what):
                 item = item.strip()
                 if item and item not in ("*", "as"):

@@ -362,3 +362,34 @@ def test_an_ordinary_button_is_left_alone():
     spec = site_spec.merge({}, {"business": "X", "headline": "Fast quotes",
                                 "cta": "Get a quote", "contact": {"email": "a@b.com"}})
     assert not any("sounds like a way into an app" in i for i in site_spec.critique(spec))
+
+
+# ---------------------------------------------------------------- what apps may reach
+
+def test_motion_and_3d_are_available_to_apps():
+    assert "gsap" in appfs.IMPORTS and "gsap/ScrollTrigger" in appfs.IMPORTS
+    assert "three" in appfs.IMPORTS
+    for spec in ("gsap", "gsap/ScrollTrigger", "three"):
+        assert appfs.IMPORTS[spec].startswith("https://esm.sh/"), spec
+
+
+def test_importing_gsap_is_not_reported_as_unavailable():
+    src = ("import { html, render } from 'htm/preact';\n"
+           "import gsap from 'gsap';\n"
+           "gsap.from('.card', { y: 12, opacity: 0 });\n"
+           "render(html`<div />`, document.getElementById('root'));")
+    assert not appfs.review({"app.js": src})["problems"]
+
+
+def test_an_unknown_library_is_still_refused():
+    src = ("import { html, render } from 'htm/preact';\n"
+           "import axios from 'axios';\n"
+           "render(html`<div />`, document.getElementById('root'));")
+    assert any("axios" in p for p in appfs.review({"app.js": src})["problems"])
+
+
+def test_the_kit_has_depth_motion_and_respects_reduced_motion():
+    css = appfs.kit_css({})
+    for token in ("--lift-1", "--lift-2", "--lift-3", "@keyframes rise", ".skeleton",
+                  "prefers-color-scheme:dark", "prefers-reduced-motion"):
+        assert token in css, token
