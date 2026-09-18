@@ -68,11 +68,23 @@ async def release_status(project_id: int, ctx: T.Ctx = Depends(T.current_ctx)):
             "domains": doms}
 
 
+def _app_url(slug: str | None) -> str | None:
+    """Where the project's published app lives, if it has one."""
+    if not slug:
+        return None
+    from .apps import public_url
+    return public_url(slug)
+
+
 @router.post("/v1/sites/{project_id}/publish")
 async def publish(project_id: int, ctx: T.Ctx = Depends(T.requires("approve"))):
     async with conn() as c:
         p = await _project(c, project_id, ctx.org_id)
         spec = (p["answers"] or {}).get("site") or {}
+        # If this project also has a published app, a "sign in" button can reach it.
+        app_slug = await c.fetchval(
+            "SELECT slug FROM app_releases WHERE project_id=$1 AND live ORDER BY id DESC LIMIT 1",
+            project_id)
         if not (spec.get("headline") or spec.get("sections")):
             raise HTTPException(409, "Build the site first — there's nothing to publish yet.")
         issues = site_spec.critique(spec)
@@ -83,12 +95,13 @@ async def publish(project_id: int, ctx: T.Ctx = Depends(T.requires("approve"))):
         await c.execute(
             """INSERT INTO site_releases (org_id, project_id, slug, html, created_by)
                VALUES ($1,$2,$3,$4,$5)""",
-            ctx.org_id, project_id, slug, site_spec.render(spec), ctx.user_id)
+            ctx.org_id, project_id, slug, site_spec.render(spec, _app_url(app_slug)), ctx.user_id)
         doms = await _domains(c, project_id)
     _cache.clear()
     import asyncio
     from ..services import thumbs
-    asyncio.create_task(thumbs.refresh(ctx.org_id, project_id, site_spec.render(spec)))
+    asyncio.create_task(thumbs.refresh(ctx.org_id, project_id,
+                                       site_spec.render(spec, _app_url(app_slug))))
     await log_event(ctx.org_id, "site.published", slug, project_id, ctx.user_id)
     return {"published": True, "url": public_url(slug), "domains": doms,
             "quality": issues}

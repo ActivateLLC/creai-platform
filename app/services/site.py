@@ -66,6 +66,7 @@ DEFAULT = {
     "subline": "",
     "tone": "friendly",
     "cta": "Get in touch",
+    "cta_link": "contact",          # or "app": the project's published app
     "palette": {"bg": "#0F2A2E", "ink": "#F4F1EA", "accent": "#F2C14E"},
     "layout": "",
     "theme": "",
@@ -143,6 +144,8 @@ def clean_section(sec: dict) -> dict | None:
         out["body"] = _text(sec.get("body"), 900)
         if kind == "cta":
             out["button"] = _text(sec.get("button"), 32)
+            if sec.get("link") in ("app", "contact"):
+                out["link"] = sec["link"]
     return out
 
 
@@ -152,6 +155,8 @@ def merge(current: dict | None, patch: dict) -> dict:
     for key, limit in (("business", 80), ("headline", 120), ("subline", 300), ("cta", 32)):
         if key in patch:
             site[key] = _text(patch[key], limit)
+    if patch.get("cta_link") in ("app", "contact"):
+        site["cta_link"] = patch["cta_link"]
     if patch.get("tone") in TONES:
         site["tone"] = patch["tone"]
     if patch.get("layout") in LAYOUTS:
@@ -262,6 +267,18 @@ def critique(site: dict) -> list[str]:
     kinds = [x["kind"] for x in s["sections"]]
     if s["sections"] and len(set(kinds)) == 1:
         issues.append("Vary the sections; every section is the same kind.")
+    # A button that says "sign in" and lands on a contact anchor is a dead end —
+    # the visitor taps it expecting a portal and nothing happens.
+    SIGNIN = ("sign in", "signin", "log in", "login", "my account", "client portal",
+              "customer portal", "member area", "your invoices", "view your")
+    buttons = [s["cta"]] + [x.get("button") or "" for x in s["sections"] if x["kind"] == "cta"]
+    links = [s.get("cta_link")] + [x.get("link") for x in s["sections"] if x["kind"] == "cta"]
+    for label, link in zip(buttons, links):
+        if any(w in (label or "").lower() for w in SIGNIN) and link != "app":
+            issues.append(f'"{label}" sounds like a way into an app, but it only scrolls to '
+                          "contact. Build the app, publish it, and set the button's link to "
+                          '"app" — or rename the button.')
+            break
     if s["sections"] and "cta" not in kinds and not s["contact"]:
         issues.append("Give people a way to act: add a cta section or contact details.")
     for sec in s["sections"]:
@@ -366,7 +383,8 @@ def _section(sec: dict, s: dict, n: int, layout: str) -> str:
             f'loading="lazy">' + (f'<figcaption>{e(x["caption"])}</figcaption>' if x["caption"] else "")
             + "</figure>" for i, x in enumerate(sec["items"])) + "</div>"
     elif k == "cta":
-        btn = f'<a class="btn" href="#contact">{e(sec.get("button") or s["cta"])}</a>'
+        href = app_url if (sec.get("link") == "app" and app_url) else "#contact"
+        btn = f'<a class="btn" href="{e(href, quote=True)}">{e(sec.get("button") or s["cta"])}</a>'
         return (f'<section class="band reveal">{title}<p class="lede">{e(sec["body"])}</p>{btn}</section>')
     else:
         body = f'<p class="lede">{e(sec["body"])}</p>'
@@ -383,7 +401,7 @@ def _marquee(s: dict) -> str:
 
 # ---------------------------------------------------------------- render
 
-def render(site: dict | None) -> str:
+def render(site: dict | None, app_url: str | None = None) -> str:
     s = merge(site, {})
     e = html.escape
     layout, theme_name = design_of(s)
@@ -409,7 +427,11 @@ def render(site: dict | None) -> str:
         visual = f'<img class="art" src="{e(s["hero_image"], quote=True)}" alt="">'
     else:
         visual = _art(s, pal)
-    cta = f'<a class="btn" href="#contact">{e(s["cta"])}</a>'
+    # A "Sign in" button must go to the app, not to a contact anchor. Without a
+    # published app there is nowhere to send them, so the button stays on contact
+    # and check() reports it rather than shipping a dead promise.
+    cta_href = app_url if (s.get("cta_link") == "app" and app_url) else "#contact"
+    cta = f'<a class="btn" href="{e(cta_href, quote=True)}">{e(s["cta"])}</a>'
     sub = f'<p class="sub">{e(s["subline"])}</p>' if s["subline"] else ""
     h1 = f'<h1 aria-label="{e(headline, quote=True)}"><span aria-hidden="true">{_words(headline)}</span></h1>'
 

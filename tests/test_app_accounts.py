@@ -327,3 +327,38 @@ async def test_a_reset_link_is_useless_in_another_app(api):
                        headers={"X-App-Token": appfs.token(pid2, org2, "public")},
                        json={"token": token, "password": "new-password-here"})
     assert r.status_code == 400
+
+
+# ---------------------------------------------------------------- dead sign-in buttons
+
+def test_a_sign_in_button_with_nowhere_to_go_is_reported():
+    """The failure seen in the wild: a page advertising a portal, with a button
+    that only scrolls to contact."""
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "Cannon Construction",
+                                "headline": "Sign in to see where you stand",
+                                "cta": "Sign in", "contact": {"email": "a@b.com"}})
+    assert any("sounds like a way into an app" in i for i in site_spec.critique(spec))
+
+
+def test_linking_the_button_to_the_app_clears_it_and_renders_a_real_href():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "Cannon Construction", "headline": "Sign in",
+                                "cta": "Sign in", "cta_link": "app",
+                                "contact": {"email": "a@b.com"}})
+    assert not any("sounds like a way into an app" in i for i in site_spec.critique(spec))
+    assert 'href="https://x.dev/a/portal"' in site_spec.render(spec, "https://x.dev/a/portal")
+
+
+def test_without_a_published_app_the_button_falls_back_rather_than_breaking():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "X", "headline": "Sign in", "cta": "Sign in",
+                                "cta_link": "app", "contact": {"email": "a@b.com"}})
+    assert 'href="#contact"' in site_spec.render(spec, None)
+
+
+def test_an_ordinary_button_is_left_alone():
+    from app.services import site as site_spec
+    spec = site_spec.merge({}, {"business": "X", "headline": "Fast quotes",
+                                "cta": "Get a quote", "contact": {"email": "a@b.com"}})
+    assert not any("sounds like a way into an app" in i for i in site_spec.critique(spec))

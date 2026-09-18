@@ -125,6 +125,7 @@ class Settings:
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
             "voice": bool(self.openai_key),
+            "images": bool(self.hf_token),
             "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,
         }
 
