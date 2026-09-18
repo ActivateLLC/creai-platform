@@ -385,6 +385,30 @@ CREATE TABLE IF NOT EXISTS site_imports (
 CREATE INDEX IF NOT EXISTS site_imports_idx ON site_imports(project_id, id DESC);
 CREATE INDEX IF NOT EXISTS site_imports_slug_idx ON site_imports(slug, id DESC);
 
+-- A video: a script cut into scenes, each with its own picture, motion and line.
+-- The plan is kept apart from the render so a person can change a line without
+-- paying to generate everything again.
+CREATE TABLE IF NOT EXISTS videos (
+  id          BIGSERIAL PRIMARY KEY,
+  org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  shape       TEXT NOT NULL DEFAULT 'vertical',   -- vertical | square | wide
+  plan        JSONB NOT NULL DEFAULT '{}'::jsonb, -- scenes, voice, music brief
+  state       TEXT NOT NULL DEFAULT 'draft',      -- draft|rendering|ready|failed
+  progress    INTEGER NOT NULL DEFAULT 0,
+  seconds     NUMERIC,
+  credits     INTEGER,
+  asset_key   TEXT,                               -- the finished mp4 in the bucket
+  poster_key  TEXT,
+  error       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS videos_project_idx ON videos(project_id, id DESC);
+CREATE INDEX IF NOT EXISTS videos_state_idx ON videos(state, id) WHERE state='rendering';
+
 -- Workspace spending cap (credits per calendar month; NULL = no cap) and the
 -- registrant contact for domains (encrypted).
 CREATE TABLE IF NOT EXISTS org_settings (
@@ -613,7 +637,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
 # this list, so adding a table here is how it gets covered.
 TENANT_TABLES = (
     "projects", "domains", "dns_records", "deployments",
-    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "payment_accounts", "payments", "quality_findings", "site_imports", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
+    "channels", "approvals", "events", "credit_ledger", "connections", "oauth_states", "social_channels", "project_files", "app_records", "app_users", "app_files", "payment_accounts", "payments", "quality_findings", "site_imports", "videos", "org_settings", "app_errors", "app_releases", "site_releases", "domain_quotes", "subscriptions", "readiness_decisions", "readiness_suggestions", "assets",
     "game_builds", "game_releases",
 )
 

@@ -8,7 +8,7 @@ from ..core.config import settings
 from ..core.db import conn, log_event
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
-PATHS = {"launch", "market", "domain", "company", "edit", "app", "game"}
+PATHS = {"launch", "market", "domain", "company", "edit", "app", "game", "video"}
 
 
 class ProjectIn(BaseModel):
@@ -18,7 +18,7 @@ class ProjectIn(BaseModel):
     answers: dict = {}
 
 
-KINDS = {"launch": "Site", "edit": "Site", "app": "App", "game": "Game",
+KINDS = {"launch": "Site", "edit": "Site", "app": "App", "game": "Game", "video": "Video",
          "market": "Marketing", "domain": "Domain", "company": "Company"}
 
 

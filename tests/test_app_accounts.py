@@ -1393,3 +1393,92 @@ def test_a_cta_section_linked_to_the_app_actually_renders():
     html = site_spec.render(spec, "https://app.creai.dev/a/portal")
     assert 'href="https://app.creai.dev/a/portal"' in html
     assert 'href="#contact"' in site_spec.render(spec, None)
+
+
+# ---------------------------------------------------------------- video as a project
+
+def test_a_plan_that_opens_on_a_title_card_is_refused():
+    """Opening on a card is the single most expensive mistake in a feed: most of
+    the audience never reaches the second scene."""
+    from app.services import video
+    bad = video.check({"scenes": [
+        {"id": "a", "source": "card", "line": "Copperline Books", "seconds": 3},
+        {"id": "b", "source": "footage", "footage": "app", "line": "See your invoices", "seconds": 4}]})
+    assert any("title card" in p for p in bad), bad
+
+
+def test_saying_the_brand_in_the_opening_line_is_refused():
+    from app.services import video
+    bad = video.check({"brand_name": "Copperline", "scenes": [
+        {"id": "a", "source": "footage", "footage": "app",
+         "line": "Copperline keeps your books", "seconds": 4}]})
+    assert any("brand name" in p for p in bad), bad
+
+
+def test_a_good_plan_passes_and_prices_itself():
+    from app.services import video
+    plan = {"brand_name": "Copperline", "music": "ace-step", "scenes": [
+        {"id": "a", "source": "footage", "footage": "app",
+         "line": "Your customers shouldn't have to ring up and ask what they owe.", "seconds": 5},
+        {"id": "b", "source": "generated", "prompt": "copper fittings on a workbench",
+         "line": "They sign in and see their own invoices.", "seconds": 5},
+        {"id": "c", "source": "card", "line": "Creai. Free to start.", "seconds": 4}]}
+    assert video.check(plan) == []
+    # render + 3 voices + 1 still + 1 motion + music
+    assert video.estimate(plan) == 3 + 3 + 1 + 6 + 2
+
+
+def test_changing_one_line_only_re_renders_that_scene():
+    """Pictures cost money. An edit to scene three must not re-buy scene one."""
+    from app.services import video
+    old = {"scenes": [
+        {"id": "a", "source": "generated", "prompt": "workbench", "line": "One", "seconds": 4,
+         "assets": {"still": "k1"}},
+        {"id": "b", "source": "generated", "prompt": "heater", "line": "Two", "seconds": 4,
+         "assets": {"still": "k2"}}]}
+    new = {"scenes": [
+        {"id": "a", "source": "generated", "prompt": "workbench", "line": "One", "seconds": 4},
+        {"id": "b", "source": "generated", "prompt": "heater", "line": "Two, changed", "seconds": 4}]}
+    assert video.reusable(old, new) == {"a"}
+
+
+def test_music_that_cannot_run_in_an_ad_is_refused_by_name():
+    """MusicGen is CC-BY-NC. A customer shipping an ad with it would be exposed,
+    and would never have been told why."""
+    from app.services import sound
+    with pytest.raises(sound.SoundError) as e:
+        sound.pick("musicgen", for_ads=True)
+    assert "non-commercial" in str(e.value).lower()
+    assert sound.pick("ace-step", for_ads=True).ads_ok
+    assert "musicgen" not in [s["id"] for s in sound.cleared(for_ads=True)]
+
+
+def test_a_bed_ducks_under_the_voice_rather_than_fighting_it():
+    from app.services import sound
+    args = sound.mix("vo.mp3", "bed.mp3", [1.0, 2.0], "out.m4a")
+    assert "sidechaincompress" in " ".join(args)
+    assert sound.mix("vo.mp3", None, [], "out.m4a").count("-i") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_video_project_can_be_created_and_planned(api):
+    tok = await sign_in(api, f"vid{secrets.token_hex(3)}@studio.io")
+    r = await api.post("/v1/projects", headers=auth(tok),
+                       json={"name": "Autumn ad", "path": "video"})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    plan = {"brand_name": "Copperline", "scenes": [
+        {"source": "footage", "footage": "app", "line": "No more ringing up to ask.", "seconds": 5},
+        {"source": "card", "line": "Creai. Free to start.", "seconds": 4}]}
+    out = await api.post(f"/v1/videos/{pid}", headers=auth(tok), json={"plan": plan,
+                                                                      "title": "Autumn ad"})
+    assert out.status_code == 200, out.text
+    assert out.json()["problems"] == [] and out.json()["credits"] > 0
+
+
+@pytest.mark.asyncio
+async def test_the_music_terms_are_visible_before_anything_is_made(api):
+    r = await api.get("/v1/videos/sources")
+    ids = [m["id"] for m in r.json()["music"]]
+    assert "ace-step" in ids and "musicgen" not in ids
+    assert all(m.get("licence") for m in r.json()["music"])
