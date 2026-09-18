@@ -1579,3 +1579,32 @@ def test_the_videos_screen_exists_and_stops_asking_when_nobody_is_looking():
 def test_a_failed_render_offers_a_way_back():
     html = open("app/web/index.html").read()
     assert "Try again" in html
+
+
+def test_the_agent_can_plan_a_video_and_is_told_the_rules_that_matter():
+    from app.services.agent import TOOL_PLAN_VIDEO
+    d = TOOL_PLAN_VIDEO["description"]
+    assert "title card" in d and "never reach the second scene" in d
+    assert "never say the business name in the opening line" in d.lower()
+    assert "nothing invented" in d.lower()
+    kinds = TOOL_PLAN_VIDEO["input_schema"]["properties"]["scenes"]["items"]["properties"]
+    assert set(kinds["source"]["enum"]) == {"generated", "footage", "card"}
+
+
+@pytest.mark.asyncio
+async def test_a_badly_opened_video_is_handed_back_to_the_agent_not_silently_fixed(api):
+    """The agent wrote it, so the agent rewrites it — and learns the rule."""
+    from app.services import video
+    bad = {"brand_name": "Copperline", "scenes": [
+        {"source": "card", "line": "Copperline Books", "seconds": 3},
+        {"source": "footage", "footage": "app", "line": "See your invoices", "seconds": 4}]}
+    problems = video.check(bad)
+    assert any("title card" in p for p in problems)
+
+
+def test_the_make_it_button_says_the_price_before_it_is_pressed():
+    """Spending credits should never be a surprise: the cost is on the button."""
+    agent_src = open("app/services/agent.py").read()
+    assert 'f"Make it ({cost} credits)"' in agent_src
+    html = open("app/web/index.html").read()
+    assert "new_video" in html and "/render" in html

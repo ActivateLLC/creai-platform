@@ -1073,6 +1073,27 @@ function runAction(a) {
       .catch(e => addAgent(e.message));
     return;
   }
+  if (a.kind === 'new_video' && S.token) {
+    // The plan already exists; this saves it against a video project and starts
+    // the render, then shows the screen where it can be watched arriving.
+    (async () => {
+      try {
+        let pid = S.project && S.project.kind === 'Video' ? S.project.id : null;
+        if (!pid) {
+          const proj = await api('/v1/projects', { method: 'POST',
+            body: JSON.stringify({ name: a.title || 'Video', path: 'video' }) });
+          pid = proj.id;
+          await openProject(pid);
+        }
+        const made = await api('/v1/videos/' + pid, { method: 'POST',
+          body: JSON.stringify({ plan: a.plan, title: a.title || 'Video',
+                                 shape: a.shape || 'vertical' }) });
+        await api('/v1/videos/' + made.id + '/render', { method: 'POST' });
+        showPane('videos'); loadVideos(); setMobile('work');
+      } catch (e) { addAgent(e.message); }
+    })();
+    return;
+  }
   if (a.kind === 'grow' && S.token) {
     const site = S.project && S.project.site && S.project.site.staging_url;
     $('growUrl').value = (S.project && S.project.website) || '';

@@ -243,6 +243,44 @@ TOOL_START_APP = {
         "required": ["name"]},
 }
 
+TOOL_PLAN_VIDEO = {
+    "name": "plan_video",
+    "description": "Write a video and offer to make it: an ad, a short, a clip for a channel. "
+                   "You write the scenes; Creai buys the pictures, reads the lines aloud and cuts "
+                   "it. The person gets a button that spends the credits.\n"
+                   "Rules that decide whether anyone watches, in order of what they cost:\n"
+                   "- The first scene shows the thing itself, mid-use. A title card first and most "
+                   "people never reach the second scene.\n"
+                   "- Never say the business name in the opening line; it reads as an advert. It "
+                   "belongs in the last scene with what to do next.\n"
+                   "- One idea per scene. Write for sound off: line and picture must carry it.\n"
+                   "- Specific beats clever. Real jobs, real numbers, nothing invented — no prices, "
+                   "awards or reviews the business has not given you.\n"
+                   "- 15 to 30 seconds is right; 45 is the ceiling.\n"
+                   "Sources: 'generated' needs a prompt and costs credits; 'footage' uses the "
+                   "project's own site or app on screen, which is cheaper and more convincing; "
+                   "'card' is words on black, for the ending.",
+    "input_schema": {"type": "object", "properties": {
+        "title": {"type": "string", "description": "What this video is, for the list"},
+        "shape": {"type": "string", "enum": ["vertical", "square", "wide"],
+                  "description": "vertical for Shorts, Reels and TikTok"},
+        "scenes": {"type": "array", "description": "In order. Each is one idea.",
+                   "items": {"type": "object", "properties": {
+                       "line": {"type": "string", "description": "What is said over it"},
+                       "source": {"type": "string", "enum": ["generated", "footage", "card"]},
+                       "prompt": {"type": "string",
+                                  "description": "For 'generated': subject, setting, light, style. "
+                                                 "No text, logos or real faces."},
+                       "footage": {"type": "string", "enum": ["site", "app", "game"],
+                                   "description": "For 'footage': what to film"},
+                       "title": {"type": "string", "description": "For 'card': the big words"},
+                       "subtitle": {"type": "string", "description": "For 'card': the small line"},
+                       "seconds": {"type": "number",
+                                   "description": "A rough guess; the real length follows the line"}},
+                       "required": ["source"]}}},
+        "required": ["title", "scenes"]},
+}
+
 TOOL_GENERATE_IMAGE = {
     "name": "generate_image",
     "description": "Create an image. Returns a URL: put it in hero_image, a gallery item, or "
@@ -875,6 +913,9 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     elif intent == "build":
         tools = [TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_START_APP, TOOL_LOOK,
                  TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
+        # A video can be asked for from any build conversation: plenty of people
+        # want a clip for a channel and never a website at all.
+        tools.append(TOOL_PLAN_VIDEO)
         if ideas is not None:
             tools.append(TOOL_SUGGEST_IMPROVEMENTS)
         if project and queue_posts is not None:
@@ -1093,6 +1134,33 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             return {"ok": True, "offered": label,
                     "note": "The person now has a button that creates the app and opens it. "
                             "Finish this turn by building the site part you can build."}
+
+        if name == "plan_video":
+            from . import video as video_svc
+            scenes = args.get("scenes") or []
+            plan = {"brand_name": (answers.get("brand") or {}).get("name")
+                                  or (answers.get("site") or {}).get("business") or "",
+                    "scenes": [{k: v for k, v in sc.items() if v not in (None, "")}
+                               for sc in scenes],
+                    "voice": "ash"}
+            problems = video_svc.check(plan)
+            if problems:
+                # Handed back rather than silently fixed: the agent wrote it, so the
+                # agent rewrites it, and learns the rule for the next one.
+                return {"ok": False, "error": "; ".join(problems[:3]),
+                        "note": "Rewrite the scenes and call plan_video again."}
+            cost = video_svc.estimate(plan)
+            if not any(a.get("kind") == "new_video" for a in turn.actions):
+                turn.actions.append({"kind": "new_video",
+                                     "label": f"Make it ({cost} credits)",
+                                     "title": str(args.get("title") or "Video")[:80],
+                                     "shape": args.get("shape") or "vertical",
+                                     "plan": plan})
+            turn.log.append(f"planned a {len(scenes)}-scene video")
+            return {"ok": True, "scenes": len(scenes), "credits": cost,
+                    "note": "The person now has a button that makes the video. Tell them what "
+                            "it opens on and what it says, in a sentence — do not list the "
+                            "scenes back to them."}
 
         if name == "generate_image":
             from . import images
