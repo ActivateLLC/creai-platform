@@ -771,7 +771,20 @@ function keepDraft(r) {
 async function api(path, opts = {}) {
   const headers = draftHeaders(Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}));
   if (S.token) headers.Authorization = 'Bearer ' + S.token;
-  const r = await fetch(API_BASE + path, Object.assign({ credentials: NATIVE ? 'omit' : 'same-origin' }, opts, { headers }));
+  let r;
+  try {
+    r = await fetch(API_BASE + path, Object.assign({ credentials: NATIVE ? 'omit' : 'same-origin' }, opts, { headers }));
+  } catch (err) {
+    // A dropped connection reaches us as a bare "Load failed" / "NetworkError",
+    // which reads as a crash. A build turn can legitimately run a minute or more,
+    // so say what probably happened and that the work may still have landed.
+    const e = new Error(navigator.onLine === false
+      ? "You're offline. Reconnect and try again."
+      : "The connection dropped before the reply came back. A long build can outlast "
+        + "it — reopen the project in a moment to see whether it finished.");
+    e.offline = true;
+    throw e;
+  }
   keepDraft(r);
   const text = await r.text();
   let body; try { body = JSON.parse(text); } catch (_) { body = text; }

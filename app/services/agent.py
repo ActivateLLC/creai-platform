@@ -28,6 +28,10 @@ log = logging.getLogger("creai.agent")
 API = "https://api.anthropic.com/v1/messages"
 MAX_STEPS = 10
 APP_MAX_STEPS = 24
+# Each picture is a queue round-trip of several seconds. Past a couple of them a
+# turn runs long enough that the browser gives up mid-request, which reads to the
+# person as a failure even though the work succeeded.
+MAX_IMAGES_PER_TURN = 2
 APP_MAX_TOKENS = 32000
 MAX_THREAD = 40          # messages kept per draft or project
 MAX_USER_CHARS = 4000
@@ -478,6 +482,8 @@ class Turn:
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
     app_checked: bool = False
+    images_made: int = 0          # capped per turn: pictures are slow, and a turn
+                                  # that outlives the browser looks like a crash
     game_built: bool = False
     reviewed: bool = False
     review: dict | None = None
@@ -568,7 +574,9 @@ Platform rules (the preview enforces them):
   loses them too. Never animate something a person needs to read quickly, keep every animation
   under 400ms unless it is decorative, and never block a first render on a library.
 - Use generate_image for real pictures rather than grey placeholder blocks: hero art, empty
-  states, card backgrounds, textures. A generated image beats a box with a letter in it.
+  states, card backgrounds, textures. A generated image beats a box with a letter in it. At most
+  two per turn — each one takes seconds, and a slow turn feels broken. Spend them where they are
+  seen first (the hero), then offer more next turn.
 - Access once published lives in app.json:
   {"collections": {"bookings": {"read": "own", "write": "user", "manage": "own"}}}
   read = list/get, write = add records, manage = edit/delete. Four levels, least to most trusted:
@@ -935,8 +943,13 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             from . import images
             if not images.configured():
                 return {"ok": False, "error": "image generation isn't switched on; use generative artwork"}
+            if turn.images_made >= MAX_IMAGES_PER_TURN:
+                return {"ok": False, "error": f"that's {MAX_IMAGES_PER_TURN} pictures this turn, "
+                                              "which is the limit so the build stays quick. Finish "
+                                              "with what you have and offer more next turn."}
             try:
                 url = await images.generate(str(args.get("prompt", "")), args.get("shape") or "landscape")
+                turn.images_made += 1
             except images.ImageError as exc:
                 return {"ok": False, "error": str(exc)}
             turn.calls.append((images.media_key(), {"images": 1}))

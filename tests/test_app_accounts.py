@@ -393,3 +393,18 @@ def test_the_kit_has_depth_motion_and_respects_reduced_motion():
     for token in ("--lift-1", "--lift-2", "--lift-3", "@keyframes rise", ".skeleton",
                   "prefers-color-scheme:dark", "prefers-reduced-motion"):
         assert token in css, token
+
+
+# ---------------------------------------------------------------- turn length
+
+def test_pictures_are_capped_per_turn():
+    """Five sequential image generations made a turn outlive the browser, which
+    the person saw as "Load failed" even though the build succeeded."""
+    from app.services import agent
+    assert agent.MAX_IMAGES_PER_TURN <= 3
+
+
+def test_a_dropped_connection_says_something_useful():
+    html = open("app/web/index.html").read()
+    assert "connection dropped before the reply came back" in html
+    assert "You're offline" in html
