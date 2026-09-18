@@ -84,8 +84,12 @@ def _is_pale(path: Path) -> bool:
     return False
 
 
+MARK = Path(__file__).parent.parent / "assets" / "brand" / "mark.png"
+
+
 async def cut(sheet: dict, assets: dict, work: Path, *, shape: str = "vertical",
-              kit: dict | None = None, music: bool = True) -> Path:
+              kit: dict | None = None, music: bool = True,
+              sign_off: bool = True, address: str = "creai.dev") -> Path:
     """Render a production sheet.
 
     `assets` maps a scene index to footage already on disk. Anything not supplied
@@ -129,6 +133,15 @@ async def cut(sheet: dict, assets: dict, work: Path, *, shape: str = "vertical",
         _run(["-stream_loop", "-1", "-i", str(shot), "-t", f"{runs:.2f}",
               "-vf", vf, "-an", "-pix_fmt", "yuv420p", "-r", "30", str(seg)])
         parts.append((seg, spoken[i], runs, sc))
+
+    # Every cut ends with the mark and the address. Left to the sheet it gets
+    # forgotten — which is exactly what happened to the first film this rendered.
+    if sign_off and MARK.exists():
+        from . import shots
+        card = shots.end_card(work / "endcard.mp4", logo=MARK, address=address,
+                              w=w, h=h, seconds=3.6)
+        parts.append((card, {"path": None, "seconds": 3.6}, 3.6,
+                      {"sound": "none", "music": "out"}))
 
     return await _assemble(parts, work, kit or {}, music)
 
@@ -197,8 +210,12 @@ async def _assemble(parts, work: Path, kit: dict, music: bool) -> Path:
     tracks = []
     for i, (_, vo, runs, sc) in enumerate(parts):
         a = work / f"a{i:02d}.wav"
-        _run(["-i", str(vo["path"]), "-af", f"apad=whole_dur={runs:.2f}",
-              "-t", f"{runs:.2f}", "-ar", "44100", "-ac", "1", str(a)])
+        if vo.get("path") is None:                     # the end card speaks for itself
+            _run(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                  "-t", f"{runs:.2f}", str(a)])
+        else:
+            _run(["-i", str(vo["path"]), "-af", f"apad=whole_dur={runs:.2f}",
+                  "-t", f"{runs:.2f}", "-ar", "44100", "-ac", "1", str(a)])
         effect = sc.get("sound")
         if effect and effect != "none":
             fx = Path(__file__).parent.parent / "assets" / "sfx" / f"{effect}.wav"

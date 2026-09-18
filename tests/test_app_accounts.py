@@ -2480,3 +2480,67 @@ def test_audio_is_re_encoded_rather_than_stream_copied():
     src = open("app/services/cutter.py").read()
     assert "plays as noise" in src
     assert 'args += ["-c", "copy"] if out.suffix == ".mp4"' in src
+
+
+# ---------------------------------------------------------------- shots
+
+def test_a_still_is_judged_before_it_is_animated():
+    """Motion costs about twenty times a still, and the fault is always visible
+    in the frame."""
+    from app.services import shots
+    assert "twenty times" in shots.JUDGE
+    for fault in ("hands", "faces", "garbled"):
+        assert fault in shots.JUDGE.lower()
+    # and it does not reject on taste
+    assert "style, mood or composition" in shots.JUDGE
+
+
+def test_the_judge_cannot_block_a_shot_by_being_unreachable():
+    from app.services import shots
+    from app.core.config import settings
+    old = settings.openai_key
+    object.__setattr__(settings, "openai_key", "")
+    try:
+        out = shots.judge("https://example.com/x.jpg", "anything")
+        assert out["use"] is True and out["note"] == "not checked"
+    finally:
+        object.__setattr__(settings, "openai_key", old)
+
+
+def test_the_faithful_upscaler_is_the_default():
+    """A face has to stay the same person between shots; detail models drift."""
+    from app.services import shots
+    assert shots.UPSCALERS["faithful"] == "fal-ai/esrgan"
+    assert set(shots.UPSCALERS) == {"faithful", "detailed"}
+
+
+def test_a_screen_needs_four_corners():
+    import pathlib
+    from app.services import shots
+    with pytest.raises(shots.ShotError):
+        shots.put_screen_on(pathlib.Path("/tmp/a.mp4"), pathlib.Path("/tmp/b.mp4"),
+                            [(0, 0), (1, 1)], pathlib.Path("/tmp/c.mp4"))
+
+
+def test_every_cut_signs_off_with_the_transparent_mark():
+    """Left to the sheet it gets forgotten — which is what happened to the first
+    film the cutter rendered."""
+    from app.services import cutter
+    assert cutter.MARK.name == "mark.png"
+    assert cutter.MARK.exists()
+    # Test the behaviour, not the comment. Two attempts at asserting on the
+    # source text broke on a line wrap and on a '#' landing mid-phrase — which
+    # was testing the formatter.
+    import inspect
+    sig = inspect.signature(cutter.cut)
+    assert sig.parameters["sign_off"].default is True       # on unless turned off
+    assert sig.parameters["address"].default == "creai.dev"
+
+
+def test_the_pipeline_is_written_down():
+    """So it does not live only in somebody's head."""
+    doc = open("docs/making-an-ad.md").read()
+    for stage in ("admutate", "producer", "shots", "cutter", "critic",
+                  "voicedirect", "captions", "sound"):
+        assert stage in doc
+    assert "Still by hand" in doc          # and is honest about the gaps
