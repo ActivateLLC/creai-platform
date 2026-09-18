@@ -1558,6 +1558,12 @@ async def test_two_workers_cannot_claim_the_same_render(api):
     made = await video.save(pid, org, None, {"scenes": [
         {"source": "card", "line": "x", "seconds": 2}]})
     async with db.conn() as c:
+        # Other tests leave videos in 'rendering', and sweep only takes a page of
+        # them — so with enough left behind, this video is never reached and the
+        # test fails for a reason that has nothing to do with claiming. Clear the
+        # queue first so the assertion is about this video alone.
+        await c.execute("UPDATE videos SET state='draft' WHERE id <> $1 AND state='rendering'",
+                        made["id"])
         await c.execute("""UPDATE videos SET state='rendering',
                            updated_at = now() - interval '10 minutes' WHERE id=$1""", made["id"])
     # Count the claims of THIS video, not of everything the suite left behind:
@@ -2298,3 +2304,62 @@ def test_captions_stay_readable_on_pale_footage():
     assert cp.INK.lstrip("#") in dark and "black@" in dark
     assert cp.INK_DARK.lstrip("#") in light and "white@" in light
     assert cp.ACCENT_DARK.lstrip("#") in light        # the lifted word too
+
+
+# ---------------------------------------------------------------- direction
+
+def test_the_camera_is_never_saying_nothing():
+    """Eye level throughout is the angle with no point of view. If every scene
+    shares an angle, the camera has abdicated."""
+    from app.services import producer
+    flat = [{"angle": "eye", "move": "push"}, {"angle": "eye", "move": "still"}]
+    assert any("saying nothing" in p for p in producer.check(flat))
+
+
+def test_the_problem_is_shot_high_and_the_payoff_low():
+    """The move that carries an ad: the problem shrinks them, the solution
+    restores them, stated in where the camera stands."""
+    from app.services import producer
+    backwards = [{"angle": "low", "move": "push"}, {"angle": "high", "move": "still"},
+                 {"angle": "over", "move": "push"}]
+    problems = producer.check(backwards)
+    assert any("ends on the person diminished" in p for p in problems)
+    assert any("opens low" in p for p in problems)
+
+    right = [{"angle": "high", "move": "push"}, {"angle": "over", "move": "push"},
+             {"angle": "low", "move": "still"}]
+    assert producer.check(right) == []
+
+
+def test_a_product_shot_is_over_the_shoulder_or_close():
+    """A screen shot from across the room is somebody else's software."""
+    from app.services import producer
+    distant = [{"angle": "high", "move": "push"}, {"angle": "eye", "move": "still"},
+               {"angle": "low", "move": "still"}]
+    assert any("never theirs" in p for p in producer.check(distant))
+
+
+def test_the_opening_shot_has_to_move():
+    from app.services import producer
+    assert any("locked off" in p for p in producer.check(
+        [{"angle": "high", "move": "still"}, {"angle": "over", "move": "push"},
+         {"angle": "low", "move": "still"}]))
+
+
+def test_one_tilt_at_most():
+    from app.services import producer
+    twice = [{"angle": "high", "move": "tilt"}, {"angle": "over", "move": "tilt"},
+             {"angle": "low", "move": "still"}]
+    assert any("style rather than a moment" in p for p in producer.check(twice))
+
+
+def test_camera_movement_is_appended_last_in_a_generation_prompt():
+    """Appended after the description it reduces drift; embedded mid-sentence it
+    confuses the subject."""
+    from app.services import producer
+    p = producer.prompt_for({"shows": "A plumber closing a van", "angle": "low",
+                             "move": "push", "line": "", "say": "narrator",
+                             "seconds": 3, "why": ""})
+    assert p.rstrip().endswith(producer.MOVES["push"] + ".")
+    assert producer.ANGLES["low"] in p
+    assert "no text" in p
