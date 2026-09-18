@@ -77,6 +77,31 @@ def _clean(name: str) -> str | None:
     return path
 
 
+# Where a build puts its output. People zip the whole repo, not the one folder a
+# host wants, so finding this is the difference between a working site and a 404
+# on its own homepage.
+BUILD_DIRS = ("dist", "build", "out", "public", "_site", "site", "www",
+              ".output/public", ".next/out", "docs")
+# Signs of source that has not been built yet.
+SOURCE_MARKERS = ("package.json", "vite.config.js", "vite.config.ts", "next.config.js",
+                  "svelte.config.js", "astro.config.mjs", "gatsby-config.js", "angular.json")
+
+
+def find_root(paths: list[str]) -> str | None:
+    """The folder to treat as the site. "" when index.html is already at the top,
+    a build folder when the upload is a whole repo, or None when there is none."""
+    if "index.html" in paths:
+        return ""
+    for d in BUILD_DIRS:
+        if f"{d}/index.html" in paths:
+            return d + "/"
+    # Any folder with an index.html, shallowest first, so a stray one deep in the
+    # tree never wins over the real thing.
+    found = sorted((p for p in paths if p.endswith("/index.html")),
+                   key=lambda p: (p.count("/"), len(p)))
+    return found[0][:-len("index.html")] if found else None
+
+
 def _strip_wrapper(paths: list[str]) -> str:
     """A zip of a folder usually has one directory at the top. Drop it, so that
     index.html is where a browser expects rather than one level down."""
@@ -133,9 +158,18 @@ def read_zip(data: bytes) -> dict[str, bytes]:
                                f"({MAX_FILES} files or {MAX_TOTAL // (1024 * 1024)} MB)")
         out[path] = z.read(info)
 
-    if not any(p == "index.html" or p.endswith("/index.html") for p in out):
+    root = find_root(list(out))
+    if root is None:
+        if any(p == m or p.endswith("/" + m) for p in out for m in SOURCE_MARKERS):
+            raise ImportError_(
+                "that looks like source code that hasn't been built yet. Run your build "
+                "(npm run build, usually) and upload the folder it produces — normally "
+                "dist, build or out — or zip the whole project again once it's there.")
         raise ImportError_("there's no index.html in that folder — that's the page a "
                            "visitor lands on")
+    if root:
+        # A whole repo was uploaded: keep the built site, drop the source around it.
+        out = {p[len(root):]: b for p, b in out.items() if p.startswith(root)}
     return out
 
 

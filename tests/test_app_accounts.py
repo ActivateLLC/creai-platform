@@ -1000,3 +1000,38 @@ async def test_publishing_without_a_domain_or_a_hosting_host_is_refused(api, mon
             org, pid, {"index.html": {"key": "k", "mime": "text/html", "size": 10}})
     r = await api.post(f"/v1/imports/{pid}/publish", headers=auth(tok))
     assert r.status_code == 409 and "read a signed-in visitor's account" in r.json()["detail"]
+
+
+def test_a_whole_repo_is_rooted_at_its_built_output():
+    """People zip the repo, not the one folder a host wants. Without this the site
+    404s on its own homepage while every file is present."""
+    from app.services import imports
+    out = imports.read_zip(_zip({
+        "my-app/package.json": "{}", "my-app/src/App.jsx": "export default 1",
+        "my-app/dist/index.html": "<h1>Built</h1>", "my-app/dist/assets/app.js": "1",
+        "my-app/README.md": "# hi"}))
+    assert sorted(out) == ["assets/app.js", "index.html"]
+    assert imports.entry_for("", out) == "index.html"
+
+
+def test_source_that_was_never_built_says_what_to_do():
+    from app.services import imports
+    with pytest.raises(imports.ImportError_) as e:
+        imports.read_zip(_zip({"app/package.json": "{}", "app/vite.config.js": "x",
+                               "app/src/main.jsx": "y"}))
+    assert "npm run build" in str(e.value)
+
+
+def test_every_common_build_folder_is_recognised():
+    from app.services import imports
+    for d in ("dist", "build", "out", "public", "_site"):
+        assert imports.find_root([f"{d}/index.html", "package.json"]) == d + "/"
+    assert imports.find_root(["index.html"]) == ""
+    assert imports.find_root(["src/main.js"]) is None
+
+
+def test_a_shallow_index_wins_over_a_deep_one():
+    """A stray index.html in a docs example must not become the homepage."""
+    from app.services import imports
+    root = imports.find_root(["site/index.html", "site/examples/demo/index.html"])
+    assert root == "site/"
