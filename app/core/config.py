@@ -119,7 +119,8 @@ class Settings:
             "games": bool(self.build_url and self.build_token),
             "review": bool(self.render_url and self.render_token),
             "uploads": bool(self.assets_bucket and self.assets_key_id and self.assets_secret and self.assets_endpoint),
-            "registrar": bool(self.cloudflare_registrar_token and self.cloudflare_account_id),
+            "registrar": bool(self.cloudflare_registrar_token and self.cloudflare_account_id)
+                          and not REGISTRAR_REJECTED,
             "hosting": bool(self.railway_token and os.getenv("RAILWAY_SERVICE_ID")),
             "agent": bool(self.anthropic_key),
             "billing": self.stripe_keys_ok() and not STRIPE_REJECTED,
@@ -138,5 +139,6 @@ class Settings:
 
 # Set when Stripe refuses the key (401). Billing then reads as off until a restart with a good key.
 STRIPE_REJECTED = False
+REGISTRAR_REJECTED = False
 
 settings = Settings()

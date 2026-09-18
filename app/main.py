@@ -56,6 +56,18 @@ async def _stripe_self_check():
         log.error("stripe portal configuration failed: %s", exc)
 
 
+async def _registrar_self_check():
+    """On start: prove the registrar token carries Registrar scope."""
+    from .services import registrar
+    log = logging.getLogger("creai.registrar")
+    if not registrar.configured():
+        return
+    try:
+        log.info("registrar scope: %s", await registrar.self_check())
+    except Exception as exc:
+        log.error("registrar check failed: %s", exc)
+
+
 async def _assets_setup():
     from .services import assets as asset_svc
     try:
@@ -90,6 +102,8 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(_renewals()))
         if not settings.missing_for("uploads"):
             tasks.append(asyncio.create_task(_assets_setup()))
+        if not settings.missing_for("registrar"):
+            tasks.append(asyncio.create_task(_registrar_self_check()))
         if not settings.missing_for("billing"):
             tasks.append(asyncio.create_task(_stripe_self_check()))
         elif settings.stripe_key or settings.stripe_publishable_key:

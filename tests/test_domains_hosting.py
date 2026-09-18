@@ -392,3 +392,29 @@ async def test_lapsed_plan_falls_back_to_free_address(api):
     assert r.status_code == 302 and r.headers["location"].endswith(url.split("/s/")[1])
     d = (await api.get("/v1/domains", headers=auth(tok))).json()[0]
     assert (await api.post(f"/v1/domains/{d['id']}/host", headers=auth(tok))).status_code == 402
+
+
+@pytest.mark.asyncio
+async def test_registrar_self_check_flags_a_token_without_scope(monkeypatch):
+    """A token that exists but lacks Registrar scope must turn the capability off,
+    not report registrar: true and fail at purchase time."""
+    from app.services import registrar
+    from app.core import config
+
+    class R:
+        status_code = 403
+        def json(self):
+            return {"success": False,
+                    "errors": [{"message": "Authentication error"}]}
+
+    monkeypatch.setattr(registrar, "_call", lambda *a, **k: _async(R()))
+    monkeypatch.setattr(config, "REGISTRAR_REJECTED", False)
+    with pytest.raises(registrar.RegistrarError):
+        await registrar.self_check()
+    assert config.REGISTRAR_REJECTED is True
+    assert config.settings.configured["registrar"] is False
+    monkeypatch.setattr(config, "REGISTRAR_REJECTED", False)
+
+
+async def _async(v):
+    return v

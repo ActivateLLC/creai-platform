@@ -63,6 +63,24 @@ async def _call(method: str, path: str, **kw) -> httpx.Response:
         return await x.request(method, _url(path), headers={**_headers(), **kw.pop("headers", {})}, **kw)
 
 
+async def self_check() -> str:
+    """Prove the token really carries Registrar scope, not just that one exists.
+
+    A read-only domain-check goes through the same permission a purchase needs,
+    so a token missing Registrar Domains comes back as an error here rather than
+    at the moment a customer tries to buy."""
+    r = await _call("POST", "/domain-check", json={"domains": ["creai.dev"]})
+    data = r.json()
+    if data.get("success"):
+        return "ok"
+    detail = "; ".join(e.get("message", "") for e in data.get("errors") or [])
+    if r.status_code in (401, 403) or "Authentication" in detail or "permission" in detail.lower():
+        from ..core import config
+        config.REGISTRAR_REJECTED = True
+        raise RegistrarError(f"token lacks Registrar scope ({detail or r.status_code})")
+    raise RegistrarError(detail or f"HTTP {r.status_code}")
+
+
 async def search(q: str, limit: int = 8) -> list[dict]:
     r = await _call("GET", "/domain-search", params={"q": q[:63], "limit": limit})
     data = r.json()
