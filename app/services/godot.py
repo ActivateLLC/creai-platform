@@ -25,6 +25,7 @@ only allowed when a separate games host is configured (see GAMES_URL).
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 import re
 import time
 
@@ -49,6 +50,12 @@ MIN_BUILD_CREDITS = 5
 MAX_BUILD_MINUTES = 6
 
 STATES = ("queued", "importing", "exporting", "packaging", "done", "failed")
+
+# How long a build may sit without finishing before it is treated as dead. An
+# export takes about a minute; ten is generous enough that a slow one is never
+# killed, and short enough that a crash does not block a game until somebody
+# notices.
+STALE_AFTER_MINUTES = 10
 PROGRESS = {"queued": 5, "importing": 25, "exporting": 55, "packaging": 85,
             "done": 100, "failed": 100}
 
@@ -99,10 +106,21 @@ void fragment() {
 }
 """,
 
-    "main.tscn": """[gd_scene load_steps=4 format=3]
+    # Real artwork, authored as text. Twenty-odd path commands, flat fills, a
+    # silhouette that reads at 32 pixels — the technique every game here should
+    # use, demonstrated rather than described.
+    "spark.svg": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="22" fill="#5FC6A0"/>
+  <path d="M32 10 L38 26 L54 32 L38 38 L32 54 L26 38 L10 32 L26 26 Z" fill="#0B0F14" opacity="0.18"/>
+  <circle cx="24" cy="24" r="5" fill="#FFFFFF" opacity="0.35"/>
+</svg>
+""",
+
+    "main.tscn": """[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 [ext_resource type="Shader" path="res://backdrop.gdshader" id="2"]
+[ext_resource type="Texture2D" path="res://spark.svg" id="3"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
 shader = ExtResource("2")
@@ -116,6 +134,11 @@ offset_right = 480.0
 offset_bottom = 720.0
 
 [node name="Glow" type="WorldEnvironment" parent="."]
+
+[node name="Spark" type="Sprite2D" parent="."]
+texture = ExtResource("3")
+position = Vector2(240, 250)
+scale = Vector2(1.2, 1.2)
 
 [node name="Title" type="Label" parent="."]
 offset_left = 32.0
@@ -163,13 +186,9 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	t += delta
-	queue_redraw()
-
-func _draw() -> void:
-	var y := 250.0 + sin(t * 1.6) * 18.0
-	# emissive against a dark field, so the glow has something to catch
-	draw_circle(Vector2(240, y), 30.0, Color(0.37, 0.98, 0.70))
-	draw_circle(Vector2(240, y), 44.0, Color(0.37, 0.98, 0.70, 0.12))
+	# real artwork, moved with eased motion rather than drawn every frame
+	$Spark.position.y = 250.0 + sin(t * 1.6) * 18.0
+	$Spark.rotation = sin(t * 0.8) * 0.12
 """
 }
 
@@ -329,6 +348,11 @@ def _craft(files: dict[str, str]) -> list[str]:
     if len(sizes) == 1:
         notes.append("Every label is the same size. Varying type hard — a score at 64 and a "
                      "hint at 14 — is the difference between designed and placeholder.")
+    drawn = sum(1 for k in files if k.endswith(".svg"))
+    if not drawn and ("draw_circle" in source or "draw_rect" in source):
+        notes.append("Everything is drawn in code. .svg is text, so real artwork can be "
+                     "written directly — a character, an enemy, a UI frame — and Godot imports "
+                     "it as a texture. Twenty to sixty path commands beats a rectangle.")
     if "shake" not in source.lower() and "Camera2D" in source:
         notes.append("Nothing shakes, flashes or squashes on impact. A few frames of response "
                      "to a hit is most of what 'feel' means.")
@@ -385,11 +409,26 @@ async def start(project_id: int, org_id: int, user_id: int | None, *,
     if not found["ok"]:
         raise GameError("the project isn't exportable yet: " + "; ".join(found["problems"][:3]))
     async with conn() as c:
-        running = await c.fetchval(
-            """SELECT id FROM game_builds WHERE project_id=$1
-               AND state NOT IN ('done','failed') LIMIT 1""", project_id)
+        # A build that has not moved in a long while is not running, it is dead.
+        # The builder crashed mid-export this morning and left rows claimed
+        # forever, which blocked every later build on those games with a message
+        # saying the queue was busy — a lock with no timeout is a lock that
+        # eventually locks you out.
+        await c.execute(
+            f"""UPDATE game_builds
+                SET state='failed',
+                    error=COALESCE(error, 'the builder stopped responding; this build was '
+                                          'abandoned so you can try again'),
+                    finished_at=now()
+                WHERE state NOT IN ('done','failed')
+                  AND created_at < now() - interval '{STALE_AFTER_MINUTES} minutes'""")
+        running = await c.fetchrow(
+            """SELECT id, state, created_at FROM game_builds WHERE project_id=$1
+               AND state NOT IN ('done','failed') ORDER BY id DESC LIMIT 1""", project_id)
         if running:
-            raise GameError("this game is already building")
+            waited = int((datetime.now(timezone.utc) - running["created_at"]).total_seconds())
+            raise GameError(f"this game is already building — {running['state']}, "
+                            f"{waited}s in. It will free up on its own if it has stalled.")
         row = await c.fetchrow(
             """INSERT INTO game_builds (org_id, project_id, created_by, state, threads)
                VALUES ($1,$2,$3,'queued',$4) RETURNING id, created_at""",

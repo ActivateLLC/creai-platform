@@ -2845,6 +2845,7 @@ def test_the_starter_meets_the_bar_it_sets():
     assert "glow_enabled" in src
     assert "TRANS_BACK" in src and "EASE_OUT" in src       # eased, not linear
     assert src.count("font_size") >= 2                     # type varies
+    assert any(k.endswith(".svg") for k in godot.STARTER)  # and draws real artwork
     out = godot.review(godot.STARTER)
     assert out == {"ok": True, "problems": [], "notes": []}
 
@@ -2901,3 +2902,50 @@ def test_the_agent_can_ask_for_the_rules_before_it_writes():
     kinds = set(TOOL_GENRE["input_schema"]["properties"]["genre"]["enum"])
     from app.services import genres
     assert kinds == set(genres.GENRES)
+
+
+# ---------------------------------------------------------------- stuck builds
+
+@pytest.mark.asyncio
+async def test_a_dead_build_stops_blocking_the_next_one(api):
+    """The builder crashed mid-export and left rows claimed forever. Every later
+    build on those games was refused with 'already building' — a lock with no
+    timeout is a lock that eventually locks you out."""
+    from app.services import godot
+    tok = await sign_in(api, f"gb{secrets.token_hex(3)}@games.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Pool", "path": "game"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await godot.write(pid, org, dict(godot.STARTER))
+
+    async with db.conn() as c:
+        await c.execute(
+            """INSERT INTO game_builds (org_id, project_id, state, created_at)
+               VALUES ($1,$2,'exporting', now() - interval '3 hours')""", org, pid)
+
+    # the stale one is cleared, so this is allowed to start
+    out = await godot.start(pid, org, None)
+    assert out["state"] == "queued"
+    async with db.conn() as c:
+        dead = await c.fetchrow(
+            """SELECT state, error FROM game_builds
+               WHERE project_id=$1 AND state='failed' ORDER BY id LIMIT 1""", pid)
+    assert dead and "stopped responding" in dead["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_build_that_is_genuinely_running_still_blocks_and_says_how_long(api):
+    from app.services import godot
+    tok = await sign_in(api, f"gr{secrets.token_hex(3)}@games.io")
+    pid = (await api.post("/v1/projects", headers=auth(tok),
+                          json={"name": "Pool", "path": "game"})).json()["id"]
+    org = (await api.get("/v1/auth/me", headers=auth(tok))).json()["active_org"]
+    await godot.write(pid, org, dict(godot.STARTER))
+    async with db.conn() as c:
+        await c.execute(
+            """INSERT INTO game_builds (org_id, project_id, state, created_at)
+               VALUES ($1,$2,'exporting', now() - interval '20 seconds')""", org, pid)
+    with pytest.raises(godot.GameError) as e:
+        await godot.start(pid, org, None)
+    assert "exporting" in str(e.value) and "s in" in str(e.value)
+    assert "free up on its own" in str(e.value)       # and says it will recover

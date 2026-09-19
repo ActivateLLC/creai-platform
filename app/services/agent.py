@@ -986,7 +986,31 @@ common failure, and it is entirely avoidable:
 - Play it before you claim it works. check_game catches broken code, not a boring game. Ask
   yourself what the thirty-second experience actually is, and say so honestly in your reply.
 
-Making it look expensive, with no art files at all. Everything below is text source, so all of it
+You can draw real artwork. This is the most underused thing available to you, and it changes what
+is possible here:
+
+- .svg is text, so you can WRITE artwork — you are not limited to rectangles and circles. A
+  character, a tree, a spaceship, an enemy, a UI frame, a logo: author the SVG, save it in the
+  project, and Godot imports it as a texture during the build. It scales without blurring at any
+  resolution, which matters because this runs on phones and desktops alike.
+- Write them small and deliberate. A good game sprite is twenty to sixty path commands, not a
+  traced photograph. Flat fills, two or three colours per object, clean silhouettes. A shape that
+  reads at 32 pixels reads at 512.
+- Silhouette first. If the black shape alone does not say what it is, no amount of detail inside
+  it will. Draw the outline, check it reads, then add the two or three interior shapes that
+  carry character.
+- Keep a consistent construction across every sprite in one game: the same stroke weight, the
+  same corner radius, the same light direction. Inconsistency between assets is the single most
+  common reason a set of drawings looks amateur when each one is fine alone.
+- Use the same palette as the rest of the game. Sprites drawn in colours that are not in the
+  theme are the fastest way to make a coherent game look assembled from parts.
+- Set the import scale in the .tscn rather than drawing huge SVGs; a 64x64 viewBox scaled up is
+  cleaner and smaller than a 1024 one.
+
+So the honest limit is not "shapes only". It is that you are drawing, in a language made of text,
+and drawing well is a skill — apply the same care to a sprite as to the code.
+
+Making it look expensive, on top of that. Everything below is text source, so all of it
 is available to you — and almost nobody uses it, which is why most browser games look like
 prototypes:
 
