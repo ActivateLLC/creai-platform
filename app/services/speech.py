@@ -152,3 +152,39 @@ DELIVERY = ("Warm, grounded, unhurried \u2014 a capable person explaining someth
             "friend, not an advertisement. Slight downward inflection at the end of each "
             "sentence. Where the word 'Kree-aye' appears, say it with the stress pattern of "
             "'today': light first syllable, strong second syllable.")
+
+
+# ---------------------------------------------------------------- the better voice
+
+# ElevenLabs v3 through fal: it takes direction inline as audio tags and a
+# stability number, rather than as a separate instruction, and it holds an
+# emotional arc across a line far better than a general-purpose model.
+ELEVEN = "https://fal.run/fal-ai/elevenlabs/tts/eleven-v3"
+
+
+async def speak_well(line: str, voice_id: str, *, tags: str = "", stability: float = 0.35,
+                     note: str = "") -> bytes:
+    """One spoken line on the better model.
+
+    Direction goes INSIDE the text as tags, which is how v3 takes it — an
+    instruction sitting outside the line is advice it can ignore, a tag in front
+    of the words is not.
+    """
+    if not settings.fal_key:
+        raise SpeechError("the better voice isn't configured")
+    text = _say_the_name((line or "").strip())
+    if not text:
+        raise SpeechError("there is nothing to say")
+    body = {"text": f"{tags}{text}", "voice": voice_id,
+            "stability": max(0.0, min(1.0, stability)), "similarity_boost": 0.75}
+    async with httpx.AsyncClient(timeout=180) as x:
+        r = await x.post(ELEVEN, headers={"Authorization": f"Key {settings.fal_key}",
+                                          "Content-Type": "application/json"}, json=body)
+    if r.status_code >= 400:
+        log.error("eleven failed: %s %s", r.status_code, r.text[:200])
+        raise SpeechError("the voice could not be generated")
+    url = ((r.json().get("audio") or {}) or {}).get("url")
+    if not url:
+        raise SpeechError("no audio came back")
+    async with httpx.AsyncClient(timeout=180) as x:
+        return (await x.get(url)).content

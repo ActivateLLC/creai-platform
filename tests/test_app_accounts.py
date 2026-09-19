@@ -2104,8 +2104,8 @@ def test_brand_names_are_spelled_for_the_ear_not_the_eye():
     """The viewer reads the brand spelled properly and hears it said properly."""
     from app.services import voicedirect as vd
     say, note = vd.phonetic("Build yours free at Creai dot dev.")
-    assert say == "Build yours free at Kree-aye dot dev." and note
-    assert vd.phonetic("Arbi finds it while you sleep.")[0].startswith("AR-bee")
+    assert say == "Build yours free at kreeYAY dot dev." and note
+    assert vd.phonetic("Arbi finds it while you sleep.")[0].startswith("ARbee")
     assert vd.phonetic("Creative work")[0] == "Creative work"     # no false match
 
 
@@ -2163,11 +2163,11 @@ def test_the_customers_own_line_is_never_performed():
 def test_a_brand_name_is_spelled_for_the_ear_not_the_eye():
     from app.services import voicedirect as vd
     say, note = vd.phonetic("Build yours free at Creai dot dev.")
-    assert say == "Build yours free at Kree-aye dot dev."
-    assert "today" in note
+    assert say == "Build yours free at kreeYAY dot dev."
+    assert "second syllable" in note
     assert vd.phonetic("nothing here")[0] == "nothing here"
     # a second product is an entry, not an edit
-    assert vd.phonetic("Arbi finds it")[0] == "AR-bee finds it"
+    assert vd.phonetic("Arbi finds it")[0] == "ARbee finds it"
 
 
 def test_the_direction_travels_to_whichever_model_is_used():
@@ -2580,3 +2580,48 @@ def test_the_camera_move_is_last_in_a_motion_prompt():
     from app.services import producer, shots
     assert "END of the prompt" in shots.animate.__doc__
     assert set(shots.MOVERS) == {"draft", "final"}
+
+
+def test_the_name_is_spelled_the_way_it_is_said():
+    """Chosen by ear: one word, stress in the capitals so it survives a change of
+    voice. A lowercase version reads right on one model and drifts on the next."""
+    from app.services import voicedirect as vd
+    assert vd.phonetic("Build yours free at Creai dot dev.")[0].count("kreeYAY") == 1
+    assert "ARbee" in vd.phonetic("Arbi finds it")[0]
+    # and it never reaches the viewer's eyes
+    from app.services import captions as cp
+    assert "creai.dev" in cp.as_written("Build yours free at Creai dot dev.")
+    assert "kreeYAY" not in cp.as_written("Build yours free at Creai dot dev.")
+
+
+def test_both_models_share_one_cast():
+    """A cut should not change who is speaking depending on which model answered."""
+    from app.services import voicedirect as vd
+    for role in ("narrator", "customer"):
+        assert vd.CAST[role]["openai"] and vd.CAST[role]["eleven"]
+    assert vd.eleven_voice("narrator") != vd.eleven_voice("customer")
+    assert vd.eleven_voice("nobody") == vd.eleven_voice("narrator")   # a safe fallback
+
+
+def test_the_name_is_spelled_the_way_it_was_chosen_by_ear():
+    """kreeYAY: one word, stress in the capitals so it survives a change of voice.
+    A lowercase version reads right on one model and drifts on the next."""
+    from app.services import voicedirect as vd
+    said, note = vd.phonetic("Build yours free at Creai dot dev.")
+    assert said == "Build yours free at kreeYAY dot dev."
+    assert "second syllable" in note
+    assert vd.phonetic("Arbi finds it")[0] == "ARbee finds it"
+
+
+def test_both_models_share_one_cast():
+    """A cut that falls back should still sound like the same two people."""
+    from app.services import voicedirect as vd
+    for role in ("narrator", "customer"):
+        assert vd.CAST[role]["eleven"] and vd.CAST[role]["openai"]
+    assert vd.eleven_voice("narrator") != vd.eleven_voice("customer")
+    assert vd.eleven_voice("nobody") == vd.eleven_voice("narrator")   # never uncast
+
+
+def test_the_better_voice_is_tried_first_and_falls_back_quietly():
+    src = " ".join(open("app/services/cutter.py").read().split())
+    assert "speak_well" in src and "falling back" in src

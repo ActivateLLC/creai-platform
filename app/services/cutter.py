@@ -180,7 +180,18 @@ async def _voices(scenes: list[dict], work: Path) -> list[dict]:
         pieces = []
         for j, chunk in enumerate(l["chunks"]):
             raw = work / f"vo{i:02d}-{j}.mp3"
-            raw.write_bytes(await speech.speak(chunk, l["voice"], instructions=l["openai"]))
+            # The better voice where the key allows it, the general-purpose one
+            # otherwise. v3 takes its direction inline as tags; the fallback takes
+            # it as an instruction. Same cast either way, so a cut does not change
+            # who is speaking depending on which model answered.
+            e = l.get("elevenlabs") or {}
+            try:
+                raw.write_bytes(await speech.speak_well(
+                    chunk, voicedirect.eleven_voice(l["who"]),
+                    tags=e.get("prefix", ""), stability=e.get("stability", 0.35)))
+            except speech.SpeechError:
+                raw.write_bytes(await speech.speak(chunk, l["voice"],
+                                                   instructions=l["openai"]))
             wav = work / f"vo{i:02d}-{j}.wav"
             _run(["-i", str(raw), "-ar", "44100", "-ac", "1", str(wav)])
             pieces.append(wav)
@@ -193,6 +204,24 @@ async def _voices(scenes: list[dict], work: Path) -> list[dict]:
         _concat(pieces, joined, work / f"vo{i:02d}.txt")
         out.append({"path": joined, "seconds": _seconds(joined)})
     return out
+
+
+async def _say(chunk: str, line: dict) -> bytes:
+    """Speak one chunk on the better model, falling back rather than failing.
+
+    v3 takes its direction inline as tags; the fallback takes it as an
+    instruction. Same cast either way, so a cut that falls back still sounds
+    like the same two people.
+    """
+    from . import speech
+    e = line.get("elevenlabs") or {}
+    try:
+        return await speech.speak_well(
+            chunk, voicedirect.eleven_voice(line.get("who", "narrator")),
+            tags=e.get("prefix", ""), stability=e.get("stability", 0.35))
+    except speech.SpeechError as exc:
+        log.info("falling back from the better voice: %s", exc)
+        return await speech.speak(chunk, line["voice"], instructions=line["openai"])
 
 
 def _beat_for(i: int, n: int) -> str:

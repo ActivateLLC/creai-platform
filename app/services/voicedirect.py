@@ -93,11 +93,14 @@ ARCS: dict[str, tuple[Beat, ...]] = {
 # The narrator and the customer are different people, so they get different
 # voices — and the customer's line is the one the ad is demonstrating, which is
 # precisely the line that must not sound performed.
+# Two models, one cast. `eleven` is the better voice and the default where the
+# key allows it; `openai` is the fallback and stays in step so a cut sounds like
+# the same people either way.
 CAST = {
-    "narrator": {"openai": "echo",
-                 "why": "the person showing you this — warm, grounded, not selling"},
-    "customer": {"openai": "verse",
-                 "why": "the tradesperson in the van — a different person entirely"},
+    "narrator": {"openai": "echo", "eleven": "iP95p4xoKVk53GoZ742B",
+                 "why": "Chris — down-to-earth, American, a person rather than a presenter"},
+    "customer": {"openai": "verse", "eleven": "bIHbv24MWmeRgasZH58o",
+                 "why": "Will — younger, relaxed; the tradesperson, a different person entirely"},
 }
 
 
@@ -144,9 +147,16 @@ IN_CHARACTER = Beat(
 # Brand names a speech model cannot get from the spelling. The phonetic version
 # goes into the text the model reads; nobody ever sees it, they only hear it.
 # Kept as data so a second product is an entry rather than an edit.
+# The stress lives in the spelling, not only in the instruction. A model reading
+# "Kree-aye" has nothing telling it which syllable carries; "kree-AYE" does. The
+# capitals never reach anyone's eyes — the caption shows "Creai".
+# Chosen by ear, not by rule: kreeYAY. One word rather than hyphenated, with the
+# stress in the capitals so it survives a change of voice — a lowercase version
+# reads correctly on one model and drifts on the next.
 SAY_AS = {
-    "creai": ("Kree-aye", "the stress pattern of 'today': light first syllable, strong second"),
-    "arbi":  ("AR-bee", "stress on the first syllable, like 'army'"),
+    "creai": ("kreeYAY", "stressed on the second syllable, like 'today' or 'okay' — "
+                         "never on the first"),
+    "arbi":  ("ARbee", "stressed on the first syllable, like 'army'"),
 }
 
 
@@ -215,15 +225,22 @@ def for_gemini(beat: Beat, says_name: bool = False) -> str:
 
 
 def for_elevenlabs(beat: Beat, says_name: bool = False) -> dict:
-    """ElevenLabs takes audio tags in the text and a stability number.
+    """ElevenLabs v3 takes audio tags inline and a stability number.
 
     Lower stability gives more range and less consistency. Beats carrying a
-    feeling want range; the call to action wants to land the same way every time.
+    feeling want range; the call to action wants to land the same way every time,
+    so it is held steadier than the rest.
     """
-    stability = 0.65 if beat.name == "cta" else 0.35
+    stability = 0.65 if beat.name == "cta" else 0.3
     return {"prefix": "".join(f"[{t}] " for t in beat.tags),
             "stability": stability,
             "note": NAME_NOTE if says_name else ""}
+
+
+def eleven_voice(role: str) -> str:
+    """The v3 voice for a role, falling back to the narrator's rather than to a
+    voice nobody cast."""
+    return (CAST.get(role) or CAST["narrator"])["eleven"]
 
 
 # A pause inside a line is the one a model will not honour. Asked to leave half a
