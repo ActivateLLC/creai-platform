@@ -339,6 +339,35 @@ TOOL_REVIEW_CUT = {
         "required": ["video_id"]},
 }
 
+TOOL_CONCEPT = {
+    "name": "form_concept",
+    "description": "Before writing a game, work out what it IS: who plays it, the one "
+                   "mechanic, the hook, what the first thirty seconds actually are, and "
+                   "why this one and not the thousands like it.\n"
+                   "Call this FIRST on a new game, before game_rules and before any file. "
+                   "It will say plainly if the idea is a clone and hand back the twist that "
+                   "would make it worth playing \u2014 a platform that ships clones gets every "
+                   "one of them rejected. It also names anything asked for that cannot be "
+                   "built here, which you say to the person before building.",
+    "input_schema": {"type": "object", "properties": {
+        "description": {"type": "string", "description": "The person's own words"}},
+        "required": ["description"]},
+}
+
+TOOL_ART = {
+    "name": "art_direction",
+    "description": "Get the visual rules every sprite in this game will follow: palette, "
+                   "style, light direction, construction rules, how the player and the "
+                   "danger read at a glance. Ask for it once, after the concept and before "
+                   "the first SVG, and draw everything to it \u2014 a set of sprites that do "
+                   "not belong to each other is the most common reason a game looks "
+                   "amateur when each drawing is fine alone.\n"
+                   "It returns a document; you draw. Do not read it back to the person.",
+    "input_schema": {"type": "object", "properties": {
+        "theme": {"type": "string", "description": "A look the person asked for, if any"}},
+        "required": []},
+}
+
 TOOL_PLAYTEST = {
     "name": "playtest",
     "description": "Run the built game in a real browser, photograph the start screen, the "
@@ -731,6 +760,7 @@ class Turn:
     app_changed: bool = False
     app_checked: bool = False
     looks: int = 0                # renders of its own work, capped like pictures
+    game_concept: dict | None = None   # set by form_concept; read by art_direction
     images_made: int = 0          # capped per turn: pictures are slow, and a turn
                                   # that outlives the browser looks like a crash
     game_built: bool = False
@@ -1085,6 +1115,10 @@ common failure, and it is entirely avoidable:
   screen. Contrast marks what matters: the player and the danger are the brightest things on it.
 - Score is not the only feedback. A near miss, a streak, the speed creeping up — something should
   tell the player they are getting better before the number does.
+- Know what it IS before you write it. On a new game, call form_concept with the person's own
+  words first. It decides the one mechanic, the hook, the thirty seconds, and whether this is a
+  clone \u2014 and if it is, the twist that makes it worth building. Then art_direction, once, so
+  every sprite belongs to the same game. Then game_rules for the genre.
 - Know the genre before you write it. Call game_rules once you know roughly what kind of game
   this is — a runner, a puzzle, a shooter, two players on one device. Each has a loop, numbers
   that matter and a mistake everyone makes first, and the rules contradict each other: a runner
@@ -1241,7 +1275,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if intent == "build" and game is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_GAME,
                  TOOL_BUILD_GAME, TOOL_PLAYTEST, TOOL_DELETE_FILE, TOOL_GENERATE_IMAGE,
-                 TOOL_GENRE, TOOL_POLISH, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+                 TOOL_CONCEPT, TOOL_ART, TOOL_GENRE, TOOL_POLISH,
+                 TOOL_SAVE_ANSWER, TOOL_SUGGEST]
     elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_LOOK, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
@@ -1554,6 +1589,32 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             verdict = await crit.review(row["url"])
             turn.log.append(f"reviewed the cut: {verdict.get('verdict')}")
             return {"ok": True, **verdict}
+
+        if name == "form_concept":
+            from . import gameconcept as gc
+            try:
+                c = await gc.form(str(args.get("description") or ""))
+            except gc.ConceptError as exc:
+                return {"ok": False, "error": str(exc)}
+            # remembered on the turn so art_direction can read it without a round trip
+            turn.game_concept = c
+            turn.log.append(f"formed the concept: {c.get('title') or 'untitled'}"
+                            + (" (a clone \u2014 twist required)" if c.get("is_clone") else ""))
+            return {"ok": True, **c, "brief": gc.brief_from(c),
+                    "note": ("If `ceiling` is set, say it to the person FIRST. If `is_clone` "
+                             "is true, build the twist or do not build.")}
+
+        if name == "art_direction":
+            from . import gameart, gameconcept as gc
+            concept = getattr(turn, "game_concept", None) or {}
+            if not concept:
+                return {"ok": False, "error": "form the concept first \u2014 art follows it"}
+            out = await gameart.direct(concept, theme=str(args.get("theme") or ""))
+            if out.get("ok"):
+                turn.log.append("set the art direction")
+                return {**out, "brief": gameart.brief_from(out["bible"]),
+                        "note": "Every SVG follows this. Do not read it back to the person."}
+            return {**out, "note": "No art bible; draw to the craft rules in your brief."}
 
         if name == "playtest":
             from . import playtest as pt
