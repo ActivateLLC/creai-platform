@@ -28,6 +28,14 @@ class Settings:
     public_url: str = _req("PUBLIC_URL", "http://localhost:8080")
     secret_key: str = _req("SECRET_KEY", "")
 
+    # Gemini: used ONLY for single-shot, bounded UI/visual polish calls (see
+    # app/services/polish.py). Never given tool access and never used for the
+    # multi-step build/orchestration loop — that stays on Claude, which the
+    # data (SWE-bench Pro, real GitHub-issue benchmarks) shows is meaningfully
+    # stronger at holding together a stateful, multi-step agentic task.
+    gemini_api_key: str = _req("GEMINI_API_KEY", "")
+    gemini_api_base: str = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta")
+
     # storage
     database_url: str = _req("DATABASE_URL", "")
 

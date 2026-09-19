@@ -49,6 +49,11 @@ REGISTRY: dict[str, Model] = {m.key: m for m in (
     # Meta Model API (public preview, US). Cached-input pricing not published: billed as input.
     Model("muse-spark-1.1", "meta", "muse-spark-1.1", 1.25, 4.25, vision=True,
           fallback=("claude-sonnet-5",)),
+    # Gemini: single-shot UI/visual polish only (app/services/polish.py). Never
+    # given `tools`, never used for the agentic build loop. Priced per Google's
+    # published per-million-token rate for this tier.
+    Model("gemini-2.5-flash", "gemini", "gemini-2.5-flash", 0.30, 2.50, vision=True,
+          tools=False, fallback=()),
 )}
 
 # Media generation, priced per output. Hugging Face Inference Providers.
@@ -85,7 +90,11 @@ def configured(key: str) -> bool:
     m = REGISTRY.get(key)
     if not m:
         return False
-    return bool(settings.anthropic_key if m.provider == "anthropic" else settings.meta_api_key)
+    return bool({
+        "anthropic": settings.anthropic_key,
+        "meta": settings.meta_api_key,
+        "gemini": settings.gemini_api_key,
+    }.get(m.provider))
 
 
 def price(model_key: str) -> tuple[float, float, float, float] | None:
@@ -206,7 +215,56 @@ async def _meta(m: Model, messages, tools, system, max_tokens) -> dict:
     return from_openai(r.json(), m)
 
 
-PROVIDERS = {"anthropic": _anthropic, "meta": _meta}
+async def _gemini(m: Model, messages, tools, system, max_tokens) -> dict:
+    """Gemini's native REST shape — not OpenAI-compatible, so this does not
+    reuse to_openai/from_openai. Gemini wants 'contents' (role: user/model,
+    never 'system' inline — system goes in a separate top-level field) and
+    returns candidates[0].content.parts, not choices[0].message.
+
+    This path is intentionally never given `tools`: every caller into the
+    Gemini provider today is a single-shot, boundless-context-free polish
+    call (see polish.py). If that ever changes, Gemini's function-calling
+    schema (FunctionDeclaration) would need translating here — it is close
+    to but not identical to OpenAI's, and untested against this platform's
+    tool loop, which is why orchestration stays on Claude.
+    """
+    contents = []
+    for msg in messages:
+        role = "model" if msg.get("role") == "assistant" else "user"
+        text = msg.get("content") if isinstance(msg.get("content"), str) else str(msg.get("content"))
+        contents.append({"role": role, "parts": [{"text": text}]})
+
+    body: dict = {"contents": contents}
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": system}]}
+    body["generationConfig"] = {"maxOutputTokens": max_tokens}
+
+    url = (f"{settings.gemini_api_base.rstrip('/')}/models/{m.api_model}:generateContent"
+           f"?key={settings.gemini_api_key}")
+    async with httpx.AsyncClient(timeout=120) as x:
+        r = await x.post(url, json=body, headers={"Content-Type": "application/json"})
+    _raise_for(r, m)
+    data = r.json()
+    try:
+        candidate = data["candidates"][0]
+        text = "".join(p.get("text", "") for p in candidate["content"]["parts"])
+    except (KeyError, IndexError):
+        raise ModelRejected(f"{m.key} returned no usable candidate: {str(data)[:200]}")
+    usage = data.get("usageMetadata", {})
+    return {
+        "model": m.key,
+        "text": text,
+        "tool_calls": [],   # this provider path never receives tool defs
+        "stop_reason": candidate.get("finishReason", "stop"),
+        "usage": {
+            "input_tokens": usage.get("promptTokenCount", 0),
+            "output_tokens": usage.get("candidatesTokenCount", 0),
+            "cached_tokens": 0,
+        },
+    }
+
+
+PROVIDERS = {"anthropic": _anthropic, "meta": _meta, "gemini": _gemini}
 
 
 # Refusals that are about the account rather than the message. Telling somebody

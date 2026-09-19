@@ -159,6 +159,11 @@ draft social posts with draft_posts; they wait in the approval queue and nothing
 until the person approves each one.
 """
 
+def _narrator_voice() -> str:
+    from . import voicedirect
+    return voicedirect.CAST["narrator"]["openai"]
+
+
 TOOL_UPDATE_SITE = {
     "name": "update_site",
     "description": "Edit the site. Only the fields you pass change. Passing `sections` "
@@ -280,6 +285,76 @@ TOOL_BLUEPRINT = {
         "business": {"type": "string", "description": "The business this is for"},
         "trade": {"type": "string", "description": "What they do, in their words"}},
         "required": ["blueprint", "business"]},
+}
+
+TOOL_HYPOTHESIS = {
+    "name": "form_hypothesis",
+    "description": "Before writing an ad, work out what it should ARGUE: who buys, what "
+                   "hurts, the non-obvious insight, the emotional arc, the promise, what "
+                   "can actually be proved, the objection, and the call to action.\n"
+                   "Call this FIRST on a video project, before plan_video. An ad written "
+                   "without a hypothesis is one idea phrased several ways. It will say "
+                   "what proof is missing rather than invent any, and mark itself low "
+                   "confidence when it is guessing — use that honestly.",
+    "input_schema": {"type": "object", "properties": {
+        "product": {"type": "string", "description": "What is being sold, in one line"},
+        "audience": {"type": "string", "description": "Who buys it, if known"},
+        "shows": {"type": "string", "description": "What can be shown on screen"},
+        "said": {"type": "string", "description": "A real line a customer says to it"}},
+        "required": ["product"]},
+}
+
+TOOL_DIRECT = {
+    "name": "direct_scenes",
+    "description": "Have the producer write AND direct the scenes: per scene the line, who "
+                   "says it, what is shown, camera angle, move, lens, light, tone, sound, "
+                   "music and caption, with one line on why that angle.\n"
+                   "Call this after form_hypothesis and before plan_video. It returns a "
+                   "checked shot list — high on the problem, low on the payoff, product "
+                   "over-the-shoulder — plus any problems its own checker found. Read the "
+                   "sheet, adjust what you disagree with, then hand the scenes to "
+                   "plan_video. Do not read the sheet back to the person.",
+    "input_schema": {"type": "object", "properties": {
+        "product": {"type": "string"},
+        "shows": {"type": "string"},
+        "said": {"type": "string"},
+        "angle": {"type": "string", "description": "The argument, from the hypothesis"},
+        "trade": {"type": "string", "description": "Who it is for, in one word"},
+        "seconds": {"type": "integer", "default": 20}},
+        "required": ["product", "shows"]},
+}
+
+TOOL_REVIEW_CUT = {
+    "name": "review_cut",
+    "description": "Watch a rendered video and say what is wrong with what is actually on "
+                   "screen — the plan can be right and the render wrong. Checks whether the "
+                   "first frame moves, captions are legible, anything looks dated, the "
+                   "camera says something, no unsupported claim is on screen, and the end "
+                   "card can be read.\n"
+                   "Call this after a video has rendered, before telling the person it is "
+                   "done. If it says 'fix', fix and re-render; if it says 'ship', say so. "
+                   "It fails open: an unreviewed render is still a render.",
+    "input_schema": {"type": "object", "properties": {
+        "video_id": {"type": "integer"}},
+        "required": ["video_id"]},
+}
+
+TOOL_POLISH = {
+    "name": "polish_look",
+    "description": "Ask a second model, one good at visual design, for concrete improvements "
+                   "to a screen: layout, spacing, hierarchy, colour, type, and for a game, "
+                   "art direction for its SVG sprites.\n"
+                   "Call this after check_app or check_game passes and BEFORE you look. It "
+                   "returns a short list of specific suggestions — 'increase the gap between "
+                   "score and timer to 24px' — and you decide which to apply; it never "
+                   "changes files itself. Apply the ones that make the thing better, skip "
+                   "the ones that do not, and do not read the list back to the person.",
+    "input_schema": {"type": "object", "properties": {
+        "screen": {"type": "string",
+                   "description": "What this screen is for and who uses it, in a sentence"},
+        "file": {"type": "string",
+                 "description": "The file to react to, e.g. app.js or main.tscn — optional"}},
+        "required": ["screen"]},
 }
 
 TOOL_PLAN_VIDEO = {
@@ -1123,12 +1198,15 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         system += APP_EXTRA
     elif video:
         system += VIDEO_EXTRA
+        # the three specialists a video needs, in the order they are used
+        tools = [TOOL_HYPOTHESIS, TOOL_DIRECT, TOOL_PLAN_VIDEO, TOOL_REVIEW_CUT,
+                 TOOL_GENERATE_IMAGE, TOOL_SAVE_ANSWER, TOOL_SUGGEST] + brand_tools
     if game is not None:
         system += GAME_EXTRA
     if intent == "build" and game is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_GAME,
                  TOOL_BUILD_GAME, TOOL_DELETE_FILE, TOOL_GENERATE_IMAGE,
-                 TOOL_GENRE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+                 TOOL_GENRE, TOOL_POLISH, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
     elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_LOOK, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
@@ -1156,6 +1234,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         # want a clip for a channel and never a website at all.
         tools.append(TOOL_PLAN_VIDEO)
         tools.append(TOOL_BLUEPRINT)
+        tools.append(TOOL_POLISH)
         if ideas is not None:
             tools.append(TOOL_SUGGEST_IMPROVEMENTS)
         if project and queue_posts is not None:
@@ -1400,6 +1479,68 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
                     "note": "Build this now with write_files, in their words. Do not read the "
                             "brief back to them — show them the thing."}
 
+        if name == "form_hypothesis":
+            from . import hypothesis as hyp
+            try:
+                h = await hyp.form(str(args.get("product") or ""), known={
+                    "audience": args.get("audience"), "shows": args.get("shows"),
+                    "said": args.get("said")})
+            except hyp.HypothesisError as exc:
+                return {"ok": False, "error": str(exc)}
+            turn.log.append(f"formed the hypothesis ({h.get('confidence')} confidence)")
+            return {"ok": True, **h,
+                    "note": "Argue this. Where confidence is low, say what you assumed."}
+
+        if name == "direct_scenes":
+            from . import producer as prod
+            try:
+                sheet = await prod.shot_list(
+                    {"product": args.get("product"), "shows": args.get("shows"),
+                     "said": args.get("said"), "angle": args.get("angle")},
+                    seconds=int(args.get("seconds") or 20),
+                    trade=str(args.get("trade") or "plumber"))
+            except prod.ProducerError as exc:
+                return {"ok": False, "error": str(exc)}
+            turn.log.append(f"directed {len(sheet['scenes'])} scenes")
+            return {"ok": True, **sheet,
+                    "note": ("Hand these scenes to plan_video. Fix anything in `problems` "
+                             "first — the cutter refuses a sheet the checker rejects.")}
+
+        if name == "review_cut":
+            from . import critic as crit
+            from ..core.db import conn as _conn
+            vid = int(args.get("video_id") or 0)
+            async with _conn() as c:
+                row = await c.fetchrow(
+                    "SELECT url FROM videos WHERE id=$1 AND org_id=$2 AND state='done'",
+                    vid, org_id) if org_id else None
+            if not row or not row["url"]:
+                return {"ok": False, "error": "that video has not rendered yet"}
+            verdict = await crit.review(row["url"])
+            turn.log.append(f"reviewed the cut: {verdict.get('verdict')}")
+            return {"ok": True, **verdict}
+
+        if name == "polish_look":
+            from . import polish as pol
+            markup = ""
+            fname = str(args.get("file") or "").strip()
+            if fname and project_id and org_id:
+                # the same readers read_file uses — apps and games keep files in
+                # different stores, and a polish pass must read the right one
+                try:
+                    from . import appfs, godot
+                    store = godot if game is not None else appfs
+                    fs = await store.files(project_id, org_id)
+                    markup = fs.get(fname, "")
+                except Exception:
+                    markup = ""
+            out = await pol.suggest(str(args.get("screen") or ""), current_markup=markup)
+            if out.get("ok"):
+                turn.log.append(f"got {len(out['suggestions'])} visual suggestions")
+            return {**out,
+                    "note": "Apply what makes it better; skip what does not. Never quote "
+                            "this list to the person."}
+
         if name == "plan_video":
             from . import video as video_svc
             scenes = args.get("scenes") or []
@@ -1407,7 +1548,9 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
                                   or (answers.get("site") or {}).get("business") or "",
                     "scenes": [{k: v for k, v in sc.items() if v not in (None, "")}
                                for sc in scenes],
-                    "voice": "ash"}
+                    # the cast, not a literal: "ash" was hardcoded here and had been
+                    # retired by name — every plan was casting the rejected voice
+                    "voice": _narrator_voice()}
             problems = video_svc.check(plan)
             if problems:
                 # Handed back rather than silently fixed: the agent wrote it, so the
