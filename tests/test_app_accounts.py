@@ -2686,3 +2686,21 @@ def test_every_existing_log_line_streams_without_being_touched():
     import dataclasses
     fields = {f.name: f for f in dataclasses.fields(Turn)}
     assert fields["log"].default_factory is LiveLog
+
+
+def test_the_builder_image_copies_every_module_it_imports():
+    """Copying app.py by name built an image whose app.py imported video.py,
+    which was not there. The container crashed on boot, games stopped working,
+    and nothing in the platform reported why."""
+    import re
+    docker = open("builder/Dockerfile").read()
+    assert "COPY *.py ." in docker
+    assert "COPY app.py ." not in docker
+
+    # and everything app.py imports locally is actually in the folder
+    import pathlib
+    here = {p.stem for p in pathlib.Path("builder").glob("*.py")}
+    src = open("builder/app.py").read()
+    local = set(re.findall(r"^import (\w+)$", src, re.M))
+    assert local <= here | {"os", "re", "sys", "json", "time", "base64", "shutil",
+                            "asyncio", "tempfile", "logging", "subprocess"}, local - here

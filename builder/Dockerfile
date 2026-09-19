@@ -20,6 +20,10 @@ RUN curl -sSL -o /tmp/tpl.tpz \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
+# Every python file, not just app.py. Copying one file by name meant that adding
+# video.py alongside it built an image whose app.py imported a module that was
+# not there — the container crashed on boot and games stopped working, with
+# nothing in the platform reporting why.
+COPY *.py .
 ENV PORT=8080 GODOT_VERSION=${GODOT}
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT}"]
