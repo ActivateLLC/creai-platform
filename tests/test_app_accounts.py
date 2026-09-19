@@ -2704,3 +2704,19 @@ def test_the_builder_image_copies_every_module_it_imports():
     local = set(re.findall(r"^import (\w+)$", src, re.M))
     assert local <= here | {"os", "re", "sys", "json", "time", "base64", "shutil",
                             "asyncio", "tempfile", "logging", "subprocess"}, local - here
+
+
+@pytest.mark.asyncio
+async def test_health_can_be_asked_whether_things_actually_answer(api):
+    """Configured is not the same as working: the game builder sat dead for
+    fifteen hours while health reported games as fine, because it only checked
+    that a URL and a token were set."""
+    shallow = (await api.get("/health")).json()
+    assert "configured" in shallow and "reachable" not in shallow
+
+    deep = (await api.get("/health?deep=1")).json()
+    assert "reachable" in deep
+    assert set(deep["reachable"]) == {"builder", "renderer"}
+    # and it never raises, whatever it finds
+    for state in deep["reachable"].values():
+        assert isinstance(state, str) and state

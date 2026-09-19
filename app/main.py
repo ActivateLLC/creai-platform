@@ -176,14 +176,52 @@ for r in (appdata.router, appauth.router, appfiles.router, payment_routes.router
 
 
 @app.get("/health")
-async def health():
+async def health(deep: bool = False):
     """Names what is configured rather than claiming to be fine.
 
     A deployment missing its DNS credential is not healthy in any useful sense,
     and finding that out here beats finding it out mid-launch.
+
+    `configured` answers whether the credentials exist. That is not the same as
+    the thing working: the game builder once sat dead for fifteen hours while
+    this reported games as fine, because it only ever checked that a URL and a
+    token were set. `?deep=1` asks the services that have a health endpoint
+    whether they are actually answering.
     """
     version = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("RAILWAY_DEPLOYMENT_ID") or "dev")[:12]
-    return {"ok": True, "env": settings.env, "version": version, "configured": settings.configured}
+    out = {"ok": True, "env": settings.env, "version": version,
+           "configured": settings.configured}
+    if deep:
+        out["reachable"] = await _reachable()
+    return out
+
+
+async def _reachable() -> dict:
+    """Ask the back-end services whether they are alive, briefly.
+
+    Short timeouts and never raising: a health check that hangs or 500s is worse
+    than one that says it could not tell.
+    """
+    import asyncio
+
+    import httpx
+
+    async def ping(name: str, url: str | None, token: str | None, header: str) -> tuple[str, str]:
+        if not url:
+            return name, "not configured"
+        try:
+            async with httpx.AsyncClient(timeout=4) as x:
+                r = await x.get(f"{url.rstrip('/')}/health",
+                                headers={header: token} if token else {})
+            return name, "up" if r.status_code < 400 else f"answering {r.status_code}"
+        except httpx.HTTPError as exc:
+            return name, f"unreachable ({type(exc).__name__})"
+
+    checks = [
+        ping("builder", settings.build_url, settings.build_token, "X-Build-Token"),
+        ping("renderer", settings.render_url, settings.render_token, "X-Render-Token"),
+    ]
+    return dict(await asyncio.gather(*checks))
 
 
 # ---------------------------------------------------------------- the app itself
