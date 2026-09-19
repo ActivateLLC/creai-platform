@@ -2043,10 +2043,15 @@ def test_a_winner_cannot_be_declared_off_forty_impressions():
     assert admutate.enough(fat, "hook") is True
 
 
-def test_the_five_angles_are_a_first_class_axis():
-    """A library missing four angles is one idea tested five ways."""
+def test_the_angles_are_a_first_class_axis():
+    """A library missing most angles is one idea tested several ways. The set
+    grew from five to thirteen; what matters is that they are genuinely different
+    arguments, not that there is a particular number of them."""
     from app.services import admutate
-    assert set(admutate.ANGLES) == {"demo", "problem", "outcome", "nothing", "proof"}
+    assert len(admutate.ANGLES) >= 12
+    for core in ("demo", "problem", "outcome", "nothing", "proof",
+                 "curiosity", "story", "comparison", "founder", "customerpov"):
+        assert core in admutate.ANGLES
     vs = admutate.plan({"trade": "plumber", "shows": "x"}, want=20, seed=4)
     spread = {}
     for v in vs:
@@ -2625,3 +2630,59 @@ def test_both_models_share_one_cast():
 def test_the_better_voice_is_tried_first_and_falls_back_quietly():
     src = " ".join(open("app/services/cutter.py").read().split())
     assert "speak_well" in src and "falling back" in src
+
+
+# ---------------------------------------------------------------- saying what it is doing
+
+@pytest.mark.asyncio
+async def test_the_agents_narration_reaches_the_screen_while_it_works():
+    """It already said 'wrote app.js' and 'checked the app'. All of it arrived
+    when the turn finished, so a ninety-second build read as frozen."""
+    from app.services import progress
+    key = "testkey12345"
+    await progress.start(key)
+    await progress.say(key, "wrote the sign-in screen")
+    await progress.say(key, "checked the app · all clear")
+    out = await progress.read(key)
+    assert [s["step"] for s in out["steps"]] == ["wrote the sign-in screen",
+                                                 "checked the app · all clear"]
+    assert out["done"] is False
+    # a second poll only brings what is new
+    assert await progress.read(key, since=2) == {**out, "steps": []}
+
+
+@pytest.mark.asyncio
+async def test_a_line_is_never_repeated_at_somebody():
+    from app.services import progress
+    key = "testkey67890"
+    await progress.start(key)
+    for _ in range(3):
+        await progress.say(key, "drawing the icons")
+    assert len((await progress.read(key))["steps"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_fails_still_closes_its_channel():
+    """Otherwise a screen polls forever, showing a line about something that
+    stopped happening minutes ago."""
+    src = " ".join(open("app/api/agent.py").read().split())
+    assert "finally:" in src and "progress.finish(key)" in src
+
+
+@pytest.mark.asyncio
+async def test_a_looping_turn_cannot_fill_the_screen():
+    from app.services import progress
+    key = "testkeyloop00"
+    await progress.start(key)
+    for i in range(80):
+        await progress.say(key, f"step {i}")
+    assert len((await progress.read(key))["steps"]) <= progress.MAX_STEPS
+
+
+def test_every_existing_log_line_streams_without_being_touched():
+    """Dozens of call sites; a migration that misses one leaves a silent gap in
+    the middle of a build, which is the exact fault this fixes."""
+    from app.services.agent import LiveLog, Turn
+    import dataclasses
+    fields = {f.name: f for f in dataclasses.fields(Turn)}
+    assert fields["log"].default_factory is LiveLog

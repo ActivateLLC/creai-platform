@@ -581,6 +581,28 @@ class AgentUnavailable(RuntimeError):
     pass
 
 
+class LiveLog(list):
+    """The turn's log, which also reports each line as it is added.
+
+    Made a list subclass rather than adding a say() method so that every existing
+    `turn.log.append(...)` streams without being touched — there are dozens, and
+    a migration that misses one leaves a silent gap in the middle of a build,
+    which is the exact fault this fixes.
+    """
+
+    key: str | None = None
+
+    def append(self, item) -> None:
+        super().append(item)
+        if self.key:
+            from . import progress
+            import asyncio
+            try:
+                asyncio.get_running_loop().create_task(progress.say(self.key, str(item)))
+            except RuntimeError:
+                pass          # outside a loop (tests); the log still works
+
+
 @dataclass
 class Turn:
     """Everything one turn changed. Routes persist it; the client renders it."""
@@ -589,7 +611,7 @@ class Turn:
     thread: list
     reply: str = ""
     actions: list = field(default_factory=list)
-    log: list = field(default_factory=list)
+    log: list = field(default_factory=LiveLog)
     posts: list = field(default_factory=list)
     calls: list = field(default_factory=list)     # (model, usage) per API call, for billing
     app_changed: bool = False
@@ -946,7 +968,8 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
               bridge=None, marketing: bool = False, marketing_only: bool = False,
               app: tuple | None = None, game: tuple | None = None, video: bool = False,
               tz: str | None = None, drafts=None, ideas=None,
-              attachments: tuple | None = None, reviewer=None) -> Turn:
+              attachments: tuple | None = None, reviewer=None,
+              progress_key: str | None = None) -> Turn:
     """One conversational turn.
 
     `answers` is the draft's or project's stored JSON (site spec, facts, thread).
@@ -958,6 +981,12 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     turn = Turn(answers=answers,
                 site=site_spec.merge(answers.get("site"), {}),
                 thread=trim(list(answers.get("_thread") or [])))
+    # Every line the agent logs from here reaches the waiting screen as it lands,
+    # rather than all at once when the turn finishes.
+    if progress_key:
+        from . import progress as progress_svc
+        turn.log.key = progress_key
+        await progress_svc.start(progress_key)
 
     intent = intent if intent in INTENTS else "build"
     turn.tz = tz

@@ -6,6 +6,7 @@ are rate-limited per draft and per address. Signed-in projects use the same loop
 scoped to a project the caller's workspace owns, and can also queue post drafts.
 """
 
+import re
 import time
 from collections import defaultdict, deque
 import asyncio
@@ -37,6 +38,10 @@ class SayIn(BaseModel):
     intent: str = Field("build", pattern="^(build|chat|plan)$")
     asset_ids: list[int] = Field(default_factory=list, max_length=8)
     timezone: str | None = Field(None, max_length=64, pattern=r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+){0,2}$")
+    # A token the client makes up per turn, so it can ask what the agent
+    # is doing while it is still doing it.
+    progress_key: str | None = None
+
 
 
 def _model(mode: str, intent: str = "build") -> str:
@@ -65,12 +70,23 @@ def _payload(turn_or_answers, actions=None, log=None, posts=None) -> dict:
 
 
 async def _run(message: str, answers: dict, **kw):
+    """Run a turn, and close its progress channel however it ends.
+
+    In `finally` on purpose: a turn that fails leaves a waiting screen polling a
+    key nobody will ever write to again, showing a line that describes something
+    which stopped happening minutes ago.
+    """
+    key = kw.get("progress_key")
     try:
         return await agent.run(message, answers, **kw)
     except agent.AgentUnavailable as exc:
         raise HTTPException(503, str(exc))
     except webflow.WebflowError as exc:
         raise HTTPException(409, str(exc))
+    finally:
+        if key:
+            from ..services import progress
+            await progress.finish(key)
 
 
 # ---------------------------------------------------------------- anonymous
@@ -314,6 +330,7 @@ async def project_say(project_id: int, body: SayIn,
                       queue_posts=queue_posts, model=_model(body.mode, body.intent),
                       intent=body.intent, bridge=bridge, app=app_ctx, game=game_ctx,
                       video=p_path(p) == "video",
+                      progress_key=body.progress_key,
                       drafts=Drafts(),
                       ideas=None if answers.get("source") or p_path(p) in ("market", "game") else Ideas(),
                       attachments=attachments,
@@ -369,3 +386,18 @@ def _preview_headers() -> dict:
                                        "font-src https://fonts.gstatic.com; img-src data: https:; media-src https:; "
                                        "frame-ancestors 'self'",
             "Cache-Control": "no-store"}
+
+
+@router.get("/progress/{key}")
+async def progress_for(key: str, since: int = 0):
+    """What the agent has done so far on a turn still running.
+
+    Deliberately open: the key is a random per-turn token the client just
+    generated, it carries no data beyond a few lines of narration, and requiring
+    a session here would break the one case it exists for — a slow build watched
+    from a page whose token is being refreshed.
+    """
+    from ..services import progress
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", key or ""):
+        raise HTTPException(404, "no such turn")
+    return await progress.read(key, since=max(0, int(since)))

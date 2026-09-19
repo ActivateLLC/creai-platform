@@ -298,6 +298,12 @@ input:focus{outline:none;border-color:var(--leaf)}
   .struck{animation:none;text-decoration-color:currentColor}
   .truth{animation:none;opacity:1}
 }
+.steps{margin-top:8px;display:flex;flex-direction:column;gap:3px}
+.step{margin:0;font-size:13px;line-height:1.45;opacity:0;color:var(--muted);
+  animation:stepIn .4s ease-out forwards}
+.step:not(:last-child){opacity:.45}
+@keyframes stepIn{from{opacity:0;transform:translateY(4px)}to{opacity:.9;transform:none}}
+@media (prefers-reduced-motion:reduce){.step{animation:none;opacity:.9}}
 .att .badge{position:absolute;left:5px;bottom:5px;padding:2px 6px;border-radius:99px;background:rgba(0,0,0,.62);color:#fff;
   font:600 10px/1.3 var(--sans);backdrop-filter:blur(4px)}
 .att .rm{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:0;padding:0;display:grid;place-items:center;
@@ -965,11 +971,42 @@ async function send(text, intentOverride) {
     } catch (e) { addAgent(e.message); S.busy = false; $('send').disabled = false; return; }
   }
   addUser(text, shown);
-  const w = el('div', 'working msg'); const d = el('span', 'dot pulse'); w.append(d, el('span', null, document.documentElement.dataset.theme === 'terminal' ? ({ build: 'building', chat: 'thinking', plan: 'planning' }[S.intent] + '… ▍') : ({ build: 'Building your site', chat: 'Thinking', plan: 'Drafting a plan' }[S.intent])));
+  const w = el('div', 'working msg'); const d = el('span', 'dot pulse');
+  const term = document.documentElement.dataset.theme === 'terminal';
+  const label = el('span', null, term
+    ? ({ build: 'building', chat: 'thinking', plan: 'planning' }[S.intent] + '… ▍')
+    : ({ build: 'Building your site', chat: 'Thinking', plan: 'Drafting a plan' }[S.intent]));
+  w.append(d, label);
+  // The agent narrates as it works — wrote this, checked that, looked at it on a
+  // phone. Those lines used to arrive only when the turn finished, so a long
+  // build showed one motionless line and read as frozen.
+  const steps = el('div', 'steps'); w.append(steps);
+  w.dataset.key = S.progressKey = 'p' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  let seen = 0, stop = false;
+  (async function watch() {
+    while (!stop) {
+      await new Promise(r => setTimeout(r, 1400));
+      if (!w.isConnected) return;
+      try {
+        const r = await fetch(API_BASE + '/v1/agent/progress/' + w.dataset.key + '?since=' + seen);
+        if (!r.ok) continue;
+        const d2 = await r.json();
+        seen = d2.count;
+        for (const st of d2.steps || []) {
+          const line = el('p', 'step', st.step);
+          steps.append(line);
+          while (steps.childElementCount > 4) steps.firstElementChild.remove();
+        }
+        if (d2.steps && d2.steps.length) label.textContent = term ? 'working… ▍' : 'Still going';
+        if (d2.done) return;
+      } catch (_) { /* a missed poll is not worth surfacing */ }
+    }
+  })();
+  w.addEventListener('creai:stop', () => { stop = true; });
   $('thread').append(w); scroll();
   try {
     const path = S.project ? '/v1/agent/projects/' + S.project.id : '/v1/agent/draft';
-    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent, timezone: TZ, asset_ids: assetIds }) });
+    const out = await api(path, { method: 'POST', body: JSON.stringify({ message: text, mode: S.mode, intent: S.intent, timezone: TZ, asset_ids: assetIds, progress_key: S.progressKey }) });
     if (out.site && out.site.business && S.project) {
       // the project takes the name of the business as soon as there is one
       projects(true).then(list => setProjectName(list.find(x => x.id === S.project.id) || { business: out.site.business }));

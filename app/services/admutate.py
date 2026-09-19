@@ -39,19 +39,40 @@ log = logging.getLogger("creai.admutate")
 # said something. Generating it would be fabricating a testimonial, so it is
 # refused until real proof exists rather than quietly filled in.
 ANGLES = {
-    "demo":     "Show the value becoming obvious. Do not say it removes the stain; "
-                "show the stain going. This is the strongest angle for a product "
-                "nobody has seen before.",
-    "problem":  "Sit in the thing they already resent, before offering anything. "
-                "Name it more precisely than they would themselves.",
-    "outcome":  "Open at the end: the evening back, the job entered, the invoice "
-                "paid. Then show what produced it.",
-    "nothing":  "Compare with carrying on as they are — not with a competitor. "
-                "The real alternative is the spreadsheet and the memory.",
-    "proof":    "A real customer, in their own words, about their own result. "
-                "Requires a real quote from a real person; never written for them.",
+    "demo":       "Show the value becoming obvious. Do not say it removes the stain; "
+                  "show the stain going. The strongest angle for a product nobody "
+                  "has seen before.",
+    "problem":    "Sit in the thing they already resent, before offering anything. "
+                  "Name it more precisely than they would themselves.",
+    "outcome":    "Open at the end: the evening back, the job entered, the invoice "
+                  "paid. Then show what produced it.",
+    "curiosity":  "Open on something that does not add up, and make them stay to "
+                  "find out. The gap must close honestly — a hook that cheats is "
+                  "a view you paid for and a customer you lost.",
+    "nothing":    "Compare with carrying on as they are — not with a competitor. "
+                  "The real alternative is the spreadsheet and the memory.",
+    "beforeafter":"The same thing twice, the second time better. Works only where "
+                  "the difference is visible in a second, with no explanation.",
+    "story":      "One person, one evening, a beginning and an end. Slower to pay "
+                  "off, and the angle that survives being watched twice.",
+    "challenge":  "Set a bar and meet it on camera. 'Built in the time it takes to "
+                  "make a coffee.' The bar must be real and the clock honest.",
+    "comparison": "Against the named alternative, conceding where it wins. A "
+                  "comparison that wins every row reads as marketing.",
+    "productfirst":"The thing itself, first frame, no setup. For an audience that "
+                   "already knows the problem and is shopping.",
+    "founder":    "The person who built it saying why. Needs a real founder on "
+                  "camera; it cannot be written for them.",
+    "customerpov":"Shot as if through the customer's eyes — their hands, their "
+                  "phone, their counter. Not a testimonial: a point of view.",
+    "proof":      "A real customer, in their own words, about their own result. "
+                  "Requires a real quote from a real person; never written for them.",
 }
+
+# Angles that cannot be written, only recorded. Each needs a real human who
+# actually said or did the thing, and generating them is fabricating a person.
 NEEDS_REAL_PROOF = {"proof"}
+NEEDS_A_HUMAN_ON_CAMERA = {"founder"}
 
 # The axes worth varying, and why each one is here rather than being a style knob.
 AXES = {
@@ -129,13 +150,18 @@ def _shape(line: str) -> str:
 def available_angles(concept: dict) -> tuple[str, ...]:
     """Which angles can be made honestly for this concept right now.
 
-    'proof' drops out unless a real customer quote is supplied. An invented
-    testimonial is the one mistake that costs more than any variant can win, and
-    the absence is worth seeing in the plan rather than papering over.
+    'proof' needs a real customer quote; 'founder' needs a real founder willing to
+    be filmed. Both drop out silently rather than being written, because an
+    invented testimonial is the one mistake that costs more than any variant can
+    win — and the absence is worth seeing in the plan rather than papered over.
     """
-    have = [a for a in ANGLES if a not in NEEDS_REAL_PROOF]
-    if (concept.get("proof") or {}).get("quote") and (concept.get("proof") or {}).get("who"):
+    blocked = NEEDS_REAL_PROOF | NEEDS_A_HUMAN_ON_CAMERA
+    have = [a for a in ANGLES if a not in blocked]
+    p = concept.get("proof") or {}
+    if p.get("quote") and p.get("who"):
         have.append("proof")
+    if (concept.get("founder") or {}).get("willing"):
+        have.append("founder")
     return tuple(have)
 
 
