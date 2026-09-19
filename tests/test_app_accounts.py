@@ -2738,3 +2738,39 @@ def test_the_builder_reports_unhealthy_rather_than_ok_false():
     src = open("builder/app.py").read()
     assert "response.status_code = 503" in src
     assert "async def health(response: Response)" in src
+
+
+def test_the_workspace_divider_can_be_moved_and_is_remembered():
+    """The conversation was pinned at 460px, so anyone wanting more room to read
+    their prompt — or more room to watch the page build — had no way to get it."""
+    html = open("app/web/index.html").read()
+    assert "var(--chatw,460px)" in html
+    assert 'id="grip"' in html and 'cursor:col-resize' in html
+    assert "creai_chatw" in html                      # remembered between visits
+
+
+def test_the_divider_is_not_mouse_only():
+    """A control only a mouse can move is not a control."""
+    html = open("app/web/index.html").read()
+    assert "ArrowLeft" in html and "ArrowRight" in html
+    assert 'role="separator"' in html and "aria-orientation" in html
+    assert "arrow keys" in html                       # and says so
+
+
+def test_neither_side_can_be_squeezed_away():
+    html = open("app/web/index.html").read()
+    assert "const MIN = 320, GAP = 360" in html
+    assert "window.innerWidth - GAP" in html
+    # and a shrinking window re-clamps rather than leaving the chat off-screen
+    assert "window.addEventListener('resize'" in html
+
+
+def test_the_preview_cannot_swallow_the_drag():
+    """An iframe eats pointer events, so a drag over it stops dead."""
+    html = open("app/web/index.html").read()
+    assert "body.dragging iframe{pointer-events:none}" in html
+
+
+def test_the_divider_is_hidden_where_there_is_one_pane():
+    html = open("app/web/index.html").read()
+    assert "#grip{display:none}" in html

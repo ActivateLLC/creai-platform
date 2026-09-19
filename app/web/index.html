@@ -129,7 +129,19 @@ html[data-theme=terminal] .tab::after{display:none}
 
 /* ---------------------------------------------------------------- layout */
 main{flex:1;min-height:0;display:flex}
-#chat{width:460px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--hairline);background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+/* The conversation was pinned at 460px with no way to change it, so anyone who
+   wanted more room to read their prompt — or more room to see the page being
+   built — had no way to get it. The width lives in a custom property so it can
+   be dragged, remembered, and reset. */
+#chat{width:var(--chatw,460px);flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--hairline);background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#grip{flex:0 0 7px;cursor:col-resize;position:relative;background:transparent;touch-action:none;
+  border:0;padding:0;align-self:stretch}
+#grip::before{content:"";position:absolute;inset:0 3px;background:var(--hairline);
+  transition:background .15s}
+#grip:hover::before,#grip:focus-visible::before,body.dragging #grip::before{background:var(--accent)}
+#grip:focus-visible{outline:none}
+body.dragging{cursor:col-resize;user-select:none}
+body.dragging iframe{pointer-events:none}   /* the preview must not swallow the drag */
 #work{flex:1;min-width:0;display:flex;flex-direction:column}
 .pane{flex:1;min-height:0;overflow:auto;padding:24px}
 
@@ -567,6 +579,7 @@ html[data-theme=day] .paybtn{color:#fff}
   .tabs .status{display:none}
   main{flex-direction:column}
   #chat{width:auto;border-right:0;flex:1;min-height:0}
+  #grip{display:none}                        /* one pane at a time on a phone */
   #work{flex:1;min-height:0}
   body[data-m=chat] #work,body[data-m=work] #chat{display:none}
   #thread,#composer{padding-left:16px;padding-right:16px}
@@ -637,6 +650,8 @@ html[data-theme=day] .paybtn{color:#fff}
       <div class="hint" id="hint">Nothing is registered, published or posted without your approval.</div>
     </div>
   </section>
+  <button id="grip" type="button" role="separator" aria-orientation="vertical"
+          aria-label="Drag to resize the conversation, or use the arrow keys"></button>
   <section id="work" aria-label="Workspace">
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tSite" aria-selected="true" type="button">Preview</button>
@@ -768,6 +783,63 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const S = { token: null, me: null, project: null, busy: false, mode: 'best', intent: 'build', balance: null };
 try { S.mode = localStorage.getItem('creai_mode') || 'best'; } catch (_) {}
 try { S.token = localStorage.getItem('creai_token'); } catch (_) {}
+
+// ---------------------------------------------------------------- resizing
+// Drag the divider to give the conversation more room, or the page being built
+// more room. Remembered per browser, because somebody who prefers a wide chat
+// prefers it tomorrow too.
+(function resizable() {
+  const MIN = 320, GAP = 360;          // never squeeze either side to nothing
+  const saved = (() => { try { return parseInt(localStorage.getItem('creai_chatw') || '', 10); }
+                         catch (_) { return NaN; } })();
+  const clamp = (px) => Math.max(MIN, Math.min(px, window.innerWidth - GAP));
+  const apply = (px, remember) => {
+    const w = clamp(px);
+    document.documentElement.style.setProperty('--chatw', w + 'px');
+    if (remember) { try { localStorage.setItem('creai_chatw', String(w)); } catch (_) {} }
+  };
+  if (Number.isFinite(saved)) apply(saved, false);
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const grip = document.getElementById('grip');
+    if (!grip) return;
+    let dragging = false;
+    const move = (x) => apply(x, false);
+    grip.addEventListener('pointerdown', (e) => {
+      dragging = true; grip.setPointerCapture(e.pointerId);
+      document.body.classList.add('dragging'); e.preventDefault();
+    });
+    grip.addEventListener('pointermove', (e) => { if (dragging) move(e.clientX); });
+    const end = (e) => {
+      if (!dragging) return;
+      dragging = false; document.body.classList.remove('dragging');
+      apply(e.clientX, true);
+    };
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+    // keyboard, because a divider only a mouse can move is not a control
+    grip.addEventListener('keydown', (e) => {
+      const cur = document.getElementById('chat').getBoundingClientRect().width;
+      if (e.key === 'ArrowLeft') { apply(cur - (e.shiftKey ? 80 : 16), true); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { apply(cur + (e.shiftKey ? 80 : 16), true); e.preventDefault(); }
+      if (e.key === 'Home' || e.key === 'Escape') {           // back to the default
+        document.documentElement.style.removeProperty('--chatw');
+        try { localStorage.removeItem('creai_chatw'); } catch (_) {}
+        e.preventDefault();
+      }
+    });
+    grip.addEventListener('dblclick', () => {
+      document.documentElement.style.removeProperty('--chatw');
+      try { localStorage.removeItem('creai_chatw'); } catch (_) {}
+    });
+  });
+  // a window that shrank must not leave the chat wider than the screen
+  window.addEventListener('resize', () => {
+    const cur = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue('--chatw')) || 0;
+    if (cur) apply(cur, false);
+  });
+})();
 // Where this person arrived from, kept from the very first page load so it
 // survives the trip through the email code. Written once and never overwritten:
 // whatever introduced somebody is what earned the signup.
