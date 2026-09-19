@@ -1016,6 +1016,25 @@ async function refreshPreview() {
   $('url').textContent = S.project ? (isApp ? 'app · ' : 'preview · ') + S.project.name : 'preview · draft';
 }
 
+// The whole interface said "site" in a game project — the tab, the composer, the
+// line while it worked. A person building a game was being told about a site
+// they had not asked for, which reads as the wrong thing being built.
+function thing() {
+  const kind = (S.project && S.project.kind) || '';
+  return { Game: 'game', App: 'app', Video: 'video' }[kind] || 'site';
+}
+function Thing() { const t = thing(); return t[0].toUpperCase() + t.slice(1); }
+
+function relabel() {
+  const t = thing();
+  const tab = $('mWork'); if (tab) tab.textContent = 'Your ' + t;
+  const box = $('input');
+  if (box) box.placeholder = { game: 'Describe the game you want\u2026',
+                               app: 'Describe the app you want\u2026',
+                               video: 'Describe the video you want\u2026'
+                             }[t] || 'Describe your business\u2026';
+}
+
 function setStatus(text, color) { $('sText').textContent = text; $('sDot').style.color = color; }
 
 // ------------------------------------------------------------ talking
@@ -1047,8 +1066,8 @@ async function send(text, intentOverride) {
   const w = el('div', 'working msg'); const d = el('span', 'dot pulse');
   const term = document.documentElement.dataset.theme === 'terminal';
   const label = el('span', null, term
-    ? ({ build: 'building', chat: 'thinking', plan: 'planning' }[S.intent] + '… ▍')
-    : ({ build: 'Building your site', chat: 'Thinking', plan: 'Drafting a plan' }[S.intent]));
+    ? ((S.intent === 'build' ? 'building the ' + thing() : ({ chat: 'thinking', plan: 'planning' }[S.intent])) + '… ▍')
+    : ({ build: 'Building your ' + thing(), chat: 'Thinking', plan: 'Drafting a plan' }[S.intent]));
   w.append(d, label);
   // The agent narrates as it works — wrote this, checked that, looked at it on a
   // phone. Those lines used to arrive only when the turn finished, so a long
@@ -1096,7 +1115,8 @@ async function send(text, intentOverride) {
     renderActions(out.actions);
     if (out.posts && out.posts.length) { $('tPosts').hidden = false; loadPosts(); }
     refreshPreview();
-    if (window.matchMedia('(max-width:860px)').matches && (out.log || []).length) flash('Your site updated — tap “Your site” to see it.');
+    if (window.matchMedia('(max-width:860px)').matches && (out.log || []).length)
+      flash('Your ' + thing() + ' updated — tap \u201cYour ' + thing() + '\u201d to see it.');
   } catch (e) {
     w.remove();
     $('thread').append(el('div', 'err msg', e.message));
@@ -1757,10 +1777,12 @@ async function openProject(pid) {
   const t = await api('/v1/agent/projects/' + pid);
   S.project = t.project;
   PJ.pending = null;
+  relabel();                 // a reopened game must not inherit the site wording
   setProjectName(PJ.list.find(x => x.id === t.project.id) || t.project);
   renderThread(t.messages);
   lastAppError = '';
-  if (S.project && S.project.path === 'app') { $('stage').hidden = true; setStatus('App · running in a sandbox', 'var(--leaf)'); }
+  if (S.project && S.project.path === 'game') { $('stage').hidden = true; setStatus('Game · build to play it', 'var(--leaf)'); }
+  else if (S.project && S.project.path === 'app') { $('stage').hidden = true; setStatus('App · running in a sandbox', 'var(--leaf)'); }
   else if (isExternal()) { $('stage').hidden = true; setStatus(S.project.path === 'market' ? 'Marketing' : 'Webflow · edits staged', 'var(--leaf)'); }
   else { setHasSite(t.site); setStatus('Draft · not published', 'var(--dim)'); }
   if (S.project && S.project.path === 'app') { refreshPreview(); loadRelease(); } else $('pubBar').hidden = true;
@@ -2538,6 +2560,8 @@ function startNew(kind) {
   setProjectName(null);
   $('readyBar').hidden = true; $('pubBar').hidden = true;
   setStatus({ app: 'New app', game: 'New game' }[kind] || 'New project', 'var(--dim)');
+  { const tab = $('mWork'); if (tab) tab.textContent =
+      'Your ' + ({ app: 'app', game: 'game' }[kind] || 'site'); }
   setHasSite(null); refreshPreview();
   setIntent('build'); setMobile('chat');
   $('input').value = '';

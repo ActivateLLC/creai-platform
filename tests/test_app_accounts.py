@@ -2949,3 +2949,17 @@ async def test_a_build_that_is_genuinely_running_still_blocks_and_says_how_long(
         await godot.start(pid, org, None)
     assert "exporting" in str(e.value) and "s in" in str(e.value)
     assert "free up on its own" in str(e.value)       # and says it will recover
+
+
+def test_the_interface_calls_a_game_a_game():
+    """A person building a game was told about a site they had not asked for:
+    the tab said 'Your site', the composer said 'Describe your business', and
+    the working line said 'Building your site'."""
+    html = open("app/web/index.html").read()
+    assert "function thing()" in html
+    assert "Game: 'game', App: 'app', Video: 'video'" in html
+    assert "'Building your ' + thing()" in html
+    assert "'Your ' + t" in html                       # the tab follows too
+    assert "Describe the game you want" in html
+    # and reopening a project relabels rather than inheriting
+    assert "relabel();" in html
