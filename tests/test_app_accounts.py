@@ -2720,3 +2720,21 @@ async def test_health_can_be_asked_whether_things_actually_answer(api):
     # and it never raises, whatever it finds
     for state in deep["reachable"].values():
         assert isinstance(state, str) and state
+
+
+def test_a_game_can_actually_be_started_from_the_app():
+    """The game builder was live for weeks with no way in: the backend worked and
+    the menu never offered it, so to anyone using the app games did not exist."""
+    html = open("app/web/index.html").read()
+    assert "'New game', 'game'" in html
+    assert "Describe the game you want" in html
+    # and the project is created with the right path
+    assert "game: 'New game'" in html
+
+
+def test_the_builder_reports_unhealthy_rather_than_ok_false():
+    """A status code is the only part Railway's check and ours ever read. 200
+    with ok:false meant both called it healthy while it could not export."""
+    src = open("builder/app.py").read()
+    assert "response.status_code = 503" in src
+    assert "async def health(response: Response)" in src

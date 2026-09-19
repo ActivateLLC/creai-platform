@@ -19,7 +19,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 import video
@@ -113,10 +113,20 @@ async def _run(args: list[str], cwd: Path) -> tuple[int, str]:
 
 
 @app.get("/health")
-async def health():
+async def health(response: Response):
+    """Whether this builder can actually build.
+
+    Returns 503 when Godot does not answer. Returning 200 with {"ok": false} left
+    the platform's health check and Railway's own both calling this service
+    healthy while it could not export a game — a status code is the only part
+    either of them reads.
+    """
     code, out = await _run([GODOT, "--headless", "--version"], Path("/tmp"))
     have_ff = shutil.which("ffmpeg") is not None
-    return {"ok": code == 0, "godot": out.strip()[:40], "video": have_ff, "version": VERSION}
+    ok = code == 0
+    if not ok:
+        response.status_code = 503
+    return {"ok": ok, "godot": out.strip()[:40], "video": have_ff, "version": VERSION}
 
 
 class Clip(BaseModel):

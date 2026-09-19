@@ -963,7 +963,8 @@ async function send(text, intentOverride) {
   if (PJ.pending && S.token && !S.project) {
     try {
       const made = await api('/v1/projects', { method: 'POST', body: JSON.stringify({
-        name: PJ.pending === 'app' ? 'New app' : PJ.pending === 'market' ? 'Marketing' : 'New site', path: PJ.pending }) });
+        name: { app: 'New app', game: 'New game', market: 'Marketing' }[PJ.pending] || 'New site',
+        path: PJ.pending }) });
       PJ.pending = null;
       await openProject(made.id);
       history.replaceState({ p: made.id }, '', '?p=' + made.id);
@@ -2426,8 +2427,12 @@ async function openProjMenu() {
     m.append(row);
   }
   const news = el('div', 'newrow');
+  // Games were buildable for weeks with no way to start one — the backend was
+  // live and the menu never offered it, so to anyone using the app they simply
+  // did not exist.
   for (const [label, kind, hint] of [['New site', 'launch', 'Describe a business and watch it build'],
                                      ['New app', 'app', 'A working app with screens and data'],
+                                     ['New game', 'game', 'Playable in a browser, or exported from Godot'],
                                      ['Edit an existing site', 'edit', 'Connect Webflow and change it by chat'],
                                      ['Grow my business', 'market', 'Brand kit and posts from your site']]) {
     const row = el('button', 'prow'); row.type = 'button'; row.setAttribute('role', 'menuitem');
@@ -2460,13 +2465,16 @@ function startNew(kind) {
   renderThread([]);
   setProjectName(null);
   $('readyBar').hidden = true; $('pubBar').hidden = true;
-  setStatus(kind === 'app' ? 'New app' : 'New project', 'var(--dim)');
+  setStatus({ app: 'New app', game: 'New game' }[kind] || 'New project', 'var(--dim)');
   setHasSite(null); refreshPreview();
   setIntent('build'); setMobile('chat');
   $('input').value = '';
-  $('input').placeholder = kind === 'app' ? 'Describe the app you want…' : 'Describe your business…';
+  $('input').placeholder = { app: 'Describe the app you want\u2026',
+                             game: 'Describe the game you want\u2026'
+                           }[kind] || 'Describe your business\u2026';
   $('input').focus();
-  addAgent(kind === 'app' ? 'Tell me what the app should do and who uses it, and I\u2019ll build the first version.'
+  addAgent(kind === 'game' ? 'Tell me what the game is and how it plays \u2014 I\u2019ll build it so you can play it in the browser, and export it properly if you want that.'
+    : kind === 'app' ? 'Tell me what the app should do and who uses it, and I\u2019ll build the first version.'
     : kind === 'market' ? 'Tell me about your business and I\u2019ll read your site, save your brand kit and draft posts.'
     : 'Tell me about your business in a sentence and I\u2019ll build the first version.');
 }
