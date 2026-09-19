@@ -2963,3 +2963,52 @@ def test_the_interface_calls_a_game_a_game():
     assert "Describe the game you want" in html
     # and reopening a project relabels rather than inheriting
     assert "relabel();" in html
+
+
+# ---------------------------------------------------------------- honest failures
+
+def test_an_account_problem_is_not_called_a_bad_request():
+    """The bill being unpaid produced 'please try rephrasing', which sent somebody
+    to fix the one thing that could not possibly be the problem — twice."""
+    from app.services import models
+    class Refused:
+        status_code = 400
+        text = ('{"error":{"message":"Your credit balance is too low to access the '
+                'Anthropic API. Please go to Plans & Billing."}}')
+    m = models.REGISTRY[list(models.REGISTRY)[0]]
+    with pytest.raises(models.ModelAccountProblem):
+        models._raise_for(Refused(), m)
+
+    class GenuinelyBad:
+        status_code = 400
+        text = '{"error":{"message":"messages: at least one message is required"}}'
+    with pytest.raises(models.ModelRejected):
+        models._raise_for(GenuinelyBad(), m)
+
+
+@pytest.mark.asyncio
+async def test_the_message_for_an_account_problem_says_it_is_not_the_persons_fault(monkeypatch):
+    """Check the sentence a person reads, not the source around it — the first
+    version of this test failed on the word 'rephrase' inside a comment."""
+    from app.services import agent, models
+
+    async def refuse(*a, **kw):
+        raise models.ModelAccountProblem("credit balance is too low")
+
+    monkeypatch.setattr(models, "complete", refuse)
+    with pytest.raises(agent.AgentUnavailable) as e:
+        await agent._call([{"role": "user", "content": "hello"}], [], "sys", "m")
+    said = str(e.value)
+    assert "account problem on our side" in said
+    assert "not anything you did" in said and "Nothing was charged" in said
+    assert "rephras" not in said.lower()
+
+
+def test_a_turn_that_never_reached_the_model_is_not_billed():
+    """The charge happens after the turn returns; an exception means it is never
+    reached. Worth pinning, because moving the charge earlier would silently
+    start billing for failures."""
+    src = open("app/api/agent.py").read()
+    run_at = src.index("turn = await _run(")
+    charge_at = src.index("billing.charge_usage")
+    assert run_at < charge_at

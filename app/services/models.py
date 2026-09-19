@@ -62,6 +62,15 @@ class ModelUnavailable(RuntimeError):
     """The provider could not serve the request (down, overloaded, unconfigured)."""
 
 
+class ModelAccountProblem(RuntimeError):
+    """The provider refused because of the account, not the request.
+
+    Separate from ModelRejected on purpose: one is something a person can fix by
+    saying it differently, and the other is not. Collapsing them tells somebody
+    to rephrase a message that was never the problem.
+    """
+
+
 class ModelRejected(RuntimeError):
     """The provider refused the request as invalid. Not retried on another model."""
 
@@ -200,11 +209,20 @@ async def _meta(m: Model, messages, tools, system, max_tokens) -> dict:
 PROVIDERS = {"anthropic": _anthropic, "meta": _meta}
 
 
+# Refusals that are about the account rather than the message. Telling somebody
+# to rephrase when the bill is unpaid sends them to fix the one thing that cannot
+# be the problem — and they will try, twice, before asking.
+ACCOUNT_TROUBLE = ("credit balance is too low", "billing", "quota", "insufficient",
+                   "payment", "subscription", "spending limit", "rate limit")
+
+
 def _raise_for(r: httpx.Response, m: Model) -> None:
     if r.status_code == 200:
         return
     detail = r.text[:300]
     log.warning("%s (%s) returned %s: %s", m.key, m.provider, r.status_code, detail)
+    if any(w in detail.lower() for w in ACCOUNT_TROUBLE):
+        raise ModelAccountProblem(detail)
     if r.status_code in (400, 404, 422):
         raise ModelRejected(f"{m.key} rejected the request")
     raise ModelUnavailable(f"{m.key} unavailable ({r.status_code})")

@@ -686,6 +686,12 @@ async def _call(messages: list, tools: list, system: str, model: str, max_tokens
         if not any(models.configured(k) for k in models.REGISTRY):
             raise AgentUnavailable("the agent is not configured on this deployment")
         raise AgentUnavailable("The assistant is temporarily unavailable. Please try again in a moment.")
+    except models.ModelAccountProblem as exc:
+        # Says what is actually wrong. Nobody can rephrase their way past a bill.
+        log.error("model account problem: %s", exc)
+        raise AgentUnavailable(
+            "Creai can\u2019t reach the model right now \u2014 this is an account problem on "
+            "our side, not anything you did. Nothing was charged. Try again shortly.")
     except models.ModelRejected as exc:
         log.error("model rejected request: %s", exc)
         raise AgentUnavailable("The assistant hit a problem with this request. Please try rephrasing.")
