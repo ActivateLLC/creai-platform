@@ -2797,3 +2797,53 @@ def test_godot_builds_run_on_the_best_model():
     assert _model("best", "build") == settings.agent_model
     assert _model("fast", "build") == settings.agent_fast_model
     assert _model("best", "chat") == settings.agent_fast_model
+
+
+def test_the_game_brief_says_how_to_look_expensive_without_art_files():
+    """Text source only means craft has to come from shaders, glow, easing and
+    type — all available, and almost nobody uses them."""
+    from app.services import agent
+    g = agent.GAME_EXTRA
+    assert ".gdshader" in g and "single biggest lever" in g
+    assert "WorldEnvironment with glow" in g
+    assert "TRANS_CUBIC" in g and "Linear motion" in g
+    assert "three colours and one accent" in g
+    assert "Transitions, not cuts" in g
+
+
+def test_the_reviewer_notices_a_game_that_compiles_and_looks_like_a_prototype():
+    from app.services import godot
+    plain = {"project.godot": 'config_version=5\n[application]\nrun/main_scene="res://m.tscn"\n',
+             "m.tscn": '[gd_scene format=3]\n[node name="M" type="Node2D"]\n',
+             "m.gd": 'extends Node2D\nvar t = create_tween()\n'}
+    out = godot.review(plain)
+    notes = " ".join(out["notes"])
+    assert "No shader" in notes
+    assert "glow" in notes
+    assert "linear" in notes
+
+
+def test_craft_notes_never_block_a_build():
+    """A checker that stops a release over a missing vignette is ignored within
+    a week."""
+    from app.services import godot
+    good = {"project.godot": ('config_version=5\n[application]\nrun/main_scene="res://m.tscn"\n'
+                              'config/features=PackedStringArray("4.5", "GL Compatibility")\n'
+                              '[rendering]\nrenderer/rendering_method="gl_compatibility"\n'),
+            "m.tscn": '[gd_scene format=3]\n[node name="M" type="Node2D"]\n',
+            "m.gd": 'extends Node2D\n'}
+    out = godot.review(good)
+    assert out["ok"] is True          # notes present or not, it still builds
+
+
+def test_the_starter_meets_the_bar_it_sets():
+    """Whatever the starter demonstrates is what gets built on. One that trips the
+    craft checks teaches the shape of a prototype."""
+    from app.services import godot
+    assert any(k.endswith(".gdshader") for k in godot.STARTER)
+    src = "\n".join(godot.STARTER.values())
+    assert "glow_enabled" in src
+    assert "TRANS_BACK" in src and "EASE_OUT" in src       # eased, not linear
+    assert src.count("font_size") >= 2                     # type varies
+    out = godot.review(godot.STARTER)
+    assert out == {"ok": True, "problems": [], "notes": []}

@@ -59,8 +59,12 @@ class GameError(ValueError):
 
 # ---------------------------------------------------------------- the starter
 
+# What every game begins from. Upgraded deliberately: a starter that trips the
+# craft checks teaches the shape of a prototype, and whatever it demonstrates is
+# what gets built on. So it ships with a shader, glow, eased motion and type that
+# varies — the four things that separate a Godot project from a game.
 STARTER = {
-    "project.godot": '''config_version=5
+    "project.godot": """config_version=5
 
 [application]
 config/name="New game"
@@ -75,36 +79,98 @@ window/stretch/aspect="keep"
 
 [rendering]
 renderer/rendering_method="gl_compatibility"
-''',
-    "main.tscn": '''[gd_scene load_steps=2 format=3]
+environment/defaults/default_clear_color=Color(0.055, 0.067, 0.086, 1)
+""",
+
+    # A full-screen shader is the cheapest way to stop a game looking like a
+    # prototype: a gradient that drifts, and a vignette that frames the play.
+    "backdrop.gdshader": """shader_type canvas_item;
+
+uniform float warmth : hint_range(0.0, 1.0) = 0.0;
+
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	vec3 low = vec3(0.055, 0.067, 0.086);
+	vec3 high = mix(vec3(0.098, 0.125, 0.165), vec3(0.16, 0.11, 0.09), warmth);
+	vec3 col = mix(high, low, smoothstep(0.0, 1.0, uv.y));
+	float edge = distance(uv, vec2(0.5)) * 1.25;
+	col *= 1.0 - smoothstep(0.35, 0.95, edge) * 0.55;   // vignette
+	COLOR = vec4(col, 1.0);
+}
+""",
+
+    "main.tscn": """[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
+[ext_resource type="Shader" path="res://backdrop.gdshader" id="2"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
+shader = ExtResource("2")
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
 
-[node name="Title" type="Label" parent="."]
-offset_left = 24.0
-offset_top = 300.0
-offset_right = 456.0
-offset_bottom = 360.0
-text = "Describe your game in the chat"
-horizontal_alignment = 1
-''',
-    "main.gd": '''extends Node2D
+[node name="Backdrop" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_1")
+offset_right = 480.0
+offset_bottom = 720.0
 
-# Creai will replace this with your game. Tell it what you want to play.
+[node name="Glow" type="WorldEnvironment" parent="."]
+
+[node name="Title" type="Label" parent="."]
+offset_left = 32.0
+offset_top = 392.0
+offset_right = 448.0
+offset_bottom = 444.0
+text = "Describe your game"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 34
+
+[node name="Hint" type="Label" parent="."]
+offset_left = 32.0
+offset_top = 444.0
+offset_right = 448.0
+offset_bottom = 472.0
+text = "in the chat"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 15
+modulate = Color(1, 1, 1, 0.55)
+""",
+
+    "main.gd": """extends Node2D
+
+# Creai will replace this with your game. What is here is the floor, not the
+# ceiling: a shader backdrop, glow, eased motion and type that varies. Keep
+# those when you build over it.
 
 var t := 0.0
 
+func _ready() -> void:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CANVAS
+	env.glow_enabled = true
+	env.glow_intensity = 0.9
+	env.glow_bloom = 0.15
+	$Glow.environment = env
+
+	# entrances overshoot slightly and settle — never linear
+	$Title.modulate.a = 0.0
+	$Title.position.y += 14.0
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property($Title, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property($Title, "position:y", $Title.position.y - 14.0, 0.6) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
 func _process(delta: float) -> void:
-\tt += delta
-\tqueue_redraw()
+	t += delta
+	queue_redraw()
 
 func _draw() -> void:
-\tvar y := 200.0 + sin(t * 2.0) * 20.0
-\tdraw_circle(Vector2(240, y), 28.0, Color(0.3, 0.9, 0.6))
-''',
+	var y := 250.0 + sin(t * 1.6) * 18.0
+	# emissive against a dark field, so the glow has something to catch
+	draw_circle(Vector2(240, y), 30.0, Color(0.37, 0.98, 0.70))
+	draw_circle(Vector2(240, y), 44.0, Color(0.37, 0.98, 0.70, 0.12))
+"""
 }
 
 
@@ -228,7 +294,45 @@ def review(game_files: dict[str, str]) -> dict:
     for orphan in sorted(scripts - used - {"main.gd"}):
         notes.append(f"{orphan} isn't attached to any scene or loaded anywhere")
 
+    notes.extend(_craft(game_files))
     return {"ok": not problems, "problems": problems[:20], "notes": notes[:10]}
+
+
+def _craft(files: dict[str, str]) -> list[str]:
+    """What separates a game that exports from a game worth playing.
+
+    These are notes, never problems: none of them stops a build, and a checker
+    that blocks a release over a missing vignette would be ignored within a week.
+    But a game that trips several of them will look like a prototype however
+    correct the code is, and nothing else in the pipeline can see that.
+    """
+    source = "\n".join(v or "" for k, v in files.items()
+                       if k.endswith((".gd", ".tscn", ".godot", ".gdshader")))
+    notes = []
+
+    if not any(k.endswith(".gdshader") for k in files):
+        notes.append("No shader. A full-screen ColorRect with twenty lines of .gdshader — a "
+                     "gradient that shifts with the score, a vignette that tightens under "
+                     "pressure — is the largest visual upgrade available without art files.")
+    if "WorldEnvironment" not in source and "glow_enabled" not in source:
+        notes.append("No WorldEnvironment with glow. Emissive colour on simple shapes is what "
+                     "stops flat rectangles looking like flat rectangles.")
+    if "create_tween" in source or "Tween" in source:
+        if "TRANS_" not in source:
+            notes.append("Tweens with no transition curve run linear, which is the clearest "
+                         "signal nobody directed the motion. TRANS_CUBIC or TRANS_BACK with "
+                         "EASE_OUT costs one line.")
+    if "position_smoothing" not in source and "Camera2D" in source:
+        notes.append("The camera is locked. position_smoothing_enabled and a small drift "
+                     "toward where the player is heading reads as deliberate.")
+    sizes = set(re.findall(r"font_size\s*=\s*(\d+)", source))
+    if len(sizes) == 1:
+        notes.append("Every label is the same size. Varying type hard — a score at 64 and a "
+                     "hint at 14 — is the difference between designed and placeholder.")
+    if "shake" not in source.lower() and "Camera2D" in source:
+        notes.append("Nothing shakes, flashes or squashes on impact. A few frames of response "
+                     "to a hit is most of what 'feel' means.")
+    return notes
 
 
 def _script_problems(path: str, src: str) -> list[str]:

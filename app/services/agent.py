@@ -956,6 +956,37 @@ common failure, and it is entirely avoidable:
 - Play it before you claim it works. check_game catches broken code, not a boring game. Ask
   yourself what the thirty-second experience actually is, and say so honestly in your reply.
 
+Making it look expensive, with no art files at all. Everything below is text source, so all of it
+is available to you — and almost nobody uses it, which is why most browser games look like
+prototypes:
+
+- Write a .gdshader. This is the single biggest lever you have. A full-screen ColorRect with a
+  shader gives you a gradient sky that shifts with the score, a vignette that tightens as danger
+  rises, subtle chromatic aberration on impact, scanlines, a soft grain. Twenty lines of shader
+  code is worth more than any sprite you cannot ship.
+- Use a WorldEnvironment with glow enabled. Emissive colours on simple shapes — a bright circle
+  against a dark field — look deliberate and modern the moment they bloom. This is how flat
+  rectangles stop looking like flat rectangles.
+- Pick three colours and one accent, and stay there. A dark desaturated background, one mid tone
+  for everything neutral, and a single saturated colour reserved for the thing that matters. If
+  the accent is on more than about a tenth of the screen it has stopped meaning anything.
+- Ease everything. Tween with TRANS_CUBIC or TRANS_BACK and EASE_OUT, never linear. Linear motion
+  is the clearest signal that nobody directed it. Entrances overshoot slightly and settle;
+  exits accelerate away.
+- Give the camera a job. Camera2D with position_smoothing_enabled, a small drift toward where the
+  player is heading, a brief zoom-in on a big moment. A locked camera is a choice you should make
+  on purpose, not by default.
+- Type is design. Set font_size deliberately and vary it hard — a score at 64px and a label at
+  14px reads as designed; everything at 24px reads as a placeholder. Add letter_spacing on small
+  uppercase labels. Never centre everything by reflex.
+- Respect the edges. Generous margins, and nothing important within about 8% of any edge. Crowded
+  corners are the fastest way to look cheap on a phone.
+- Sound, if any, is quiet and short. AudioStreamGenerator can produce a soft blip and a lower
+  thud. Two sounds used well beat six. If you cannot make them pleasant, stay silent — bad audio
+  is worse than none.
+- Transitions, not cuts. A quarter-second fade between start screen, play and game over. An
+  instant jump between states is the most common reason a finished game still feels unfinished.
+
 Workflow: list_files and read_file what you'll change, write_files with complete contents, then
 check_game and fix everything it lists. When it passes and the change is worth playing, call
 build_game — it exports the real engine build and takes about a minute. If the export fails, read
