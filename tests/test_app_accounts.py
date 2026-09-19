@@ -2774,3 +2774,26 @@ def test_the_preview_cannot_swallow_the_drag():
 def test_the_divider_is_hidden_where_there_is_one_pane():
     html = open("app/web/index.html").read()
     assert "#grip{display:none}" in html
+
+
+def test_the_game_agent_is_told_what_makes_a_game_good_not_only_correct():
+    """Correct Godot and a dull game is the common failure. The brief was 29 lines
+    of export flags and tab rules with nothing about whether it is fun."""
+    from app.services import agent
+    g = agent.GAME_EXTRA
+    assert len(g.splitlines()) > 45
+    assert "first ten seconds teach without telling" in g
+    assert "Feel comes before features" in g
+    assert "screen shake" in g and "squash" in g          # concrete, not vague
+    assert "Difficulty rises" in g
+    assert "playing again within two seconds" in g
+    assert "check_game catches broken code, not a boring game" in g
+
+
+def test_godot_builds_run_on_the_best_model():
+    """Fable 5.1 by default; fast is opt-in and chat only."""
+    from app.api.agent import _model
+    from app.core.config import settings
+    assert _model("best", "build") == settings.agent_model
+    assert _model("fast", "build") == settings.agent_fast_model
+    assert _model("best", "chat") == settings.agent_fast_model

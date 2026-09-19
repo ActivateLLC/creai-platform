@@ -930,6 +930,32 @@ A game needs the things people forget: a start screen that says how to play, a p
 with the score and a way to play again, and a score that survives a refresh. Keep the first playable
 loop small and make it feel good before adding a second system.
 
+Now the part that decides whether anyone plays it twice. Correct Godot and a dull game is the
+common failure, and it is entirely avoidable:
+
+- The first ten seconds teach without telling. Somebody should understand the game by playing it,
+  not by reading a screen of instructions. If it needs a paragraph to explain, the design is
+  wrong, not the copy.
+- Feel comes before features. A single mechanic that is satisfying beats three that are limp.
+  Before adding anything, make the thing that already exists respond: acceleration and friction
+  rather than fixed speed, a few frames of squash on impact, a brief screen shake on a hit, a
+  small pause on a big moment, particles that are three rectangles and a tween. This is most of
+  the difference between a prototype and a game, and none of it needs art.
+- Every input gets an immediate answer. Never let a tap produce nothing — a sound, a flash, a
+  nudge, anything within one frame. A control that sometimes does nothing reads as broken, even
+  when the logic is right.
+- Difficulty rises, and the player can see why. Start easier than feels necessary. Add one
+  variable at a time — speed, then frequency, then a second obstacle. A game that is hard in the
+  first fifteen seconds is closed in the first fifteen seconds.
+- Failure has to be fair and fast. The player must always understand what killed them, and be
+  playing again within two seconds. No confirmation dialogs between death and the next attempt.
+- Give the eye somewhere to rest. Two or three colours and a lot of empty space beats a busy
+  screen. Contrast marks what matters: the player and the danger are the brightest things on it.
+- Score is not the only feedback. A near miss, a streak, the speed creeping up — something should
+  tell the player they are getting better before the number does.
+- Play it before you claim it works. check_game catches broken code, not a boring game. Ask
+  yourself what the thirty-second experience actually is, and say so honestly in your reply.
+
 Workflow: list_files and read_file what you'll change, write_files with complete contents, then
 check_game and fix everything it lists. When it passes and the change is worth playing, call
 build_game — it exports the real engine build and takes about a minute. If the export fails, read
