@@ -3012,3 +3012,14 @@ def test_a_turn_that_never_reached_the_model_is_not_billed():
     run_at = src.index("turn = await _run(")
     charge_at = src.index("billing.charge_usage")
     assert run_at < charge_at
+
+
+def test_the_game_agent_names_the_ceiling_before_building_past_it():
+    """A customer asked for a realistic 3D game and got 2D shapes with no
+    warning. It was the silence, not the shapes, that lost them."""
+    from app.services import agent
+    g = agent.GAME_EXTRA
+    assert g.strip().startswith("Before anything else, say what this cannot be")
+    assert "No photorealism" in g and "No online multiplayer" in g
+    assert "say so FIRST" in g
+    assert "let them decide before you spend their credits" in g
