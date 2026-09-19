@@ -339,6 +339,25 @@ TOOL_REVIEW_CUT = {
         "required": ["video_id"]},
 }
 
+TOOL_PLAYTEST = {
+    "name": "playtest",
+    "description": "Run the built game in a real browser, photograph the start screen, the "
+                   "first tap, ten seconds in and twenty seconds in, and judge the frames "
+                   "against WHAT THE PERSON ASKED FOR. This is the check that catches a "
+                   "game that compiled, exported, passed every static test, and still "
+                   "looks nothing like the request \u2014 dots where they asked for people.\n"
+                   "Call this after build_game succeeds and BEFORE you tell the person it "
+                   "is done. If it says 'fix', fix it and build again. If it says the game "
+                   "does not match the request, that is the finding to lead with \u2014 not "
+                   "something to soften. It fails open: an unreviewed build is still a build.",
+    "input_schema": {"type": "object", "properties": {
+        "request": {"type": "string",
+                    "description": "What the person actually asked for, in their words"},
+        "concept": {"type": "string",
+                    "description": "The one-line concept you built to, if you have one"}},
+        "required": ["request"]},
+}
+
 TOOL_POLISH = {
     "name": "polish_look",
     "description": "Ask a second model, one good at visual design, for concrete improvements "
@@ -1076,7 +1095,11 @@ common failure, and it is entirely avoidable:
   no lag compensation, no matchmaking. Two people play on ONE device: split keyboard, split
   screen, or passing the phone. Say that plainly if somebody asks for online multiplayer, and
   offer the local version rather than building something that cannot work.
-- Play it before you claim it works. check_game catches broken code, not a boring game. Ask
+- Play it before you claim it works. After build_game succeeds, call playtest with the
+  person's own words. It runs the game and looks at it with their request in hand \u2014 the
+  check that catches a game which compiled perfectly and looks nothing like what was asked.
+  If it says the game does not match the request, that is what you tell them first.
+- check_game catches broken code, not a boring game. Ask
   yourself what the thirty-second experience actually is, and say so honestly in your reply.
 
 You can draw real artwork. This is the most underused thing available to you, and it changes what
@@ -1217,7 +1240,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
         system += GAME_EXTRA
     if intent == "build" and game is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_GAME,
-                 TOOL_BUILD_GAME, TOOL_DELETE_FILE, TOOL_GENERATE_IMAGE,
+                 TOOL_BUILD_GAME, TOOL_PLAYTEST, TOOL_DELETE_FILE, TOOL_GENERATE_IMAGE,
                  TOOL_GENRE, TOOL_POLISH, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
     elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
@@ -1531,6 +1554,26 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             verdict = await crit.review(row["url"])
             turn.log.append(f"reviewed the cut: {verdict.get('verdict')}")
             return {"ok": True, **verdict}
+
+        if name == "playtest":
+            from . import playtest as pt
+            from ..core.db import conn as _conn
+            from ..api.games import public_url
+            async with _conn() as c:
+                rel = await c.fetchrow(
+                    """SELECT slug FROM game_releases
+                       WHERE project_id=$1 AND org_id=$2 ORDER BY id DESC LIMIT 1""",
+                    project_id, org_id) if (project_id and org_id) else None
+            if not rel:
+                return {"ok": False,
+                        "error": "there is no built game to play yet \u2014 build_game first"}
+            result = await pt.play(public_url(rel["slug"]),
+                                   str(args.get("request") or ""),
+                                   concept=str(args.get("concept") or ""))
+            turn.log.append(pt.summarise(result))
+            return {"ok": True, **result,
+                    "note": ("Lead with matches_request if it is false. A game that is not "
+                             "what was asked for is the finding, whatever else is right.")}
 
         if name == "polish_look":
             from . import polish as pol

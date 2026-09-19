@@ -259,3 +259,69 @@ def test_polish_reads_the_right_store_for_the_project_kind():
     i = src.index('if name == "polish_look":')
     block = src[i:i + 900]
     assert "store = godot if game is not None else appfs" in block
+
+
+# ---------------------------------------------------------------- the playtester
+
+def test_the_playtester_judges_against_the_request_not_the_code():
+    """A customer asked for realistic characters and got dots. It compiled,
+    exported, and passed every static check. Nothing ever looked at it with
+    the request in hand."""
+    from app.services import playtest
+    s = playtest.SYSTEM
+    assert "DOES IT LOOK LIKE WHAT WAS ASKED FOR" in s
+    assert "dots" in s and "realistic characters" in s          # the actual failure, named
+    assert "The request is the standard, not the code" in s
+    assert "Do not flatter" in s
+
+
+def test_the_playtester_looks_at_the_moments_that_matter():
+    from app.services import playtest
+    names = [m[0] for m in playtest.MOMENTS]
+    assert names[0] == "start"                                   # what anyone sees first
+    assert "first_input" in names                                # does a tap do anything
+    assert any(m[2] == "tap" for m in playtest.MOMENTS)          # and it actually taps
+
+
+@pytest.mark.asyncio
+async def test_the_playtester_fails_open():
+    """An unreviewed build is still a build. The second opinion that was
+    missing must not become a gate that stops shipping when it is down."""
+    from app.services import playtest
+    from app.core.config import settings
+    original = settings.openai_key
+    object.__setattr__(settings, "openai_key", "")
+    try:
+        out = await playtest.play("https://example.com/g/x/", "a racing game")
+    finally:
+        object.__setattr__(settings, "openai_key", original)
+    assert out["verdict"] == "unreviewed"
+    assert out["found"] == []
+
+
+def test_a_mismatch_leads_the_summary():
+    from app.services import playtest
+    r = {"verdict": "fix", "matches_request": False, "works": True,
+         "found": [{"what": "player is a plain circle; request asked for a realistic person"}]}
+    assert playtest.summarise(r).startswith("does not match the request")
+    ok = {"verdict": "ship", "matches_request": True, "works": True, "found": []}
+    assert playtest.summarise(ok) == "playtested — plays as asked"
+
+
+def test_the_game_agent_is_offered_the_playtester_and_told_to_use_it():
+    from app.services import agent
+    src = open("app/services/agent.py").read()
+    game_tools = src[src.index('if intent == "build" and game is not None:'):][:400]
+    assert "TOOL_PLAYTEST" in game_tools
+    assert "call playtest with the" in agent.GAME_EXTRA
+    assert "that is what you tell them first" in agent.GAME_EXTRA
+
+
+def test_the_game_division_strategy_is_written_down():
+    doc = open("docs/game-division.md").read()
+    assert "A game that finds its players" in doc
+    assert "70%" in doc and "$570" in doc                         # grounded in the data
+    for agent_name in ("Concept", "Art director", "Playtester", "Store readiness",
+                       "Launch", "Community"):
+        assert agent_name in doc
+    assert "What would make this fail" in doc                     # and honest about risk
