@@ -2847,3 +2847,57 @@ def test_the_starter_meets_the_bar_it_sets():
     assert src.count("font_size") >= 2                     # type varies
     out = godot.review(godot.STARTER)
     assert out == {"ok": True, "problems": [], "notes": []}
+
+
+# ---------------------------------------------------------------- genres
+
+def test_each_genre_carries_what_somebody_who_shipped_one_would_say():
+    from app.services import genres
+    assert len(genres.GENRES) >= 9
+    for name, g in genres.GENRES.items():
+        for field in ("what", "loop", "numbers", "feel", "mistake", "looks"):
+            assert g.get(field), f"{name} has no {field}"
+
+
+def test_the_genre_rules_actually_contradict_each_other():
+    """Which is why applying the wrong one is worse than applying none."""
+    from app.services import genres
+    assert "Raise speed" in genres.GENRES["runner"]["numbers"]
+    assert "Undo is mandatory" in genres.GENRES["puzzle"]["feel"]
+    assert "coyote time" in genres.GENRES["runner"]["feel"].lower()
+
+
+def test_networked_pvp_is_refused_rather_than_promised():
+    """The builder exports a static WASM file. There is no server, so two people
+    on different continents cannot shoot at each other through it."""
+    from app.services import agent, genres
+    assert "no game server" in genres.GENRES["shooter"]["note"].lower()
+    assert "needs no server and works" in genres.GENRES["local-versus"]["note"]
+    g = agent.GAME_EXTRA
+    assert "no game server here" in g
+    assert "cannot be built on this platform" in g
+    assert "split keyboard, split" in g          # and offers what does work
+
+
+def test_a_genre_is_guessed_only_when_it_is_clear():
+    from app.services import genres
+    assert genres.guess("an endless runner where you dodge traffic") == "runner"
+    assert genres.guess("two player game on the same keyboard") == "local-versus"
+    assert genres.guess("something fun") == ""          # never a guess
+
+
+def test_themes_say_how_not_just_what_colour():
+    from app.services import genres
+    assert len(genres.THEMES) >= 6
+    for name, t in genres.THEMES.items():
+        assert t["palette"] and t["how"]
+    assert "No glow at all" in genres.THEMES["paper"]["how"]      # theme-specific craft
+
+
+def test_the_agent_can_ask_for_the_rules_before_it_writes():
+    from app.services.agent import TOOL_GENRE
+    assert TOOL_GENRE["name"] == "game_rules"
+    assert "BEFORE writing a game" in TOOL_GENRE["description"]
+    kinds = set(TOOL_GENRE["input_schema"]["properties"]["genre"]["enum"])
+    from app.services import genres
+    assert kinds == set(genres.GENRES)

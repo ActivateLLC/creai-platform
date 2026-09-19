@@ -243,6 +243,26 @@ TOOL_START_APP = {
         "required": ["name"]},
 }
 
+TOOL_GENRE = {
+    "name": "game_rules",
+    "description": "Get what somebody who has shipped this kind of game would tell you: the "
+                   "shape of the loop, the numbers that matter, the mistake everyone makes "
+                   "first, and what it takes to look right.\n"
+                   "Call this BEFORE writing a game, once you know roughly what kind it is. A "
+                   "runner needs a difficulty curve and coyote time; a puzzle needs undo and a "
+                   "guarantee every board is solvable; a shooter needs telegraphed attacks and "
+                   "a time-to-kill. Built the same way, each one is wrong in its own "
+                   "particular manner.\n"
+                   "Pass a visual theme too if the person suggested a look.",
+    "input_schema": {"type": "object", "properties": {
+        "genre": {"type": "string",
+                  "enum": ["runner", "arcade", "puzzle", "platformer", "shooter",
+                           "tower-defence", "idle", "rhythm", "local-versus"]},
+        "theme": {"type": "string",
+                  "enum": ["neon", "paper", "noir", "pastel", "terminal", "sunset"]}},
+        "required": ["genre"]},
+}
+
 TOOL_BLUEPRINT = {
     "name": "use_blueprint",
     "description": "Build one of the things nearly every business needs, done properly: a CRM "
@@ -953,6 +973,16 @@ common failure, and it is entirely avoidable:
   screen. Contrast marks what matters: the player and the danger are the brightest things on it.
 - Score is not the only feedback. A near miss, a streak, the speed creeping up — something should
   tell the player they are getting better before the number does.
+- Know the genre before you write it. Call game_rules once you know roughly what kind of game
+  this is — a runner, a puzzle, a shooter, two players on one device. Each has a loop, numbers
+  that matter and a mistake everyone makes first, and the rules contradict each other: a runner
+  wants rising speed, a puzzle wants none. Built the same way, each comes out wrong in its own
+  particular manner.
+- There is no game server here. A game is exported to WebAssembly and served as a static file,
+  so networked player-versus-player cannot be built on this platform — no authoritative server,
+  no lag compensation, no matchmaking. Two people play on ONE device: split keyboard, split
+  screen, or passing the phone. Say that plainly if somebody asks for online multiplayer, and
+  offer the local version rather than building something that cannot work.
 - Play it before you claim it works. check_game catches broken code, not a boring game. Ask
   yourself what the thirty-second experience actually is, and say so honestly in your reply.
 
@@ -1068,7 +1098,7 @@ async def run(text: str, answers: dict | None, *, project: bool = False,
     if intent == "build" and game is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_GAME,
                  TOOL_BUILD_GAME, TOOL_DELETE_FILE, TOOL_GENERATE_IMAGE,
-                 TOOL_SAVE_ANSWER, TOOL_SUGGEST]
+                 TOOL_GENRE, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
     elif intent == "build" and app is not None:
         tools = [TOOL_LIST_FILES, TOOL_READ_FILE, TOOL_WRITE_FILES, TOOL_CHECK_APP, TOOL_DELETE_FILE,
                  TOOL_UPDATE_SITE, TOOL_GENERATE_IMAGE, TOOL_LOOK, TOOL_SAVE_ANSWER, TOOL_SUGGEST]
@@ -1314,6 +1344,16 @@ async def _tool(turn: Turn, name: str, args: dict, queue_posts, bridge=None, app
             return {"ok": True, "offered": label,
                     "note": "The person now has a button that creates the app and opens it. "
                             "Finish this turn by building the site part you can build."}
+
+        if name == "game_rules":
+            from . import genres
+            brief = genres.brief_for(args.get("genre", ""), args.get("theme", ""))
+            if not brief:
+                return {"ok": False, "error": "no rules for that genre"}
+            turn.log.append(f"read the rules for {args.get('genre')} games")
+            return {"ok": True, "rules": brief,
+                    "note": "Build to these. Do not read them back to the person — show them "
+                            "the game."}
 
         if name == "use_blueprint":
             from . import blueprints
